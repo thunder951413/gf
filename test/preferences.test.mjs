@@ -1,0 +1,83 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { createApp } from '../server.mjs';
+
+const appDataDir = path.resolve('app-data');
+const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9JXusAAAAASUVORK5CYII=';
+const json = body => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+
+async function start(t, options = {}) {
+  const dataDir = options.dataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'life-preferences-'));
+  const app = await createApp({ appDataDir, dataDir, initialFeeds: [], startProactive: false, startRecall: false, integrations: { fetchFeed: async () => ({ items: [] }) }, env: { LIFE_MODEL_BASE_URL: 'https://model.test/v1', LIFE_MODEL_NAME: 'fixture' }, fetchImpl: async () => Response.json({ choices: [{ message: { content: '回复' } }] }), ...options });
+  const address = await app.listen(0); const base = `http://127.0.0.1:${address.port}`;
+  t.after(async () => { await app.close(); if (!options.keepData) fs.rmSync(dataDir, { recursive: true, force: true }); });
+  return { app, base, dataDir };
+}
+async function request(base, pathname, options) {
+  const response = await fetch(`${base}${pathname}`, options);
+  return { status: response.status, body: await response.json() };
+}
+
+test('preferences default to natural, persist avatars, and reject invalid images without mutation', async t => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'life-preferences-persist-'));
+  const first = await start(t, { dataDir, keepData: true, replySleep: async () => {} });
+  assert.deepEqual((await request(first.base, '/api/preferences')).body, { replyPace: 'natural', avatars: {} });
+  assert.deepEqual((await request(first.base, '/api/preferences', json({ roleId: 'wenxi', avatar: png }))).body, { replyPace: 'natural', avatars: { wenxi: png } });
+  const invalid = await request(first.base, '/api/preferences', json({ roleId: 'wenxi', avatar: 'data:image/svg+xml;base64,PHN2Zy8+' }));
+  assert.equal(invalid.status, 400);
+  assert.equal((await request(first.base, '/api/preferences', json({ roleId: 'unknown', avatar: png }))).status, 400);
+  assert.equal((await request(first.base, '/api/preferences', json({ roleId: 'wenxi', avatar: `data:image/png;base64,${Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(400 * 1024)]).toString('base64')}` }))).status, 400);
+  assert.equal((await request(first.base, '/api/preferences', json({ roleId: 'wenxi', avatar: png.replace('image/png', 'image/jpeg') }))).status, 400);
+  assert.deepEqual((await request(first.base, '/api/preferences')).body, { replyPace: 'natural', avatars: { wenxi: png } });
+  assert.deepEqual((await request(first.base, '/api/preferences', json({ replyPace: 'instant' }))).body, { replyPace: 'instant', avatars: { wenxi: png } });
+  assert.deepEqual((await request(first.base, '/api/preferences', json({ roleId: 'wenxi', avatar: null }))).body, { replyPace: 'instant', avatars: {} });
+  await first.app.close();
+  const second = await createApp({ appDataDir, dataDir, initialFeeds: [], startProactive: false, startRecall: false, replySleep: async () => {} });
+  const address = await second.listen(0);
+  t.after(async () => { await second.close(); fs.rmSync(dataDir, { recursive: true, force: true }); });
+  assert.deepEqual((await request(`http://127.0.0.1:${address.port}`, '/api/preferences')).body, { replyPace: 'instant', avatars: {} });
+});
+
+test('natural pacing counts model time and instant pacing never sleeps', async t => {
+  let now = 0; let call = 0; const sleeps = [];
+  const { base } = await start(t, {
+    replyNow: () => now, replyRandom: () => 0,
+    replySleep: async ms => { sleeps.push(ms); },
+    fetchImpl: async () => {
+      call += 1;
+      if (call === 1) now = 3500;
+      if (call === 3) now = 4500;
+      if (call === 4) return new Response('failed', { status: 500 });
+      return Response.json({ choices: [{ message: { content: '回复' } }] });
+    },
+  });
+  assert.equal((await request(base, '/api/chat', json({ role: 'wenxi', text: '你好' }))).status, 200);
+  assert.deepEqual(sleeps, [500]);
+  assert.equal((await request(base, '/api/preferences', json({ replyPace: 'instant' }))).status, 200);
+  now = 0;
+  assert.equal((await request(base, '/api/chat', json({ role: 'wenxi', text: '再见' }))).status, 200);
+  assert.deepEqual(sleeps, [500]);
+  await request(base, '/api/preferences', json({ replyPace: 'natural' }));
+  now = 0;
+  assert.equal((await request(base, '/api/chat', json({ role: 'wenxi', text: '模型很慢' }))).status, 200);
+  assert.deepEqual(sleeps, [500]);
+  now = 0;
+  assert.equal((await request(base, '/api/chat', json({ role: 'wenxi', text: '模型失败' }))).status, 502);
+  assert.deepEqual(sleeps, [500]);
+});
+
+test('a paced reply remains busy and hidden until its turn commits', async t => {
+  let release; let sleeping;
+  const sleepStarted = new Promise(resolve => { sleeping = resolve; });
+  const { base } = await start(t, { replyRandom: () => 0, replySleep: () => new Promise(resolve => { release = resolve; sleeping(); }) });
+  const pending = request(base, '/api/chat', json({ role: 'zhixia', text: '等一下' }));
+  await sleepStarted;
+  assert.equal((await request(base, '/api/chat', json({ role: 'zhixia', text: '第二句' }))).status, 409);
+  assert.deepEqual((await request(base, '/api/conversations/zhixia')).body.messages, []);
+  release();
+  assert.equal((await pending).status, 200);
+  assert.equal((await request(base, '/api/conversations/zhixia')).body.messages.length, 2);
+});

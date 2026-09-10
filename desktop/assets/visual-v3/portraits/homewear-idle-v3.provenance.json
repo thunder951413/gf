@@ -1,0 +1,13 @@
+{
+  "name": "homewear-idle",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-a22467a3-ebb3-4647-b839-d0c6c4723eba.png",
+  "prompts": [
+    "Precise FACE AND FRINGE restoration. IMAGE 1 is the corrected body/outfit/pose target; keep its head scale and body geometry, clothing, gesture and background unchanged. IMAGE 2 is the preferred ORIGINAL FACE of the same 27-year-old adult woman. Restore image 2's exact facial likeness, eye shape, soft cheek fullness, nose, lips and expression. Keep original soft airy side-swept bangs partly covering forehead; reduce stray strands by half and move only those directly over pupils and nose bridge aside. Do NOT fully expose forehead, sweep fringe up, add pins, sharpen cheeks, change makeup or age her. Keep corrected smaller head and natural legs from image 1, not image 2's body. Same 1024x1536 full-body photo. "
+  ],
+  "destination": "wardrobe-v1/cutouts/homewear-idle.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "8427dca1f4469723094035816d28c0d8e55f665f5b600ba9def0b34fbc311372",
+  "cutoutSHA256": "2bb86a5f4c7f54f17ab5665105060304c9201e2efe26af77407e7a0bd9153535",
+  "processing": "Vision alpha matte with local edge trim and source-background gap cleanup; no RGB/body warp in renderer",
+  "review": "Approved after source, contrasting-background cutout, and native scene render inspection on 2026-09-09"
+}

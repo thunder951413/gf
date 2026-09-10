@@ -1,0 +1,8 @@
+{
+  "operation": "local-luminance-preserving-garment-recolor",
+  "source": "visual-v2/cutouts/bob-wave.png",
+  "mask": "visual-v2/masks/bob-soft-knit-wave-happy-original.png",
+  "targetHex": "#8BA397",
+  "sourceSHA256": "4b8abe64d272afc4048370007ac5be801f7871c2b4bf44dc86eb8b1c8fe138c6",
+  "validation": "Exported pixels: original alpha identical; every pixel outside the garment mask identical. Visual QA required before release."
+}

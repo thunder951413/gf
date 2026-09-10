@@ -1,0 +1,14 @@
+{
+  "asset": "long-lingerie-idle.png",
+  "generator": "built-in imagegen",
+  "referenceImage": "/Users/surfing/tools/life/.runtime/desktop-v01/current-avatar.jpg",
+  "sourceOutput": "/Users/surfing/.codex/generated_images/01a08191-9cb8-7f61-894b-d5f8c8139ea5/exec-2a76b7bb-03bf-45e4-86f2-0ef835a9871b.png",
+  "sha256": "edcae911c02c6d88f4c29b2878cf023a157f81c1c8ee8e350559b7a9494d56eb",
+  "dimensions": { "width": 1024, "height": 1536 },
+  "prompt": "Use case: identity-preserve\nAsset type: photorealistic adult sleepwear fashion catalog portrait, final vertical 1024x1536 image. Input image 1 is the authoritative facial identity reference.\nPrimary request: create the SAME recognizable 27-year-old adult East Asian woman from Input image 1, with original long dark hair and wispy fringe. Dress her in a complete dusty-rose opaque sleepwear ensemble: a fitted cotton camisole with full chest coverage, matching high-waisted opaque lounge shorts with full hip coverage, and a lightweight opaque short robe worn open. This is tasteful adult fashion catalog clothing, fully covered and non-suggestive. Natural relaxed standing idle pose, gentle soft-smile, anatomically natural hands and fingers.\nScene/backdrop: plain solid neutral LIGHT GRAY studio background, empty, for later local matte extraction.\nStyle/medium: high-quality photoreal full-body studio photograph. Preserve natural facial structure, dark eyes, fine hair strands, realistic skin texture, and adult identity.\nComposition/framing: vertical 2:3, full head-to-feet visible with modest margins; neither feet nor hair cropped. Centered body, no background props or foreground occlusion.\nLighting/mood: soft warm natural daylight from upper LEFT.\nConstraints: adult age 27; no nudity, sheer fabric, exposed breasts, exposed buttocks, sexual gesture, or exaggerated anatomy. No malformed hands, extra fingers, missing fingers, distorted feet, text, logos, watermark, illustration, anime, CGI, doll skin, collage, or multi-panel image.",
+  "generationNotes": "The initial explicit lingerie wording was blocked by the image service before output. The accepted retry uses a fully opaque adult sleepwear description while preserving the requested dusty-rose, fully covered private-fashion intent.",
+  "qa": {
+    "accepted": true,
+    "notes": "Full opaque camisole, shorts, and robe are present. Identity, face, hands, bare feet, and full body are in frame and visually coherent."
+  }
+}

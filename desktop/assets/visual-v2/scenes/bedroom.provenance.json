@@ -1,0 +1,12 @@
+{
+  "asset": "bedroom.png",
+  "generator": "built-in imagegen",
+  "sourceOutput": "/Users/surfing/.codex/generated_images/01a08191-9cb8-7f61-894b-d5f8c8139ea5/exec-03fe5f9a-4fc6-45d9-bfb5-f179e9de8186.png",
+  "sha256": "308bb79662f5635d87b45a4bde47a103f4bf1334580410618d196797e4ebe750",
+  "dimensions": { "width": 1024, "height": 1536 },
+  "prompt": "Use case: photorealistic-natural\nAsset type: reusable empty desktop-companion background, final vertical 1024x1536 image.\nPrimary request: a refined private adult bedroom with cream bedding and a low bed pushed to the REAR LEFT, warm neutral walls, and a light-oak floor. Soft window light arrives from the LEFT. Keep the center and RIGHT foreground completely clear for later compositing of a standing full-body adult person at normalized placement x=0.22, y=0.12, width=0.60, height=0.82. Leave the bottom 10 percent as plausible visible oak floor for feet.\nSubject: empty adult bedroom; absolutely no people and no sexual objects.\nStyle/medium: high-quality photoreal interior photograph, elegant but restrained adult home, natural bedding, wood, plaster and textile textures; no illustration, CGI, dollhouse effect, or miniature effect.\nComposition/framing: vertical 2:3, chest-level camera, moderate natural perspective, no fisheye, bed strictly rear-left, no foreground furniture obstructing the central composite area.\nLighting/mood: quiet soft daytime natural light from the upper LEFT.\nConstraints: no people, no nudity, no sexual objects, no text, no logos, no watermark, no baked-in character. This must be a standalone reusable background.",
+  "qa": {
+    "accepted": true,
+    "notes": "Empty adult bedroom with a rear-left cream bed, clear center-right oak floor, and soft left-side daylight; no sexual objects or visible person."
+  }
+}

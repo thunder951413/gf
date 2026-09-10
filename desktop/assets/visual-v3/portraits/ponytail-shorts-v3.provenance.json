@@ -1,0 +1,13 @@
+{
+  "name": "ponytail-shorts",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-ab0f6185-3147-4f1c-a869-6bec97c410b4.png",
+  "prompts": [
+    "Precise FACE AND FRINGE restoration. IMAGE 1 is the corrected body/outfit/pose target, keep its head scale and all body geometry/clothing/gesture/background unchanged. IMAGE 2 is the preferred ORIGINAL FACE of the same 27-year-old adult woman. Restore image 2's exact facial likeness: eye shape, soft cheek fullness, nose, lips and expression. Keep her original soft airy side-swept bangs partly covering forehead; reduce stray strands by half and move only strands directly over eyes and nose bridge aside. Do NOT expose the whole forehead, comb the fringe up, add hairpins, sharpen the cheekbones, change makeup or age her. Original gentle adult appearance, same identity. Keep the corrected smaller head size and long legs from image 1, NOT image 2's body proportions. 1024x1536 single photoreal full-body photo. "
+  ],
+  "destination": "visual-v2/cutouts/ponytail-shorts.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "bfc512099634efe87948fb699f39e93f72dbd54e7e2fc308da323c3792d8dbf4",
+  "cutoutSHA256": "bc45cd9b7f09f548ecd989175822816847b7784cb9524a95fda87df2c26bce19",
+  "processing": "Vision alpha matte with local edge trim and source-background gap cleanup; no RGB/body warp in renderer",
+  "review": "Approved after source, contrasting-background cutout, and native scene render inspection on 2026-09-09"
+}

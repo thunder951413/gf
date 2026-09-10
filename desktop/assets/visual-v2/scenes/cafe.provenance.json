@@ -1,0 +1,12 @@
+{
+  "asset": "cafe.png",
+  "generator": "built-in imagegen",
+  "sourceOutput": "/Users/surfing/.codex/generated_images/01a08191-9cb8-7f61-894b-d5f8c8139ea5/exec-507256c9-7780-487c-97fc-e21cce1e2f16.png",
+  "sha256": "fdbfded7edd0588e2032174a14a7ac04632e2555caa315440fb66b1afbfc112e",
+  "dimensions": { "width": 1024, "height": 1536 },
+  "prompt": "Use case: photorealistic-natural\nAsset type: reusable empty desktop-companion background, final vertical 1024x1536 image.\nPrimary request: an intimate autumn cafe with an empty central aisle and visible warm light-oak floor. Windows on the LEFT show soft autumn foliage outside. Put small tables and chairs only along the far LEFT edge, far RIGHT edge, and distant back edge; keep the front-center completely clear for later compositing of a full-body adult person at normalized placement x=0.22, y=0.12, width=0.60, height=0.82. Leave the bottom 10 percent as plausible oak floor for feet.\nSubject: empty cafe; absolutely no people.\nStyle/medium: high-quality photoreal interior photograph, natural wood, glass, fabric and subtle autumn texture; no illustration, CGI, dollhouse effect, or miniature effect.\nComposition/framing: vertical 2:3, chest-level camera, moderate natural perspective, no fisheye, no central furniture or chair occluding the reserved foreground.\nLighting/mood: soft natural daylight from the upper LEFT through the windows, intimate but daytime.\nConstraints: no people, no legible text, no logos, no watermark, no baked-in character. This must be a standalone reusable background.",
+  "qa": {
+    "accepted": true,
+    "notes": "Empty cafe with left windows and autumn foliage, edge seating, and a broad clear oak-floor aisle. A small distant plant touches the left edge of the nominal body zone but does not obstruct the foreground composite placement."
+  }
+}

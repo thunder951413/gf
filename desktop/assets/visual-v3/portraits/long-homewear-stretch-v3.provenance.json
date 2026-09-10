@@ -1,0 +1,13 @@
+{
+  "name": "long-homewear-stretch",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-e4ea579f-a0cb-4db8-a46f-2c8786e1c732.png",
+  "prompts": [
+    "Localized FACE AND FRINGE restoration ONLY. IMAGE 1 provides the corrected body proportions, current outfit and pose, all to remain unchanged. IMAGE 2 provides the preferred original facial likeness of this same 27-year-old adult woman. Restore her original eye shape, soft cheek fullness, nose, lips and expression. Restore soft airy side-swept bangs PARTLY covering forehead, just gently part the few strands directly covering pupils and nose bridge; no swept-up bare forehead, no hairpins, no sharp mature cheeks, no new makeup. Keep head scale and corrected legs from image 1. Do not copy clothing or body geometry from image 2. Single realistic 1024x1536 full-body studio photo, same background."
+  ],
+  "destination": "visual-v2/cutouts/long-homewear-stretch.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "bc04385fdedc8121f052062c45958494006158c9d99772924ffcc7b54b0886d9",
+  "cutoutSHA256": "4a290cc38eac3aa7ac8c2e5c4466c226a0d00197fb18fa2934e6eb878b6a45aa",
+  "processing": "Vision alpha matte with local edge trim and source-background gap cleanup; no RGB/body warp in renderer",
+  "review": "Approved after source, contrasting-background cutout, and native scene render inspection on 2026-09-09"
+}

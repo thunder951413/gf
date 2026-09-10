@@ -1,0 +1,14 @@
+{
+  "name": "bob-wave",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-97572810-ba0a-43ab-8d65-0c525329ebc1.png",
+  "prompts": [
+    "Precise FACE AND FRINGE restoration. IMAGE 1 is the corrected body/outfit/pose target, keep its head scale and all body geometry/clothing/gesture/background unchanged. IMAGE 2 is the preferred ORIGINAL FACE of the same 27-year-old adult woman. Restore image 2's exact facial likeness: eye shape, soft cheek fullness, nose, lips and expression. Keep her original soft airy side-swept bangs partly covering forehead; reduce stray strands by half and move only strands directly over eyes and nose bridge aside. Do NOT expose the whole forehead, comb the fringe up, add hairpins, sharpen the cheekbones, change makeup or age her. Original gentle adult appearance, same identity. Keep the corrected smaller head size and long legs from image 1, NOT image 2's body proportions. 1024x1536 single photoreal full-body photo. ",
+    "Edit only the hairstyle of the fictional 27-year-old adult woman in this photograph: replace the bob haircut with a beautiful high ponytail tied at the crown, long dark hair falling behind one shoulder, clearly visible ponytail silhouette. Preserve EXACTLY this preferred youthful adult face, soft full cheeks, facial proportions, eyes, lips, expression, the original light airy fringe with sparse strands on the forehead (no hair over pupils), and small head scale. Do not expose the entire forehead or slick hair back. Keep everything else unchanged: corrected long-leg body proportions, stance, hands, clothing, shoes, lighting, camera, gray studio background. Full body photograph 1024x1536. This is a hair-only edit, no change to face or body."
+  ],
+  "destination": "visual-v2/cutouts/bob-wave.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "50c7bca7e4dff5f28d643c5d09259cd49f0b503a9b0aa9eec8b583a6a636422d",
+  "cutoutSHA256": "172f93062604338d3aa9273736a432405c4813262bc9b38f1d999296a04921ec",
+  "processing": "Vision alpha matte with local edge trim and source-background gap cleanup; no RGB/body warp in renderer",
+  "review": "Approved after source, contrasting-background cutout, and native scene render inspection on 2026-09-09"
+}

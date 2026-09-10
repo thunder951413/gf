@@ -1,0 +1,14 @@
+{
+  "asset": "long-soft-knit-resting.png",
+  "generator": "built-in imagegen",
+  "referenceImage": "/Users/surfing/tools/life/.runtime/desktop-v01/current-avatar.jpg",
+  "sourceOutput": "/Users/surfing/.codex/generated_images/01a08191-9cb8-7f61-894b-d5f8c8139ea5/exec-e1b60efc-a1fe-4b7e-b581-397bda022b89.png",
+  "sha256": "cfa454c2d18abf47695eca61706da5c07f244345d97182dda3dc100bfb7bed66",
+  "dimensions": { "width": 1024, "height": 1536 },
+  "prompt": "Use case: identity-preserve\nAsset type: photorealistic wardrobe catalog portrait, final vertical 1024x1536 image. Input image 1 is the authoritative face reference for the same recognizable 27-year-old adult East Asian woman.\nPrimary request: show the SAME adult woman with original long dark hair and wispy fringe, wearing an oatmeal open-knit cardigan over an ivory top, a dusty-blue midi skirt, and cream ballet flats. She rests comfortably in a compact pale upholstered armchair, eyes open with a gentle soft-smile. Natural seated posture; hands relaxed and anatomically natural. The entire armchair, including all visible legs, her full hair, feet, and both flats must be visible.\nScene/backdrop: plain solid neutral LIGHT GRAY studio background, empty except for the compact pale armchair, for later local matte extraction.\nStyle/medium: high-quality photoreal full-body studio photograph. Preserve her natural facial structure, dark eyes, fine hair strands, realistic skin texture, and adult identity.\nComposition/framing: vertical 2:3 with modest margins around the whole chair, full head-to-feet and all chair legs in frame; no cropping and no background props or foreground obstruction.\nLighting/mood: soft warm natural daylight from upper LEFT.\nConstraints: adult age 27; modest everyday clothing. No malformed hands, extra fingers, missing fingers, distorted feet, text, logos, watermark, illustration, anime, CGI, doll skin, collage, or multi-panel image.",
+  "generationNotes": "The first attempt that also supplied the existing wardrobe cutout as a second reference failed with an image-service 500 before output. This accepted retry used the identity reference and the same specified outfit details.",
+  "qa": {
+    "accepted": true,
+    "notes": "Eyes are open with a soft smile. Full hair, both flats, and all four visible armchair legs are in frame. Face, hands, feet, chair scale, and studio background are visually coherent."
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "asset": "long-swimwear-idle.png",
+  "generator": "built-in imagegen",
+  "referenceImage": "/Users/surfing/tools/life/.runtime/desktop-v01/current-avatar.jpg",
+  "sourceOutput": "/Users/surfing/.codex/generated_images/01a08191-9cb8-7f61-894b-d5f8c8139ea5/exec-e4c8816d-9761-4f67-89e5-ad65454d8016.png",
+  "sha256": "1fa4cff1db050c5afe98e6ecc397de7a067e7dfcacb1dfbc9edd149a70741dd3",
+  "dimensions": { "width": 1024, "height": 1536 },
+  "prompt": "Use case: identity-preserve\nAsset type: photorealistic wardrobe catalog portrait, final vertical 1024x1536 image. Input image 1 is the authoritative facial identity reference.\nPrimary request: create the SAME recognizable 27-year-old adult East Asian woman from Input image 1, with her original long dark hair and wispy fringe, wearing a modest one-piece opaque navy swimsuit with simple flat beach sandals. Ordinary adult swimwear catalog styling, non-seductive and non-suggestive. Natural relaxed standing idle pose, neutral expression, hands anatomically natural and relaxed.\nScene/backdrop: plain solid neutral LIGHT GRAY studio background, empty, for later local matte extraction.\nStyle/medium: high-quality photoreal full-body studio photograph. Preserve natural facial structure, dark eyes, realistic skin texture, fine hair strands, and adult identity.\nComposition/framing: vertical 2:3, full head-to-feet visible with modest margins; neither feet nor hair cropped. Centered body, no props or foreground occlusion.\nLighting/mood: soft warm natural daylight from upper LEFT.\nConstraints: adult age 27; no nudity, no lingerie, no sexual pose, no exaggerated anatomy. No malformed hands, extra fingers, missing fingers, distorted feet, text, logos, watermark, illustration, anime, CGI, doll skin, collage, or multi-panel image.",
+  "qa": {
+    "accepted": true,
+    "notes": "Identity reference is preserved; all hair, hands, legs, sandals, and feet are within frame. Hands and feet appear anatomically coherent."
+  }
+}

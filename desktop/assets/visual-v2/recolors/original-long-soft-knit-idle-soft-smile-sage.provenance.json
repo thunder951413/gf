@@ -1,0 +1,8 @@
+{
+  "operation": "local-luminance-preserving-garment-recolor",
+  "source": "wardrobe-v1/cutouts/soft-knit-idle.png",
+  "mask": "visual-v2/masks/original-long-soft-knit-idle-soft-smile-original.png",
+  "targetHex": "#8BA397",
+  "sourceSHA256": "7765b88ab9548540da406bf79f976306d4f536318bab5550f76fb93de3003275",
+  "validation": "Exported pixels: original alpha identical; every pixel outside the garment mask identical. Visual QA required before release."
+}

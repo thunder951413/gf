@@ -1,0 +1,13 @@
+{
+  "name": "short-idle",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-a54e3f7b-3123-4c17-b4e0-95682439d521.png",
+  "prompts": [
+    "Precise FACE AND FRINGE restoration. IMAGE 1 is the corrected body/outfit/pose target, keep its head scale and all body geometry/clothing/gesture/background unchanged. IMAGE 2 is the preferred ORIGINAL FACE of the same 27-year-old adult woman. Restore image 2's exact facial likeness: eye shape, soft cheek fullness, nose, lips and expression. Keep her original soft airy side-swept bangs partly covering forehead; reduce stray strands by half and move only strands directly over eyes and nose bridge aside. Do NOT expose the whole forehead, comb the fringe up, add hairpins, sharpen the cheekbones, change makeup or age her. Original gentle adult appearance, same identity. Keep the corrected smaller head size and long legs from image 1, NOT image 2's body proportions. 1024x1536 single photoreal full-body photo. "
+  ],
+  "destination": "visual-v2/cutouts/short-idle.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "d27ad6645623ee9999214f6c4a2d108ef183de8afbf68e0a77b2a41f134c1bff",
+  "cutoutSHA256": "88dcd397d7125313ffce8f44b777775e554228a6638c38e2e1055c04289ba348",
+  "processing": "Vision alpha matte with local edge trim and source-background gap cleanup; no RGB/body warp in renderer",
+  "review": "Approved after source, contrasting-background cutout, and native scene render inspection on 2026-09-09"
+}

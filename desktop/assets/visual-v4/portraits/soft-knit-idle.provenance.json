@@ -1,0 +1,10 @@
+{
+  "name": "soft-knit-idle",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-ab7f2c2e-5587-4cf7-8e52-1a8f25b678c7.png",
+  "prompt": "Photorealistic proportion correction of this fictional 27-year-old adult woman. Image 1 is the CURRENT version: it has become too vertically elongated, with a small head, long narrow neck and overly long skirt/body. Image 2 is the ORIGINAL, whose face and more compact everyday proportions the user liked. Create a restrained midpoint closer to the original: ordinary natural adult woman of average height, approximately 6.7 heads tall, normal neck length, slightly fuller normal shoulder/body width, legs naturally proportioned rather than fashion-model long. Shorten the elongated neck and torso and use a natural calf-length midi skirt, with a relaxed stance and normal knees/ankles. Keep the exact same preferred face, facial features, soft expression, long dark hairstyle, light airy bangs, cream cardigan, white tee, powder-blue skirt and cream flat shoes. Do not redesign her face, age her, remove bangs, add makeup, lengthen legs, make a tiny head, or give a supermodel silhouette. Whole body fully visible including shoes, realistic eye-level 50mm photo, pale neutral studio background, 1024x1536. Natural anatomy is more important than looking tall.",
+  "destination": "wardrobe-v1/cutouts/soft-knit-idle.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "597d079edb5b3f3b1e049408d556136108827994a88f8d6a6a98f866702f8831",
+  "cutoutSHA256": "f06ac8593bc4c275297148d7add8259695fe551769ff65c9b82104e39f7b29c0",
+  "review": "Approved after comparing all three corrected knit looks in NativeSceneCanvas with the previous version on 2026-09-09"
+}

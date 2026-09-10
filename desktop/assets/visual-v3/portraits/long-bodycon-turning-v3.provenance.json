@@ -1,0 +1,13 @@
+{
+  "name": "long-bodycon-turning",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-a3a950c5-9bbc-4fd4-9bf8-69a3f48aeb85.png",
+  "prompts": [
+    "Precise FACE AND FRINGE restoration. IMAGE 1 is the corrected body/outfit/pose target; keep its head scale and body geometry, clothing, gesture and background unchanged. IMAGE 2 is the preferred ORIGINAL FACE of the same 27-year-old adult woman. Restore image 2's exact facial likeness, eye shape, soft cheek fullness, nose, lips and expression. Keep original soft airy side-swept bangs partly covering forehead; reduce stray strands by half and move only those directly over pupils and nose bridge aside. Do NOT fully expose forehead, sweep fringe up, add pins, sharpen cheeks, change makeup or age her. Keep corrected smaller head and natural legs from image 1, not image 2's body. Same 1024x1536 full-body photo. "
+  ],
+  "destination": "visual-v2/cutouts/long-bodycon-turning.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "af679786b75c899601ae5669e3117b4613eee28b05fe6e8aa33f2cad6d6fedc8",
+  "cutoutSHA256": "cc7a3f303ad40ffd93038b69ded905d89622048175499e7cff26b59a40f39363",
+  "processing": "Vision alpha matte with local edge trim and source-background gap cleanup; no RGB/body warp in renderer",
+  "review": "Approved after source, contrasting-background cutout, and native scene render inspection on 2026-09-09"
+}

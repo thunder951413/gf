@@ -1,0 +1,22 @@
+{
+  "name": "youjian-companion",
+  "version": "0.11.0",
+  "private": true,
+  "type": "module",
+  "description": "有间：本地运行的私人陪伴空间",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node start.mjs",
+    "test": "node --test test/*.test.mjs",
+    "service:install": "node scripts/service.mjs install",
+    "service:status": "node scripts/service.mjs status",
+    "service:remove": "node scripts/service.mjs remove",
+    "check": "node --check start.mjs && node --check server.mjs && node --check public/app.js",
+    "evaluate:companion": "node scripts/evaluate-companion.mjs",
+    "desktop:build": "node desktop/build.mjs",
+    "desktop:start": "node desktop/build.mjs --open",
+    "desktop:test": "node desktop/test.mjs"
+  }
+}

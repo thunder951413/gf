@@ -1,0 +1,8 @@
+{
+  "operation": "local-luminance-preserving-garment-recolor",
+  "source": "visual-v2/cutouts/ponytail-shorts.png",
+  "mask": "visual-v2/masks/ponytail-shorts-walking-curious-original.png",
+  "targetHex": "#A56D78",
+  "sourceSHA256": "4fb27aaff3a567829a209dd292d8d1738b593cd72ef980356b045ae24ced2263",
+  "validation": "Exported pixels: original alpha identical; every pixel outside the garment mask identical. Visual QA required before release."
+}

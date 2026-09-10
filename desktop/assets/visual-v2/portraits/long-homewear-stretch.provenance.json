@@ -1,0 +1,13 @@
+{
+  "asset": "long-homewear-stretch.png",
+  "generator": "built-in imagegen",
+  "referenceImage": "/Users/surfing/tools/life/.runtime/desktop-v01/current-avatar.jpg",
+  "sourceOutput": "/Users/surfing/.codex/generated_images/01a08191-9cb8-7f61-894b-d5f8c8139ea5/exec-f66f4b9f-ca87-4701-93d2-2b74901d71d0.png",
+  "sha256": "1385fe333a1a2dafe9de464723e90a6309d4bde4c4abaccfa19d57d000a72607",
+  "dimensions": { "width": 1024, "height": 1536 },
+  "prompt": "Use case: identity-preserve\nAsset type: photorealistic wardrobe catalog portrait, final vertical 1024x1536 image. Input image 1 is the authoritative facial identity reference.\nPrimary request: create the SAME recognizable 27-year-old adult East Asian woman from Input image 1, with original long dark hair and wispy fringe. She wears muted dusty-rose loose cotton long-sleeve lounge top, cream full-length relaxed lounge trousers, and beige fabric slippers. She stands naturally while gently stretching after rest: both arms raised in a simple comfortable overhead stretch, elbows slightly bent, hands open and anatomically clear. Use a mild cute pout expression, restrained and natural, never exaggerated.\nScene/backdrop: plain solid neutral LIGHT GRAY studio background, empty, for later local matte extraction.\nStyle/medium: high-quality photoreal full-body studio photograph. Preserve natural facial structure, dark eyes, fine hair strands, realistic skin texture, and adult identity.\nComposition/framing: vertical 2:3, full head, raised hands, feet, and slippers visible with modest margins; nothing may be cropped. Centered body, no props or foreground occlusion.\nLighting/mood: soft warm natural daylight from upper LEFT.\nConstraints: adult age 27; modest everyday homewear only. Hands must each have five natural fingers with no extra, fused, missing, or distorted fingers. No malformed arms, distorted feet, text, logos, watermark, illustration, anime, CGI, doll skin, collage, or multi-panel image.",
+  "qa": {
+    "accepted": true,
+    "notes": "Raised hands, full hair, slippers, and feet are within frame. The crossed overhead hands read as anatomically coherent on visual inspection; face has a restrained pout."
+  }
+}

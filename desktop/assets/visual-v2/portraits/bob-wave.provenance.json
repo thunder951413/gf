@@ -1,0 +1,30 @@
+{
+  "asset": "bob-wave.png",
+  "generation_method": "built-in image_gen",
+  "source_output": "/Users/surfing/.codex/generated_images/01a08194-3124-79d0-8096-a80f8927ea7f/exec-41d1ee17-1dc6-4701-8eb6-1427b9f44a40.png",
+  "reference_images": [
+    {
+      "path": "/Users/surfing/tools/life/.runtime/desktop-v01/current-avatar.jpg",
+      "role": "authoritative fictional Lin Yuwei face identity reference"
+    },
+    {
+      "path": "/Users/surfing/tools/life/desktop/assets/wardrobe-v1/sources/soft-knit-idle.png",
+      "role": "full-body pose, adult proportions, and photo-quality reference"
+    }
+  ],
+  "prompt": "Use case: photorealistic-natural\nAsset type: full-body portrait asset for a desktop local companion\nInput images: Image 1 is the authoritative identity reference for the fictional adult woman Lin Yuwei; Image 2 is the body proportion, full-body framing, and natural studio-portrait quality reference.\nPrimary request: Create a coherent full-body studio portrait of the same recognizable fictional 27-year-old East Asian woman from Image 1. Give her a chin-length softly curved dark bob haircut with airy wispy fringe, visibly distinct from the reference's long hair. She is standing naturally and facing camera, one arm relaxed and one hand giving a small, anatomically natural greeting wave. She has a bright, genuine happy smile with natural lips and undistorted teeth.\nWardrobe: oatmeal knit cardigan over an ivory top, dusty-blue midi skirt, cream flats. The cardigan texture and outfit construction should be realistic.\nScene/backdrop: neutral solid light-gray seamless studio backdrop with a subtle floor contact shadow; no props, no furniture, no text.\nStyle/medium: premium photoreal adult fashion-editorial/catalog photography, real skin texture and naturally mature adult proportions.\nComposition/framing: vertical 2:3 portrait at 1024 x 1536 pixels; full head and both feet entirely in frame with comfortable margins, centered standing subject.\nLighting/mood: soft natural studio key light, flattering but realistic, cheerful.\nConstraints: preserve Image 1's recognizable face identity (eyes, nose, lips, face shape, warm natural complexion); preserve Image 2's realistic adult full-body proportions and polished photo quality. She is clearly an adult age 27. No visible brand marks.\nAvoid: anime, CGI, doll-like skin, child or teenager appearance, school uniform, sexualized pose, warped anatomy, extra fingers, malformed waving hand, cropped feet, cropped head, busy background, text, watermark.",
+  "qualitative_review": {
+    "verdict": "accepted for parent technical review",
+    "strengths": [
+      "Face closely tracks the supplied identity: dark eyes, soft oval face, natural warm complexion, and recognizable nose/lip proportions.",
+      "The requested bob with wispy fringe, cardigan, ivory top, dusty-blue midi skirt, cream flats, gray studio background, and full head-to-feet framing are all present.",
+      "The wave reads clearly and has five normally shaped fingers; anatomy and body proportions appear coherent.",
+      "The smile is bright, natural, and has no visibly distorted teeth."
+    ],
+    "limitations": [
+      "Lighting is slightly more luminous and beauty-retouched than a strictly neutral catalog photograph.",
+      "The bob is softly wind-swept, so its outline is a little less crisp than a formal salon-bob silhouette."
+    ],
+    "technical_validation": "PNG, RGB, 1024 x 1536 pixels; source output was copied into the project and left untouched."
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "asset": "winter-study.png",
+  "generator": "built-in imagegen",
+  "referenceImage": "study.png",
+  "sourceOutput": "/Users/surfing/.codex/generated_images/01a08191-9cb8-7f61-894b-d5f8c8139ea5/exec-2563fcd3-cd08-45d6-9eb4-433c7403d727.png",
+  "sha256": "18115ea0060e5a583063289dbcbb4573c0f5fbf0b5145464448aca9a9005a429",
+  "dimensions": { "width": 1024, "height": 1536 },
+  "prompt": "Use case: lighting-weather\nAsset type: reusable winter desktop-companion background, final vertical 1024x1536 image. Input image 1 is the composition and room-layout reference.\nPrimary request: preserve the same cozy contemporary Suzhou apartment reading-nook composition from Input image 1: tall window on the LEFT, ivory walls, light-oak floor, modest bookcase and plant at the far RIGHT, and a broad central empty floor. Change the view outside the LEFT window into a convincing real winter snowfall: bare decididuous branches visibly dusted with snow, snow collecting on distant traditional rooflines, softly falling snow, muted winter daylight. Remove all visible summer green foliage and blue-sky appearance. Keep the room warmly lit and inviting with warm ivory walls and natural wood tones, never a globally blue color grade.\nSubject: empty interior, no person; wall art must contain no person or face.\nStyle/medium: high-quality photoreal interior photograph with natural winter exterior detail, real wood and plaster textures. No illustration, CGI, dollhouse, or miniature effect.\nComposition/framing: vertical 2:3, chest-level moderate perspective, no fisheye. The center and foreground floor remain fully clear for an adult full-body composite or chair at x=0.22, y=0.12, width=0.60, height=0.82; keep the bottom 10 percent as clear plausible floor.\nLighting/mood: indoor soft warm daylight from upper LEFT through the winter window; warm interior/cool exterior contrast only.\nConstraints: no people, no animals, no text, logo, watermark, or baked-in character. Do not add furniture or any foreground object into the central clear area.",
+  "qa": {
+    "accepted": true,
+    "notes": "The left window shows bare snow-covered branches, falling snow, and snow-covered distant rooflines. The room remains warm ivory and wood-toned, without a blue global grade; its central and foreground floor remain clear."
+  }
+}

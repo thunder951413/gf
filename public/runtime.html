@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>林雨薇 · 持续生活</title>
+  <link rel="stylesheet" href="/runtime.css">
+  <script src="/runtime.js" type="module"></script>
+</head>
+<body>
+  <header class="site-header">
+    <a href="/">← 回到有间</a>
+    <div><p class="eyebrow">林雨薇的持续生活</p><h1>此刻与接下来的安排</h1></div>
+    <button id="refresh" class="quiet-button" type="button">刷新</button>
+  </header>
+  <main>
+    <p id="page-status" class="page-status" role="status" aria-live="polite">正在读取…</p>
+    <section class="hero-card" aria-labelledby="now-heading">
+      <div class="section-heading"><div><p class="eyebrow">此刻</p><h2 id="now-heading">正在感受生活</h2></div><span id="runtime-badge" class="badge">读取中</span></div>
+      <div id="now" class="now-grid"></div>
+      <p id="current-note" class="note"></p>
+    </section>
+    <section class="split">
+      <section class="card"><div class="section-heading"><h2>接下来</h2><span class="beijing">北京时间</span></div><div id="next" class="plan-list"></div></section>
+      <section class="card"><div class="section-heading"><h2>今天的安排</h2><span id="pending" class="badge" hidden></span></div><div id="day-plan" class="plan-list"></div></section>
+    </section>
+    <section class="card"><div class="section-heading"><h2>最近的变化</h2><span class="beijing">仅记录状态转变</span></div><div id="transitions" class="transition-list"></div></section>
+    <section class="card service-card"><div class="section-heading"><h2>本地运行</h2><span id="service-badge" class="badge">读取中</span></div><div id="service" class="service-grid"></div><div class="section-heading selection-heading"><div><h3>当前桌面图片</h3><p class="note">显示已选图片和下一次自动更换时间。</p></div></div><div id="desktop-selection" class="service-grid"></div><p class="note">服务持续维护作息；开启生活联动后，事件才会带来主动交流机会，不会为每一餐或每个片刻发消息。</p></section>
+    <form id="settings-form" class="card" novalidate>
+      <div class="section-heading"><div><h2>持续生活设置</h2><p class="note">设置只影响本地服务的运行方式，不会改变已经约好的事。</p></div></div>
+      <label class="check"><input id="enabled" type="checkbox"> 让生活事件带来主动交流和桌面联动</label>
+      <label class="check"><input id="automatic-scenes" type="checkbox"> 为合适的生活场景自动匹配已上传的图片</label>
+      <div class="image-settings" aria-labelledby="image-settings-heading">
+        <h3 id="image-settings-heading">图片自动匹配</h3>
+        <div class="settings-grid">
+          <label>更换间隔（分钟）<input id="image-rotation-minutes" type="number" min="0" max="1440" step="1" inputmode="numeric" required aria-describedby="rotation-help"><small id="rotation-help">填 0 时，只会在活动或情境变化时更换。</small></label>
+          <label>季节偏好<select id="image-season"><option value="auto">自动判断</option><option value="spring">春季</option><option value="summer">夏季</option><option value="autumn">秋季</option><option value="winter">冬季</option></select></label>
+          <label>环境偏好<select id="image-environment"><option value="auto">自动判断</option><option value="indoor">室内</option><option value="outdoor">室外</option></select></label>
+          <label>图片版本<select id="image-variant"><option value="cutout">仅已审核的透明桌面人物（默认）</option><option value="original">完整原图（会显示背景）</option></select></label>
+        </div>
+        <p class="note">季节和环境偏好只影响图片选择，不会改变角色实际所在的地点或季节。<a href="/image-library.html">在图片素材库调整图片分类</a></p>
+      </div>
+      <div class="form-actions"><button class="primary" type="submit">保存设置</button><button id="reload-settings" class="quiet-button" type="button" hidden>重新读取</button></div>
+      <p id="settings-status" class="form-status" role="status"></p>
+    </form>
+    <section class="card" aria-labelledby="schedule-heading">
+      <div class="section-heading"><div><h2 id="schedule-heading">安排一件具体的事</h2><p class="note">时间按北京时间填写。共同安排到点会等待你的确认，不会自动算作你已经参加。</p></div></div>
+      <form id="create-plan" class="planner">
+        <label>想做的事<input id="plan-title" maxlength="120" required placeholder="例如：周六一起看一部电影"></label>
+        <label>类型<select id="plan-kind"><option value="reading">一起读书</option><option value="film">看电影</option><option value="cooking">做点好吃的</option><option value="quiet">安静陪伴</option><option value="chat">慢慢聊</option><option value="ritual">小约定</option><option value="outing">出门活动</option></select></label>
+        <label>谁参与<select id="plan-owner"><option value="joint">我们一起</option><option value="character">她自己</option></select></label>
+        <label id="plan-location-wrap" hidden>地点（仅她自己的出门活动）<input id="plan-location" maxlength="120" placeholder="例如：静安公园"></label>
+        <label>日期和时间（北京时间）<input id="plan-due" type="datetime-local" required></label>
+        <label>预计时长（分钟）<input id="plan-duration" type="number" min="1" max="720" value="60"></label>
+        <div class="form-actions"><button class="primary" type="submit">加入安排</button><button id="reload-plans" class="quiet-button" type="button" hidden>重新读取</button></div>
+      </form>
+      <p id="plan-status" class="form-status" role="status"></p>
+      <div id="agenda" class="agenda-list"></div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,6 @@
+# 原创插画记录
+
+工具：内置 image_gen（2026-09-07）。成品：public/art/rain-lantern-cover.png。用于剧情封面，不表示当前场景实时画面，也不替换用户头像或页面背景。
+
+Prompt:
+Create one original premium visual-novel cover illustration for a local Chinese adult romantic mystery game 雨夜拾光, landscape 16:9, no lettering, no logos. A clearly adult 27-year-old Jiangnan Chinese woman named Ruan Mian, warm poised playful expression with a trace of nervous anticipation, natural feminine face and adult proportions, shoulder-length dark brown softly waved hair. She wears a dark forest green short trench coat over ivory turtleneck, dark trousers and flat ankle boots, a waterproof document satchel on her shoulder, holds a small copper key between her fingers at chest height. Three-quarter body composition, she stands to the right side, looking toward viewer, leaving scene breathing room left. Rain-slick old-town covered arcade at night, old disused tram tracks lead toward a small dark cinema in background. A subtle vending-machine glow, warm amber and muted cyan reflections, realistic detailed architecture, intimate quiet atmosphere, original painterly semi-realistic visual novel art, refined light and fabric, elegant mature romance. Avoid childlike anime proportions, school uniform, erotic outfit, text, signage lettering, collage, UI, extra people. This is a single scene artwork, not a UI screenshot.

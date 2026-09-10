@@ -1,0 +1,12 @@
+{
+  "asset": "study.png",
+  "generator": "built-in imagegen",
+  "sourceOutput": "/Users/surfing/.codex/generated_images/01a08191-9cb8-7f61-894b-d5f8c8139ea5/exec-19e854dd-ac4f-4a3b-b608-ee78a21ae072.png",
+  "sha256": "62d3ffab9da9a67f3c1c4ee62ecd77beba439615f1c344ce98c970a466617d6e",
+  "dimensions": { "width": 1024, "height": 1536 },
+  "prompt": "Use case: photorealistic-natural\nAsset type: reusable empty desktop-companion background, final vertical 1024x1536 image.\nPrimary request: a cozy contemporary Suzhou apartment reading nook in daytime. Warm ivory walls, lightly textured light-oak floor, a tall window on the LEFT, a modest bookcase far in the back RIGHT, and one restrained green plant. Keep the central foreground floor completely clear for later compositing of a full-body adult person at normalized placement x=0.22, y=0.12, width=0.60, height=0.82; no chair or foreground furniture may overlap that center zone. Leave the bottom 10 percent as plausible visible floor for feet.\nSubject: empty interior; absolutely no people.\nStyle/medium: high-quality photoreal interior photograph, real natural materials and subtle lived-in texture, no illustration, CGI, dollhouse effect, or miniature effect.\nComposition/framing: vertical 2:3, chest-level camera, moderate natural perspective, no fisheye, central foreground negative space reserved for compositing.\nLighting/mood: soft daytime natural light from the upper LEFT, matching a gentle portrait lighting direction.\nConstraints: no person, no chair in the central foreground, no text, logos, watermark, or baked-in character. This must be a standalone reusable background.",
+  "qa": {
+    "accepted": true,
+    "notes": "Empty photoreal interior; left window, far-right bookcase, clear central oak floor, and compatible left-side daylight are present."
+  }
+}

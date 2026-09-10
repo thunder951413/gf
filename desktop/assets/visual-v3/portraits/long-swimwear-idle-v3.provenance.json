@@ -1,0 +1,13 @@
+{
+  "name": "long-swimwear-idle",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-f2401389-f112-4f0b-8e5b-e16ae9c1760e.png",
+  "prompts": [
+    "Localized FACE AND FRINGE restoration ONLY. IMAGE 1 provides the corrected body proportions, current outfit and pose, all to remain unchanged. IMAGE 2 provides the preferred original facial likeness of this same 27-year-old adult woman. Restore her original eye shape, soft cheek fullness, nose, lips and expression. Restore soft airy side-swept bangs PARTLY covering forehead, just gently part the few strands directly covering pupils and nose bridge; no swept-up bare forehead, no hairpins, no sharp mature cheeks, no new makeup. Keep head scale and corrected legs from image 1. Do not copy clothing or body geometry from image 2. Single realistic 1024x1536 full-body studio photo, same background."
+  ],
+  "destination": "visual-v2/cutouts/long-swimwear-idle.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "50aad0302339cbc328980889e39d6cea82075bf452f196d37301c557f0e101dc",
+  "cutoutSHA256": "bbdc0acdf4f619d7b55710a7bea9b744ae4933bbd9a87de54d90261d17665b98",
+  "processing": "Vision alpha matte with local edge trim and source-background gap cleanup; no RGB/body warp in renderer",
+  "review": "Approved after source, contrasting-background cutout, and native scene render inspection on 2026-09-09"
+}

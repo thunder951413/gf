@@ -1,0 +1,10 @@
+{
+  "name": "bob-idle",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-5fafb68a-f503-45a6-876c-5e90630987a8.png",
+  "prompt": "Correct the body proportions in IMAGE 1 to match the more natural everyday proportions in IMAGE 2. Image 1 is the high-ponytail version to edit, image 2 is the accepted natural-proportion guide for the same fictional adult 27-year-old woman. Reduce the elongated look: slightly larger head relative to body, normal shorter neck, normal shoulder width, normal torso and natural calf-length skirt, compact everyday adult proportions, about 6.7 heads tall rather than a tall runway silhouette. Preserve EXACTLY image 1's high ponytail, light airy bangs, face and expression, hands loosely together and gentle smile, cream cardigan, white tee, powder-blue skirt and flat cream shoes. Do NOT revert to bob haircut. Do NOT lengthen the legs, stretch the skirt, make a tiny head or change her facial features. Full body head to shoes photo 1024x1536, pale neutral gray studio background, eye-level normal-lens photography.",
+  "destination": "visual-v2/cutouts/bob-idle.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "f5d9915471e3c42540bca53e8e53e4f8238b9271a7d1bd7745dcc603e3c51f91",
+  "cutoutSHA256": "8e604baddb094ef84ead138b22f7946d4159bc9dd3b4822e91a4888961596bc1",
+  "review": "Approved after comparing all three corrected knit looks in NativeSceneCanvas with the previous version on 2026-09-09"
+}

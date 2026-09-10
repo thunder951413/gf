@@ -1,0 +1,40 @@
+data/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+node_modules/
+.runtime/
+
+# Local build products and interpreter caches.
+/desktop/build/
+__pycache__/
+*.pyc
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+
+# Imported photo collections; application assets live in desktop/assets and public/art.
+/autumn_*/
+/beach_two_piece_swim_sets/
+/crouching_with_kittens_short_skirts/
+/indoor_autumn_halfbody_portraits/
+/mirror_short_top_short_skirt/
+/over_shoulder_*/
+/potrait/
+/professional_pencil_skirt_cheek_rest/
+/spring_summer_portraits/
+/standing_wedding_gown_variations/
+/summer_*/
+/table_cheek_rest_expressions/
+/winter_*/
+
+# Locally generated experiment transcripts and reports.
+/experiments/**/*results*.json
+/experiments/**/*result-*.json
+/experiments/**/live-*.json
+/experiments/**/scores.json
+/experiments/**/summary*.json
+/experiments/**/production-review.md

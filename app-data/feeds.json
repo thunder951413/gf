@@ -1,0 +1,7 @@
+[
+  {"id":"sspai","title":"少数派","url":"https://sspai.com/feed","category":"生活科技"},
+  {"id":"solidot","title":"Solidot","url":"https://www.solidot.org/index.rss","category":"科技时事"},
+  {"id":"sciencedaily","title":"ScienceDaily 科学知识","url":"https://www.sciencedaily.com/rss/top/science.xml","category":"科学知识"},
+  {"id":"gcores","title":"机核 · 游戏文化","url":"https://www.gcores.com/rss","category":"游戏文化"},
+  {"id":"bbc-chinese","title":"BBC 中文 · 时事","url":"https://feeds.bbci.co.uk/zhongwen/simp/rss.xml","category":"时事"}
+]

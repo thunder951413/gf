@@ -1,0 +1,13 @@
+{
+  "name": "everyday-idle",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-bdbc9afe-1207-4799-b0cc-3d6d67362cc0.png",
+  "prompts": [
+    "Precise FACE AND FRINGE restoration. IMAGE 1 is the corrected body/outfit/pose target; keep its head scale and body geometry, clothing, gesture and background unchanged. IMAGE 2 is the preferred ORIGINAL FACE of the same 27-year-old adult woman. Restore image 2's exact facial likeness, eye shape, soft cheek fullness, nose, lips and expression. Keep original soft airy side-swept bangs partly covering forehead; reduce stray strands by half and move only those directly over pupils and nose bridge aside. Do NOT fully expose forehead, sweep fringe up, add pins, sharpen cheeks, change makeup or age her. Keep corrected smaller head and natural legs from image 1, not image 2's body. Same 1024x1536 full-body photo. "
+  ],
+  "destination": "wardrobe-v1/cutouts/everyday-idle.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "a08fe4077839e74c353fe9c752ffa766ed83cf8d2ca4e70834140cb3b694eca4",
+  "cutoutSHA256": "1369e94fd4831a04e6acda8ec286186ea160b01ddcfef8c7b8b668889ad04d5e",
+  "processing": "Vision alpha matte with local edge trim and source-background gap cleanup; no RGB/body warp in renderer",
+  "review": "Approved after source, contrasting-background cutout, and native scene render inspection on 2026-09-09"
+}

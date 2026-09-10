@@ -1,0 +1,8 @@
+{
+  "operation": "local-luminance-preserving-garment-recolor",
+  "source": "wardrobe-v1/cutouts/soft-knit-reading.png",
+  "mask": "visual-v2/masks/original-long-soft-knit-reading-neutral-original.png",
+  "targetHex": "#A56D78",
+  "sourceSHA256": "30d5402ff48a4574874bb5373d22669b26d8f7e4198e55e07d9a41aa3edf8fd7",
+  "validation": "Exported pixels: original alpha identical; every pixel outside the garment mask identical. Visual QA required before release."
+}

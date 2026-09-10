@@ -1,0 +1,13 @@
+{
+  "name": "soft-knit-idle",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-ee7179c9-bd81-44af-818f-ab2e3bc17d7d.png",
+  "prompts": [
+    "Precise FACE AND FRINGE restoration. IMAGE 1 is the corrected body/outfit/pose target; keep its head scale and body geometry, clothing, gesture and background unchanged. IMAGE 2 is the preferred ORIGINAL FACE of the same 27-year-old adult woman. Restore image 2's exact facial likeness, eye shape, soft cheek fullness, nose, lips and expression. Keep original soft airy side-swept bangs partly covering forehead; reduce stray strands by half and move only those directly over pupils and nose bridge aside. Do NOT fully expose forehead, sweep fringe up, add pins, sharpen cheeks, change makeup or age her. Keep corrected smaller head and natural legs from image 1, not image 2's body. Same 1024x1536 full-body photo. "
+  ],
+  "destination": "wardrobe-v1/cutouts/soft-knit-idle.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "cf6d4e6b995cd8beae38780d826e6878d920cbfafd17a0fd70df26d1ea96d581",
+  "cutoutSHA256": "4c6f98653b11c043651ac5968d13fcfdb8976778c6d4b29da050884b08cc51c2",
+  "processing": "Vision alpha matte with local edge trim and source-background gap cleanup; no RGB/body warp in renderer",
+  "review": "Approved after source, contrasting-background cutout, and native scene render inspection on 2026-09-09"
+}

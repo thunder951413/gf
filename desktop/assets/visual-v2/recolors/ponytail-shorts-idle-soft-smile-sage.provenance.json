@@ -1,0 +1,8 @@
+{
+  "operation": "local-luminance-preserving-garment-recolor",
+  "source": "visual-v2/cutouts/ponytail-idle.png",
+  "mask": "visual-v2/masks/ponytail-shorts-idle-soft-smile-original.png",
+  "targetHex": "#8BA397",
+  "sourceSHA256": "0df0ef145ae38379f20c16764b27567dbd8652959b0b10d636a0517befc9ad3f",
+  "validation": "Exported pixels: original alpha identical; every pixel outside the garment mask identical. Visual QA required before release."
+}

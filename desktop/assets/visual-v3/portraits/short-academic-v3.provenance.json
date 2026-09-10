@@ -1,0 +1,13 @@
+{
+  "name": "short-academic",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-e9146b0b-9d6d-4626-8c6a-46ea920bd456.png",
+  "prompts": [
+    "Localized FACE AND FRINGE restoration ONLY. IMAGE 1 provides the corrected body proportions, current outfit and pose, all to remain unchanged. IMAGE 2 provides the preferred original facial likeness of this same 27-year-old adult woman. Restore her original eye shape, soft cheek fullness, nose, lips and expression. Restore soft airy side-swept bangs PARTLY covering forehead, just gently part the few strands directly covering pupils and nose bridge; no swept-up bare forehead, no hairpins, no sharp mature cheeks, no new makeup. Keep head scale and corrected legs from image 1. Do not copy clothing or body geometry from image 2. Single realistic 1024x1536 full-body studio photo, same background."
+  ],
+  "destination": "visual-v2/cutouts/short-academic.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "b391e97aadfa3b16f8636635202c0575c62cc9989ec981dc94310998d7562f86",
+  "cutoutSHA256": "7e00250234e69efdcf6f661fe5299b3de504841edd34c75e5c84209bd225c997",
+  "processing": "Vision alpha matte with local edge trim and source-background gap cleanup; no RGB/body warp in renderer",
+  "review": "Approved after source, contrasting-background cutout, and native scene render inspection on 2026-09-09"
+}

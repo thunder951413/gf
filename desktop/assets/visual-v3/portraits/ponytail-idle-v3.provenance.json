@@ -1,0 +1,13 @@
+{
+  "name": "ponytail-idle",
+  "source": "/Users/surfing/.codex/generated_images/01a0753f-1147-7363-a881-880d98a0f781/exec-168cea41-f527-4f5a-a163-d8ce6e9cd344.png",
+  "prompts": [
+    "Precise face-and-fringe restoration. IMAGE 1 is the corrected BODY/outfit/pose target; keep its head scale, body proportions, legs, white tee, denim shorts, white sneakers, ponytail and gray background unchanged. IMAGE 2 is the user's preferred ORIGINAL FACE AND FRINGE reference of the SAME 27-year-old adult woman. Restore image 2's exact facial likeness, softly full cheeks, eye shape, nose, mouth, gentle expression and naturally soft youthful-adult appearance. The face in image 1 has become too mature and stern; do not retain that altered face. Restore the original soft airy SIDE-SWEPT BANGS from image 2, at their original length/volume, merely tuck aside the few strands directly crossing the pupils and nose bridge. Keep the forehead PARTLY covered by natural fine bangs, not fully exposed. No slicked-back front, no hairpins, no swept-up quiff, no older-looking sharp cheeks, no new makeup, no skin smoothing filter. Same adult person, not a child. Important keep image 1's improved body geometry and small natural head scale; use image 2 only for facial features and softer original fringe, not its oversized head or short legs. 1024x1536 single full-body realistic photo."
+  ],
+  "destination": "visual-v2/cutouts/ponytail-idle.png",
+  "tool": "built-in imagegen",
+  "sourceSHA256": "a56e0c6205dd2a5e751f48777264e3cd8d0ae229b13da1ff6d609b569cd4ed7d",
+  "cutoutSHA256": "c65c40ebd4c68ab9f00665f95608abc22039f2fc85e3cf88d463a73f1eea8bff",
+  "processing": "Vision alpha matte with local edge trim and source-background gap cleanup; no RGB/body warp in renderer",
+  "review": "Approved after source, contrasting-background cutout, and native scene render inspection on 2026-09-09"
+}

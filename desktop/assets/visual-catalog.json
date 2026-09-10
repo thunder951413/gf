@@ -1,0 +1,890 @@
+{
+  "version": 1,
+  "identity": {
+    "id": "lin-yuwei-v1",
+    "name": "林雨薇",
+    "age": 27,
+    "description": "同一位 27 岁成年女性的写实照片资产；不得以程序化头像替代。"
+  },
+  "hairstyles": [
+    {
+      "id": "original-long",
+      "name": "原始长发",
+      "status": "ready",
+      "description": "深色长发、轻薄刘海，沿用已验收照片中的发型。"
+    },
+    {
+      "id": "ponytail",
+      "name": "马尾",
+      "status": "ready"
+    },
+    {
+      "id": "short",
+      "name": "短发",
+      "status": "ready"
+    },
+    {
+      "id": "bob",
+      "name": "高马尾",
+      "status": "ready",
+      "description": "头顶扎起的深色高马尾，保留自然轻薄刘海和原版面容。"
+    }
+  ],
+  "expressions": [
+    {
+      "id": "neutral",
+      "name": "平静",
+      "status": "ready"
+    },
+    {
+      "id": "soft-smile",
+      "name": "浅笑",
+      "status": "ready"
+    },
+    {
+      "id": "happy",
+      "name": "开心",
+      "status": "ready"
+    },
+    {
+      "id": "shy",
+      "name": "害羞",
+      "status": "ready"
+    },
+    {
+      "id": "curious",
+      "name": "好奇",
+      "status": "ready"
+    },
+    {
+      "id": "concerned",
+      "name": "关切",
+      "status": "ready"
+    },
+    {
+      "id": "tired",
+      "name": "疲惫",
+      "status": "ready"
+    },
+    {
+      "id": "pout",
+      "name": "嘟嘴",
+      "status": "ready"
+    }
+  ],
+  "palettes": [
+    {
+      "id": "original",
+      "name": "原色",
+      "colorHex": null,
+      "status": "ready"
+    },
+    {
+      "id": "dusty-blue",
+      "name": "灰蓝",
+      "colorHex": "#93A6C3",
+      "status": "planned"
+    },
+    {
+      "id": "dusty-rose",
+      "name": "暗玫瑰",
+      "colorHex": "#A56D78",
+      "status": "ready"
+    },
+    {
+      "id": "sage",
+      "name": "鼠尾草绿",
+      "colorHex": "#8BA397",
+      "status": "ready"
+    }
+  ],
+  "outfits": [
+    {
+      "id": "everyday",
+      "name": "日常格纹",
+      "status": "ready",
+      "palette": [
+        "棕色",
+        "炭灰",
+        "象牙白",
+        "蓝色"
+      ],
+      "description": "格纹衬衫外套、象牙白 T 恤、蓝色牛仔裤和白色运动鞋。"
+    },
+    {
+      "id": "soft-knit",
+      "name": "温柔针织",
+      "status": "ready",
+      "palette": [
+        "燕麦",
+        "象牙白",
+        "灰蓝",
+        "奶油色"
+      ],
+      "description": "燕麦色针织开衫、象牙白上衣、灰蓝色中长裙和奶油色平底鞋。"
+    },
+    {
+      "id": "homewear",
+      "name": "舒适居家",
+      "status": "ready",
+      "palette": [
+        "暗玫瑰",
+        "奶油色",
+        "米色"
+      ],
+      "description": "暗玫瑰色居家上衣、奶油色长裤和米色拖鞋。"
+    },
+    {
+      "id": "lingerie",
+      "name": "私密吊带内搭",
+      "status": "ready",
+      "access": "private",
+      "description": "暗玫瑰色不透明吊带、居家短裤和同色罩衫。"
+    },
+    {
+      "id": "swimwear",
+      "name": "泳装",
+      "status": "ready",
+      "description": "藏蓝色不透明连体泳衣和沙滩鞋。"
+    },
+    {
+      "id": "academic",
+      "name": "樱花水手服",
+      "status": "ready",
+      "description": "白色长袖水手上衣、藏蓝领与粉色樱花刺绣、粉色领结、藏蓝百褶裙、及膝袜和黑色乐福鞋；27岁成年角色的日式穿搭。"
+    },
+    {
+      "id": "bodycon-dress",
+      "name": "修身连衣裙",
+      "status": "ready",
+      "description": "酒红色及膝修身连衣裙和低跟鞋。"
+    },
+    {
+      "id": "shorts",
+      "name": "短裤",
+      "status": "ready",
+      "description": "象牙白上衣、蓝色牛仔短裤、白色帆布鞋和帆布包。"
+    }
+  ],
+  "scenes": [
+    {
+      "id": "study",
+      "name": "书房",
+      "status": "ready",
+      "season": "all",
+      "place": "书房",
+      "privacy": "shared",
+      "compatibleOutfitIds": [
+        "everyday",
+        "soft-knit",
+        "homewear",
+        "academic",
+        "bodycon-dress"
+      ],
+      "backgroundFile": "visual-v2/scenes/study.png",
+      "placement": {
+        "origin": "top-left",
+        "x": 0.18,
+        "y": 0.1,
+        "width": 0.64,
+        "height": 0.84
+      },
+      "atmosphere": "none",
+      "weatherRegion": {
+        "x": 0,
+        "y": 0.02,
+        "width": 0.23,
+        "height": 0.45
+      }
+    },
+    {
+      "id": "summer-coast",
+      "name": "夏日海岸",
+      "status": "ready",
+      "season": "summer",
+      "place": "海岸",
+      "privacy": "public",
+      "compatibleOutfitIds": [
+        "everyday",
+        "swimwear",
+        "shorts"
+      ],
+      "backgroundFile": "visual-v2/scenes/coast.png",
+      "placement": {
+        "origin": "top-left",
+        "x": 0.18,
+        "y": 0.1,
+        "width": 0.64,
+        "height": 0.84
+      },
+      "atmosphere": "none",
+      "weatherRegion": {
+        "x": 0,
+        "y": 0,
+        "width": 1,
+        "height": 0.45
+      }
+    },
+    {
+      "id": "autumn-cafe",
+      "name": "秋日咖啡馆",
+      "status": "ready",
+      "season": "autumn",
+      "place": "咖啡馆",
+      "privacy": "public",
+      "compatibleOutfitIds": [
+        "everyday",
+        "soft-knit",
+        "academic",
+        "bodycon-dress"
+      ],
+      "backgroundFile": "visual-v2/scenes/cafe.png",
+      "placement": {
+        "origin": "top-left",
+        "x": 0.18,
+        "y": 0.1,
+        "width": 0.64,
+        "height": 0.84
+      },
+      "atmosphere": "rain",
+      "weatherRegion": {
+        "x": 0.01,
+        "y": 0.02,
+        "width": 0.24,
+        "height": 0.27
+      }
+    },
+    {
+      "id": "winter-home",
+      "name": "冬日居所",
+      "status": "ready",
+      "season": "winter",
+      "place": "家中",
+      "privacy": "private",
+      "compatibleOutfitIds": [
+        "soft-knit",
+        "homewear"
+      ],
+      "backgroundFile": "visual-v2/scenes/winter-study.png",
+      "placement": {
+        "origin": "top-left",
+        "x": 0.18,
+        "y": 0.1,
+        "width": 0.64,
+        "height": 0.84
+      },
+      "atmosphere": "snow",
+      "weatherRegion": {
+        "x": 0,
+        "y": 0.02,
+        "width": 0.23,
+        "height": 0.45
+      }
+    },
+    {
+      "id": "private-bedroom",
+      "name": "私密卧室",
+      "status": "ready",
+      "season": "all",
+      "place": "卧室",
+      "privacy": "private",
+      "compatibleOutfitIds": [
+        "homewear",
+        "lingerie",
+        "bodycon-dress",
+        "shorts"
+      ],
+      "backgroundFile": "visual-v2/scenes/bedroom.png",
+      "placement": {
+        "origin": "top-left",
+        "x": 0.18,
+        "y": 0.1,
+        "width": 0.64,
+        "height": 0.84
+      },
+      "atmosphere": "none",
+      "weatherRegion": {
+        "x": 0,
+        "y": 0.1,
+        "width": 0.055,
+        "height": 0.23
+      }
+    },
+    {
+      "id": "spring-study",
+      "name": "春日窗边",
+      "status": "ready",
+      "season": "spring",
+      "place": "窗边书房",
+      "privacy": "shared",
+      "compatibleOutfitIds": [
+        "everyday",
+        "soft-knit",
+        "homewear",
+        "academic",
+        "bodycon-dress",
+        "shorts"
+      ],
+      "backgroundFile": "visual-v2/scenes/study.png",
+      "placement": {
+        "origin": "top-left",
+        "x": 0.18,
+        "y": 0.1,
+        "width": 0.64,
+        "height": 0.84
+      },
+      "atmosphere": "none",
+      "weatherRegion": {
+        "x": 0,
+        "y": 0.02,
+        "width": 0.23,
+        "height": 0.45
+      }
+    }
+  ],
+  "poses": [
+    {
+      "id": "idle",
+      "name": "站立",
+      "status": "ready",
+      "defaultExpressionId": "soft-smile"
+    },
+    {
+      "id": "reading",
+      "name": "阅读",
+      "status": "ready",
+      "defaultExpressionId": "neutral"
+    },
+    {
+      "id": "wave",
+      "name": "挥手",
+      "status": "ready",
+      "defaultExpressionId": "soft-smile"
+    },
+    {
+      "id": "cup",
+      "name": "持杯",
+      "status": "ready",
+      "defaultExpressionId": "neutral"
+    },
+    {
+      "id": "sitting",
+      "name": "坐着",
+      "status": "ready",
+      "defaultExpressionId": "neutral"
+    },
+    {
+      "id": "walking",
+      "name": "行走",
+      "status": "ready",
+      "defaultExpressionId": "soft-smile"
+    },
+    {
+      "id": "resting",
+      "name": "休息",
+      "status": "ready",
+      "defaultExpressionId": "neutral"
+    },
+    {
+      "id": "sleeping",
+      "name": "睡眠",
+      "status": "ready",
+      "defaultExpressionId": "tired"
+    },
+    {
+      "id": "stretch",
+      "name": "伸展",
+      "status": "ready",
+      "defaultExpressionId": "soft-smile"
+    },
+    {
+      "id": "turning",
+      "name": "转身",
+      "status": "ready",
+      "defaultExpressionId": "neutral"
+    }
+  ],
+  "assets": [
+    {
+      "id": "original-long-everyday-idle-soft-smile-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "everyday",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "original",
+      "file": "wardrobe-v1/cutouts/everyday-idle.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "original-long-everyday-reading-neutral-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "everyday",
+      "poseId": "reading",
+      "expressionId": "neutral",
+      "paletteId": "original",
+      "file": "wardrobe-v1/cutouts/everyday-reading.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "original-long-soft-knit-idle-soft-smile-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "soft-knit",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "original",
+      "file": "wardrobe-v1/cutouts/soft-knit-idle.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/original-long-soft-knit-idle-soft-smile-original.png"
+      }
+    },
+    {
+      "id": "original-long-soft-knit-reading-neutral-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "soft-knit",
+      "poseId": "reading",
+      "expressionId": "neutral",
+      "paletteId": "original",
+      "file": "wardrobe-v1/cutouts/soft-knit-reading.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/original-long-soft-knit-reading-neutral-original.png"
+      }
+    },
+    {
+      "id": "original-long-homewear-idle-soft-smile-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "homewear",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "original",
+      "file": "wardrobe-v1/cutouts/homewear-idle.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "original-long-homewear-reading-neutral-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "homewear",
+      "poseId": "reading",
+      "expressionId": "neutral",
+      "paletteId": "original",
+      "file": "wardrobe-v1/cutouts/homewear-reading.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "bob-soft-knit-wave-happy-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "bob",
+      "outfitId": "soft-knit",
+      "poseId": "wave",
+      "expressionId": "happy",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/bob-wave.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/bob-soft-knit-wave-happy-original.png"
+      }
+    },
+    {
+      "id": "ponytail-shorts-walking-curious-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "ponytail",
+      "outfitId": "shorts",
+      "poseId": "walking",
+      "expressionId": "curious",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/ponytail-shorts.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/ponytail-shorts-walking-curious-original.png"
+      }
+    },
+    {
+      "id": "short-academic-sitting-shy-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "short",
+      "outfitId": "academic",
+      "poseId": "sitting",
+      "expressionId": "shy",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/short-academic.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "original-long-bodycon-dress-turning-soft-smile-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "bodycon-dress",
+      "poseId": "turning",
+      "expressionId": "soft-smile",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/long-bodycon-turning.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "original-long-homewear-cup-concerned-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "homewear",
+      "poseId": "cup",
+      "expressionId": "concerned",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/long-homewear-cup.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "original-long-homewear-sleeping-tired-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "homewear",
+      "poseId": "sleeping",
+      "expressionId": "tired",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/long-homewear-sleep.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "original-long-swimwear-idle-neutral-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "swimwear",
+      "poseId": "idle",
+      "expressionId": "neutral",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/long-swimwear-idle.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "bob-soft-knit-idle-soft-smile-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "bob",
+      "outfitId": "soft-knit",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/bob-idle.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/bob-soft-knit-idle-soft-smile-original.png"
+      }
+    },
+    {
+      "id": "ponytail-shorts-idle-soft-smile-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "ponytail",
+      "outfitId": "shorts",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/ponytail-idle.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/ponytail-shorts-idle-soft-smile-original.png"
+      }
+    },
+    {
+      "id": "original-long-soft-knit-idle-soft-smile-dusty-rose",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "soft-knit",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "dusty-rose",
+      "file": "visual-v2/recolors/original-long-soft-knit-idle-soft-smile-dusty-rose.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/original-long-soft-knit-idle-soft-smile-original.png"
+      },
+      "recolorPart": "裙子",
+      "derivedFrom": "original-long-soft-knit-idle-soft-smile-original"
+    },
+    {
+      "id": "original-long-soft-knit-reading-neutral-dusty-rose",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "soft-knit",
+      "poseId": "reading",
+      "expressionId": "neutral",
+      "paletteId": "dusty-rose",
+      "file": "visual-v2/recolors/original-long-soft-knit-reading-neutral-dusty-rose.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/original-long-soft-knit-reading-neutral-original.png"
+      },
+      "recolorPart": "裙子",
+      "derivedFrom": "original-long-soft-knit-reading-neutral-original"
+    },
+    {
+      "id": "bob-soft-knit-wave-happy-dusty-rose",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "bob",
+      "outfitId": "soft-knit",
+      "poseId": "wave",
+      "expressionId": "happy",
+      "paletteId": "dusty-rose",
+      "file": "visual-v2/recolors/bob-soft-knit-wave-happy-dusty-rose.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/bob-soft-knit-wave-happy-original.png"
+      },
+      "recolorPart": "裙子",
+      "derivedFrom": "bob-soft-knit-wave-happy-original"
+    },
+    {
+      "id": "ponytail-shorts-walking-curious-dusty-rose",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "ponytail",
+      "outfitId": "shorts",
+      "poseId": "walking",
+      "expressionId": "curious",
+      "paletteId": "dusty-rose",
+      "file": "visual-v2/recolors/ponytail-shorts-walking-curious-dusty-rose.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/ponytail-shorts-walking-curious-original.png"
+      },
+      "recolorPart": "短裤",
+      "derivedFrom": "ponytail-shorts-walking-curious-original"
+    },
+    {
+      "id": "bob-soft-knit-idle-soft-smile-dusty-rose",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "bob",
+      "outfitId": "soft-knit",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "dusty-rose",
+      "file": "visual-v2/recolors/bob-soft-knit-idle-soft-smile-dusty-rose.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/bob-soft-knit-idle-soft-smile-original.png"
+      },
+      "recolorPart": "裙子",
+      "derivedFrom": "bob-soft-knit-idle-soft-smile-original"
+    },
+    {
+      "id": "ponytail-shorts-idle-soft-smile-dusty-rose",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "ponytail",
+      "outfitId": "shorts",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "dusty-rose",
+      "file": "visual-v2/recolors/ponytail-shorts-idle-soft-smile-dusty-rose.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/ponytail-shorts-idle-soft-smile-original.png"
+      },
+      "recolorPart": "短裤",
+      "derivedFrom": "ponytail-shorts-idle-soft-smile-original"
+    },
+    {
+      "id": "original-long-soft-knit-idle-soft-smile-sage",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "soft-knit",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "sage",
+      "file": "visual-v2/recolors/original-long-soft-knit-idle-soft-smile-sage.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/original-long-soft-knit-idle-soft-smile-original.png"
+      },
+      "recolorPart": "裙子",
+      "derivedFrom": "original-long-soft-knit-idle-soft-smile-original"
+    },
+    {
+      "id": "original-long-soft-knit-reading-neutral-sage",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "soft-knit",
+      "poseId": "reading",
+      "expressionId": "neutral",
+      "paletteId": "sage",
+      "file": "visual-v2/recolors/original-long-soft-knit-reading-neutral-sage.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/original-long-soft-knit-reading-neutral-original.png"
+      },
+      "recolorPart": "裙子",
+      "derivedFrom": "original-long-soft-knit-reading-neutral-original"
+    },
+    {
+      "id": "bob-soft-knit-wave-happy-sage",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "bob",
+      "outfitId": "soft-knit",
+      "poseId": "wave",
+      "expressionId": "happy",
+      "paletteId": "sage",
+      "file": "visual-v2/recolors/bob-soft-knit-wave-happy-sage.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/bob-soft-knit-wave-happy-original.png"
+      },
+      "recolorPart": "裙子",
+      "derivedFrom": "bob-soft-knit-wave-happy-original"
+    },
+    {
+      "id": "ponytail-shorts-walking-curious-sage",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "ponytail",
+      "outfitId": "shorts",
+      "poseId": "walking",
+      "expressionId": "curious",
+      "paletteId": "sage",
+      "file": "visual-v2/recolors/ponytail-shorts-walking-curious-sage.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/ponytail-shorts-walking-curious-original.png"
+      },
+      "recolorPart": "短裤",
+      "derivedFrom": "ponytail-shorts-walking-curious-original"
+    },
+    {
+      "id": "bob-soft-knit-idle-soft-smile-sage",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "bob",
+      "outfitId": "soft-knit",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "sage",
+      "file": "visual-v2/recolors/bob-soft-knit-idle-soft-smile-sage.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/bob-soft-knit-idle-soft-smile-original.png"
+      },
+      "recolorPart": "裙子",
+      "derivedFrom": "bob-soft-knit-idle-soft-smile-original"
+    },
+    {
+      "id": "ponytail-shorts-idle-soft-smile-sage",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "ponytail",
+      "outfitId": "shorts",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "sage",
+      "file": "visual-v2/recolors/ponytail-shorts-idle-soft-smile-sage.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536,
+      "recolorMasks": {
+        "garment": "visual-v2/masks/ponytail-shorts-idle-soft-smile-original.png"
+      },
+      "recolorPart": "短裤",
+      "derivedFrom": "ponytail-shorts-idle-soft-smile-original"
+    },
+    {
+      "id": "original-long-lingerie-idle-soft-smile-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "lingerie",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/long-lingerie-idle.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "original-long-homewear-stretch-pout-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "homewear",
+      "poseId": "stretch",
+      "expressionId": "pout",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/long-homewear-stretch.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "short-academic-idle-soft-smile-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "short",
+      "outfitId": "academic",
+      "poseId": "idle",
+      "expressionId": "soft-smile",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/short-idle.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "original-long-soft-knit-resting-soft-smile-original",
+      "identityId": "lin-yuwei-v1",
+      "hairstyleId": "original-long",
+      "outfitId": "soft-knit",
+      "poseId": "resting",
+      "expressionId": "soft-smile",
+      "paletteId": "original",
+      "file": "visual-v2/cutouts/long-soft-knit-resting.png",
+      "status": "approved",
+      "width": 1024,
+      "height": 1536
+    }
+  ]
+}

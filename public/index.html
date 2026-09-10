@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f1eb">
+  <title>有间 · 一处可以慢慢说话的地方</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" type="module"></script>
+</head>
+<body>
+  <div id="page-background" aria-hidden="true" hidden><div id="page-background-image"></div><div id="page-background-veil"></div></div>
+  <div class="workspace">
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="有间首页"><span class="brand-mark">间</span><span>有间<small>一处可以慢慢说话的地方</small></span></a>
+      <p class="nav-label">和谁说说话</p>
+      <nav id="roles" class="role-list" aria-label="陪伴角色"></nav>
+      <div class="nav-divider"></div>
+      <nav class="page-nav" aria-label="应用功能">
+        <button data-view="content"><span aria-hidden="true">▤</span>一起看看 <i id="content-count"></i></button>
+        <button data-view="story"><span aria-hidden="true">☾</span>雾港来信 · 双人剧本</button>
+        <button data-view="memory"><span aria-hidden="true">◇</span>记得的事</button>
+        <button data-view="companionship"><span aria-hidden="true">♡</span>相处与约定</button>
+        <button data-view="life"><span aria-hidden="true">⌁</span>生活足迹</button>
+        <button data-view="usage"><span aria-hidden="true">◌</span>用量</button>
+        <button data-view="reminders"><span aria-hidden="true">◷</span>留到以后聊</button>
+        <button data-view="proactive"><span aria-hidden="true">✦</span>主动陪伴 <i id="proactive-count"></i></button>
+        <button data-view="settings"><span aria-hidden="true">⚙</span>设置</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <label class="quiet-control"><span>暂时安静</span><input id="quiet" type="checkbox" role="switch"><span class="toggle" aria-hidden="true"></span></label>
+        <p id="quiet-note">有新话题时，也会主动找你。</p>
+        <button id="provider-status" class="connection"><i></i><span>正在连接本地服务</span></button>
+        <span class="local-note">有间 0.10.5 · 本地运行</span>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div><p id="view-kicker" class="eyebrow">日常伴侣</p><h1 id="view-title">阮绵</h1></div><div class="topbar-end"><span id="top-hint">慢慢说，我在听</span><button id="open-character" class="small-button">人物与近况</button><button id="setup-shortcut" class="small-button">配置模型</button></div></header>
+      <section id="view-chat" class="view chat-view">
+        <div id="chat-scroll" class="chat-scroll"><div class="chat-messages"><section id="character-profile" class="character-profile" aria-live="polite" hidden></section><div id="chat-messages" aria-live="polite"></div></div></div>
+        <form id="chat-form" class="composer">
+          <div id="chat-context" class="chat-context" hidden></div>
+          <div class="compose-box"><textarea id="message-input" rows="2" maxlength="8000" placeholder="说一件今天想说的事……" aria-label="发送消息"></textarea><div class="compose-actions"><button id="record-button" type="button" class="record-button" title="录音转文字" aria-label="录音转文字">◉ <span>说话</span></button><span class="keyboard-hint">Enter 发送 · Shift Enter 换行</span><button id="send-button" type="submit" class="send-button">发送 <span aria-hidden="true">↗</span></button></div></div>
+          <p id="compose-note">三位均为成年虚构角色。你可以管理她们能记住的事情。</p>
+        </form>
+      </section>
+      <section id="view-companionship" class="view scroll-view" hidden>
+        <div class="section-intro"><div><h2>相处过的，会留在这里。</h2><p>林雨薇的当前状态、关系记录、共同安排和慢慢形成的兴趣。</p></div><button id="refresh-companionship" class="small-button">刷新近况</button></div>
+        <div id="companionship-body" class="companionship-body"></div>
+      </section>
+      <section id="view-content" class="view scroll-view" hidden>
+        <div class="section-intro"><div><h2>给谈话留一点新东西。</h2><p>闻溪先概括给你听，感兴趣再聊。打开标题即已读；未读新闻 7 天、知识资料 30 天后移入过期，仍可查找。</p></div><div class="content-intro-actions"><button id="news-brief-trigger" class="small-button">让闻溪讲一条</button><button id="refresh-content" class="primary-button">收集新内容</button></div></div>
+        <section class="content-inbox" aria-labelledby="content-inbox-title">
+          <div class="content-toolbar"><div><h3 id="content-inbox-title">新闻收件箱</h3><p id="content-result-note" class="fine-print" role="status"></p></div><form id="content-search" class="content-search" role="search"><label class="sr-only" for="content-query">搜索标题或来源</label><input id="content-query" type="search" maxlength="120" placeholder="搜索标题或来源"><button class="small-button">搜索</button></form></div>
+          <div id="content-tabs" class="content-tabs" role="tablist" aria-label="内容状态"></div>
+          <div class="content-inbox-grid"><div class="content-list-pane"><div class="content-list-actions"><button id="content-page-read" type="button" class="text-button">本页已读</button></div><div id="content-items" class="content-list" aria-live="polite"></div><nav id="content-pagination" class="content-pagination" aria-label="内容分页"></nav></div><article id="content-detail" class="content-detail" aria-live="polite"></article></div>
+        </section>
+        <div class="research-strip"><div><span class="badge">热点 → 知乎观点 → 一起聊</span><p id="zhihu-content-status">正在读取知乎资料研究状态…</p><div id="zhihu-headlines" class="research-headlines"></div></div><div class="research-actions"><button id="zhihu-refresh" class="small-button">立即研究</button><button id="zhihu-settings" class="text-button">去设置</button></div></div>
+        <details class="source-manager"><summary>管理内容来源 <span id="feed-count"></span></summary><div id="feeds" class="feed-list"></div><form id="feed-form" class="inline-form"><input name="url" type="url" placeholder="RSS 或 Atom 订阅地址" required aria-label="订阅地址"><input name="title" placeholder="名称（选填）" aria-label="来源名称"><button class="small-button">添加</button></form></details>
+        <p class="fine-print">订阅摘要与知乎研究资料分别标明来源。AI 整理可展开核对原回答，内容尚未经独立事实核验。</p>
+        <div id="feed-errors" class="inline-notice" hidden></div><section class="settings-card"><h3>持续关注的话题</h3><p class="fine-print">在文章上点击“关注后续”。新采集的相关内容会优先交给闻溪筛选；标题相关不代表已经有新进展，没有值得聊的更新就不打扰。</p><div id="topic-tracks"></div></section>
+      </section>
+      <section id="view-scenarios" class="view scroll-view" hidden>
+        <div class="section-intro"><div><h2>让这一幕发生。</h2><p>选一个情境，阮绵先起头。可以自然接话、做选择，也可以暂停；回来时接着原来的存档。</p></div></div>
+        <div id="scenario-library" class="scenario-library"></div><article id="scenario-current" class="story-paper"></article>
+      </section>
+      <section id="view-story" class="view scroll-view" hidden>
+        <div class="story-meta"><span class="eyebrow">独立双人剧本 · 与网友日常分开</span><span id="story-progress"></span></div>
+        <article class="story-paper"><span class="story-symbol" aria-hidden="true">☾</span><h2 id="story-title"></h2><div id="story-body" class="story-body"></div><div id="story-choices" class="story-choices"></div><p id="story-save-note" class="fine-print">选择会保存在本地，下次从这里继续。</p></article>
+        <details class="story-history"><summary>这一路留下的选择</summary><ol id="story-history"></ol></details>
+        <div class="story-bottom"><button id="story-chat" class="small-button">一起玩这个剧本</button><button id="story-reset" class="text-button">重新开始</button><button id="confirm-story-reset" class="danger-button" hidden>确认清除故事进度</button></div>
+      </section>
+      <section id="view-memory" class="view scroll-view" hidden>
+        <div class="section-intro"><div><h2>记得准确，也由你决定。</h2><p>共享给三位角色，或者只留在某一段关系里。</p></div></div>
+        <form id="memory-form" class="editor-card"><label for="memory-text">想让她记住什么</label><textarea id="memory-text" name="text" rows="3" maxlength="2000" placeholder="例如：我喜欢有来有回的讨论，不希望每次都被追问。" required></textarea><div class="form-row"><select id="memory-scope" name="scope" aria-label="记忆范围"><option value="shared">三人共享</option><option value="zhixia">只告诉阮绵</option><option value="wenxi">只告诉闻溪</option><option value="miyue">只告诉林雨薇</option></select><button id="save-memory" class="primary-button">记下来</button><button id="cancel-memory-edit" type="button" class="text-button" hidden>取消编辑</button></div></form>
+        <p class="fine-print">你手动添加的记忆优先于自动整理的会话回忆。删除任一条手动记忆后，她不会再从记忆库获得它；历史聊天文字仍会保留。</p><div id="memory-items" class="memory-grid"></div>
+        <section class="settings-card episode-panel" aria-labelledby="episode-heading"><div class="card-heading"><div><h3 id="episode-heading">从原话留下的共同经历</h3><p class="fine-print">每条都保留当时的真实引用、角色和日期。更正后以你的说明为准；忘记后，原聊天仍保留，这段引用和由它形成的旧摘要不再用于后续聊天。</p></div><select id="episode-role" aria-label="选择共同经历的角色"></select></div><div id="episode-items" class="episode-list"></div><p id="episode-status" class="fine-print" role="status"></p></section>
+        <section class="settings-card" aria-labelledby="interaction-heading"><div class="card-heading"><div><h3 id="interaction-heading">相处方式</h3><p class="fine-print">这些选择按角色分别保存，从下一次回复开始使用。</p></div></div><div id="interaction-preferences" class="interaction-preferences"></div><div class="form-row"><button id="save-interaction-preferences" type="button" class="small-button">保存相处方式</button></div><p id="interaction-preferences-status" class="fine-print" role="status"></p></section>
+        <section class="recall-card" aria-labelledby="recall-heading"><div class="card-heading"><div><h3 id="recall-heading">自动整理的回忆</h3><p class="fine-print">累计到 20 条对话后自动整理，保留最近 10 条作为短期上下文。摘要会逐步更新，并非逐字记忆；你可以改正或清空它。保存修改会以这份摘要替代此前聊天上下文，原始聊天仍可查看。</p></div><select id="recall-role" aria-label="选择角色"></select></div><label for="recall-summary">回忆摘要</label><textarea id="recall-summary" rows="7" maxlength="6000" placeholder="正在读取该角色的自动整理回忆…"></textarea><div class="form-row"><button id="save-recall" type="button" class="primary-button">保存修改</button><button id="refresh-recall" type="button" class="small-button">重新整理</button><button id="clear-recall" type="button" class="text-button">清空摘要</button><button id="confirm-clear-recall" type="button" class="danger-button" hidden>确认清空</button></div><p id="recall-status" class="fine-print" role="status"></p></section>
+      </section>
+      <section id="view-life" class="view scroll-view" hidden>
+        <div class="section-intro"><div><h2>生活足迹</h2><p>从她最近的生活，聊到美食、文化、见闻和各自的想法。</p></div><button id="refresh-life" class="small-button">刷新</button></div>
+        <section class="settings-card"><h3>收藏的生活片段</h3><p class="fine-print">把喜欢的聊天收进这里，可配自己的图片和备注。图片标为你添加的配图，只保存在本机，不发送给模型；不会被当作她真实拍摄的照片。</p><div id="moment-items" class="moment-grid"></div></section><section class="settings-card"><h3>她已经分享的近况</h3><div id="life-shares"></div></section><p id="life-status" class="fine-print" role="status"></p><section id="life-pursuit" class="settings-card"></section><section id="life-thread" class="life-thread"></section><section id="life-current" class="life-current"></section><section class="settings-card"><h3>最近的日记</h3><div id="life-recent" class="life-recent"></div></section>
+      </section>
+      <section id="view-usage" class="view scroll-view" hidden>
+        <div class="section-intro"><div><h2>用量</h2><p>这里记录本次升级后由本地服务观察到的 API 用量。</p></div><button id="refresh-usage" class="small-button">刷新</button></div>
+        <p id="usage-status" class="fine-print" role="status"></p><div id="usage-summary" class="usage-summary"></div><section class="settings-card"><h3>按角色</h3><div id="usage-roles" class="usage-breakdown"></div></section><section class="settings-card"><h3>按用途</h3><div id="usage-purposes" class="usage-breakdown"></div></section><section class="settings-card"><h3>最近请求</h3><div id="usage-recent" class="usage-recent"></div></section><p class="fine-print">缓存是输入的子集，推理是输出的子集，不重复加进总计。金额以服务商账单为准。服务商未返回的用量会显示为“未返回”，不会按 0 计入。</p>
+      </section>
+      <section id="view-reminders" class="view scroll-view" hidden>
+        <div class="section-intro"><div><h2>有些话，适合晚一点说。</h2><p>留下一件想继续的话题，到时间她会在会话里提醒你。</p></div></div>
+        <form id="reminder-form" class="editor-card"><label for="reminder-text">之后想聊的事情</label><textarea id="reminder-text" rows="3" maxlength="1000" required placeholder="例如：周末接着聊那部电影的结尾。"></textarea><div class="form-row wrap"><select id="reminder-role" aria-label="提醒角色"><option value="zhixia">阮绵</option><option value="wenxi">闻溪</option><option value="miyue">林雨薇</option></select><input id="reminder-time" type="datetime-local" required aria-label="提醒时间"><button class="primary-button">约好时间</button></div></form>
+        <p class="fine-print">后台在线时投递，与“主动陪伴”共用每天的联系次数上限；“暂时安静”期间延后。开启桌面提醒且系统允许时，页面关闭后也能收到提示。</p><div id="reminder-items" class="reminder-list"></div><section class="settings-card"><h3>她惦记的后续</h3><p class="fine-print">从明确提到的面试、考试等近期安排里记下一件事，过后自然问一次。推算的时间可以更改，已结束或取消的事项也可在这里标记；过时事项不会反复追问。</p><div id="followup-items"></div></section>
+      </section>
+      <section id="view-proactive" class="view scroll-view" hidden>
+        <div class="section-intro"><div><h2>主动陪伴</h2><p>有新内容或合适的话题时，她会主动留下消息；你不需要守在这里等。</p></div><button id="proactive-run" class="small-button">现在找我聊一次</button></div>
+        <div class="settings-card proactive-status-card"><div class="card-heading"><h3>此刻的安排</h3><span id="proactive-status-badge" class="badge">正在读取</span></div><div id="proactive-runtime" class="runtime-grid"></div><p id="proactive-reason" class="fine-print"></p><p id="proactive-error" class="inline-notice" hidden></p></div>
+        <form id="proactive-form" class="settings-card"><div class="card-heading"><h3>联系节奏</h3><label class="inline-check"><input id="proactive-enabled" type="checkbox"> 开启主动陪伴</label></div><p class="fine-print">开启后，后台会按你设定的节奏收集订阅内容并随机选择合适时机联系。不会因为你没回复而催促你。</p><div class="proactive-fields"><label>收集间隔（分钟）<input id="proactive-fetch-interval" type="number" min="15" max="1440" required></label><label>联系最短间隔（分钟）<input id="proactive-min-gap" type="number" min="5" max="1440" required></label><label>联系最长间隔（分钟）<input id="proactive-max-gap" type="number" min="5" max="2880" required></label><label>每天最多联系（次）<input id="proactive-daily-limit" type="number" min="1" max="12" required></label><label>开始时间<input id="proactive-start" type="time" required></label><label>结束时间<input id="proactive-end" type="time" required></label><label class="full">想聊的方向<input id="proactive-topics" maxlength="500" placeholder="时事,科技,知识,文化,关系"></label></div><div class="notification-controls"><label class="inline-check"><input id="desktop-notifications" type="checkbox"> 桌面提醒</label><span id="desktop-notification-note" class="fine-print"></span></div><div class="form-row"><button class="primary-button">保存主动陪伴设置</button><button id="enable-notifications" type="button" class="small-button">开启浏览器提醒</button></div><p id="notification-note" class="fine-print">浏览器提醒默认关闭，只有你点击后才会请求授权；页面关闭后无法承诺仍能收到提醒，也不会自动播放语音。</p></form>
+        <section class="settings-card"><div class="card-heading"><h3>最近留下的消息</h3><button id="refresh-proactive" type="button" class="text-button">刷新</button></div><div id="proactive-recent" class="recent-list"></div></section>
+      </section>
+      <section id="view-settings" class="view scroll-view" hidden>
+        <div class="section-intro"><div><h2>把你已有的服务接进来。</h2><p>模型负责交谈，本地服务保存会话、记忆与故事。</p></div></div>
+        <section id="desktop-character-settings" class="settings-card" aria-labelledby="desktop-character-heading">
+          <div class="card-heading"><h3 id="desktop-character-heading">林雨薇 · 桌面角色</h3><span id="desktop-character-badge" class="badge">正在读取</span></div>
+          <label class="quiet-control"><span>开启桌面角色</span><input id="desktop-character-enabled" type="checkbox" role="switch" aria-describedby="desktop-character-note" disabled><span class="toggle" aria-hidden="true"></span></label>
+          <p id="desktop-character-note" class="fine-print" role="status">退出桌面程序后，可以从这里重新打开。</p>
+          <div class="form-row"><button id="show-desktop-character" type="button" class="small-button" hidden>显示角色</button><button id="refresh-desktop-character" type="button" class="text-button">刷新状态</button></div>
+        </section>
+        <section id="chat-preferences" class="settings-card">
+          <h3>相处的节奏</h3><p class="fine-print">自然节奏会留一点随机停顿，模型生成的时间也算在内，不额外消耗 token。</p>
+          <label for="reply-pace">回复速度</label><select id="reply-pace"><option value="natural">自然一点 · 大约 4–9 秒</option><option value="instant">即时回复 · 生成好就显示</option></select><p id="preferences-status" class="fine-print" role="status"></p>
+        </section>
+        <section id="companion-tuning" class="settings-card companion-tuning" aria-labelledby="companion-tuning-heading">
+          <div class="card-heading"><div><h3 id="companion-tuning-heading">林雨薇 · 相处偏好</h3><p class="fine-print">这会影响她下次回复的整体倾向。你在“记得的事”里明确写下的少夸奖、少提问等偏好优先；这里不会用一条设置强行覆盖另一条。</p></div><span id="companion-tuning-badge" class="badge">正在读取</span></div>
+          <div id="companion-tuning-presets" class="tuning-presets" aria-label="预设"></div>
+          <div id="companion-tuning-fields" class="tuning-fields" aria-live="polite"></div>
+          <section class="tuning-preview" aria-labelledby="companion-preview-heading"><h4 id="companion-preview-heading">此刻的示例语气</h4><p id="companion-tuning-preview">正在准备本地示例…</p><ul id="companion-tuning-notes" class="fine-print"></ul></section>
+          <div class="form-row wrap"><button id="save-companion-tuning" type="button" class="primary-button">保存相处偏好</button><button id="restore-companion-defaults" type="button" class="small-button">恢复默认</button><button id="reload-companion-tuning" type="button" class="text-button" hidden>重新读取已保存的设置</button></div>
+          <p id="companion-tuning-status" class="fine-print" role="status"></p>
+        </section>
+        <section class="settings-card"><h3>林雨薇 · 持续生活</h3><p class="fine-print">查看她现在的地点与活动、接下来的安排和最近的状态变化；也可以开启持续运行，为已上传图片自动匹配合适场景。</p><a class="small-button" href="/runtime.html" target="_blank" rel="noopener">打开持续生活设置</a></section>
+        <section class="settings-card"><h3>林雨薇 · 图片素材库</h3><p class="fine-print">批量保存原图，按场景、动作和标签整理；透明版本单独保留，预览后应用到桌面。</p><a class="small-button" href="/image-library.html" target="_blank" rel="noopener">打开图片素材库</a></section>
+        <section id="background-settings" class="settings-card">
+          <h3>页面背景</h3><p class="fine-print">全应用使用同一张背景。选择 JPG、PNG 或 WebP（最多 12 MB），调整后实时预览，点击保存才会记住。</p>
+          <label for="background-file">背景图片</label><input id="background-file" type="file" accept="image/jpeg,image/png,image/webp">
+          <div id="background-preview" class="background-preview"><div class="background-preview-image"></div><div class="background-preview-veil"></div><span>你的聊天空间</span></div>
+          <div class="proactive-fields"><label>显示方式<select id="background-mode"><option value="cover">铺满 · 保持比例，可能裁切</option><option value="contain">完整显示 · 保留整张图片</option><option value="stretch">拉伸 · 填满页面</option><option value="tile">平铺 · 重复图案</option></select></label><label>图片位置<select id="background-position"><option value="center">居中</option><option value="top">顶部</option><option value="bottom">底部</option></select></label><label>浅色遮罩 <output id="background-veil-value">35%</output><input id="background-veil" type="range" min="0" max="90" step="5" value="35"></label><label>背景模糊 <output id="background-blur-value">0 px</output><input id="background-blur" type="range" min="0" max="12" step="1" value="0"></label></div>
+          <div class="form-row wrap"><button id="save-background" type="button" class="primary-button">保存背景</button><button id="cancel-background" type="button" class="small-button">取消预览</button><button id="reset-background" type="button" class="text-button">恢复默认</button></div><p id="background-status" class="fine-print" role="status"></p>
+        </section>
+        <section id="avatar-settings" class="settings-card"><h3>角色头像</h3><p class="fine-print">选择 JPG、PNG 或 WebP 图片（最多 8 MB），居中裁成正方形。先预览，再保存；头像只保存在本地，不发送给对话模型。</p><div id="avatar-editors" class="avatar-editors"></div></section>
+        <form id="provider-form" class="settings-card"><div class="card-heading"><h3>对话模型</h3><span id="provider-badge" class="badge">待配置</span></div><p class="fine-print">支持采用 Chat Completions 格式的兼容接口。可以连接本地模型或你已有的服务。</p><label for="model-url">接口根地址</label><input id="model-url" type="url" placeholder="https://你的服务地址/v1" required><label for="model-name">模型名称</label><input id="model-name" placeholder="填写接口提供的模型名称" required autocomplete="off"><label for="model-key">API 密钥 <small id="key-hint">本地无密钥服务可以留空</small></label><input id="model-key" type="password" placeholder="仅保存在本地后端，不会回显" autocomplete="new-password"><div class="form-row"><button class="primary-button">保存配置</button><button id="test-provider" type="button" class="small-button">测试已保存的配置</button><button id="clear-provider-key" type="button" class="text-button">清除已存密钥</button></div><p id="provider-result" class="inline-result" role="status"></p></form>
+        <form id="zhihu-form" class="settings-card"><div class="card-heading"><h3>知乎资料研究</h3><span id="zhihu-badge" class="badge">正在读取</span></div><p class="fine-print">只用公开热点和公开来源寻找知乎观点；不会发送你的私聊或记忆。Access Secret 只保存到本地后端，留空会保留已有密钥。</p><label class="inline-check"><input id="zhihu-enabled" type="checkbox"> 开启知乎资料研究</label><label for="zhihu-secret">Access Secret <small id="zhihu-key-hint">不会回显</small></label><input id="zhihu-secret" type="password" maxlength="4096" placeholder="仅保存在本地后端" autocomplete="new-password"><div class="proactive-fields"><label>研究模型<select id="zhihu-model"><option value="zhida-agent">zhida-agent</option><option value="zhida-fast-1p5">zhida-fast-1p5</option><option value="zhida-thinking-1p5">zhida-thinking-1p5</option></select></label><label>每日请求上限<input id="zhihu-request-limit" type="number" min="1" max="100" required></label><label>每日智能体上限<input id="zhihu-agent-limit" type="number" min="0" max="20" required></label><label>每次研究话题<input id="zhihu-topics-per-run" type="number" min="1" max="3" required></label></div><div id="zhihu-usage" class="runtime-grid"></div><div id="zhihu-quota" class="quota-list"></div><div class="notification-controls"><label class="inline-check"><input id="zhihu-hot-list" type="checkbox"> 使用知乎热榜</label><label class="inline-check"><input id="zhihu-news-search" type="checkbox"> 搜索近期大事</label></div><div class="form-row"><button class="primary-button">保存研究设置</button><button id="zhihu-test" type="button" class="small-button">测试额度</button><button id="zhihu-clear-key" type="button" class="text-button">清除密钥</button></div><p id="zhihu-result" class="inline-result" role="status"></p></form>
+        <form id="life-settings-form" class="settings-card"><div class="card-heading"><h3>生活足迹</h3><span id="life-settings-status" class="badge">正在读取</span></div><p class="fine-print">默认每周有 5% 概率安排出游。事件会带来相关资料和多个聊天切口，不必等行程变化才继续聊。暂时安静与每日联系上限仍然有效。</p><label for="life-weekly-chance">每周出行概率（%）</label><input id="life-weekly-chance" type="number" min="0" max="100" step="1" required><div class="form-row"><button class="primary-button">保存生活足迹设置</button></div><p id="life-settings-note" class="fine-print" role="status"></p></form>
+        <div class="settings-card"><div class="card-heading"><h3>本地语音</h3><button id="refresh-voice" class="text-button">刷新状态</button></div><div id="voice-health" class="health-grid"></div><p id="voice-catalog-note" class="fine-print"></p><div id="role-voices"></div><p class="fine-print">每个角色可以有自己的声音，支持试听、朗读与停止播放。录音转写需要本地识别服务在线。当前先生成完整音频再播放。</p></div>
+        <div class="settings-card"><h3>数据与运行</h3><p>会话、角色状态、累计摘要、明确添加的记忆、用量和故事进度保存在本机。三位角色各自读取私聊与记忆，共享记忆由你指定。</p><p>使用远程模型时，本次对话所需的消息、记忆和引用内容会发送到你配置的服务。现在只监听本机地址，手机布局已适配，远程访问可在后续部署时接入。</p><p class="fine-print">本应用不会持续监听麦克风。点击“说话”并授权后才开始录音。</p></div>
+      </section>
+    </main>
+    <aside class="context-aside"><p class="eyebrow">留在这里的日常</p><div class="aside-illustration" aria-hidden="true"><div class="window-frame"><span></span><i></i></div><div class="plant">⌇</div></div><h2 id="aside-title">给今晚留一点空白。</h2><p id="aside-copy">一句想说的话，就可以是开始。</p><div class="aside-divider"></div><div class="aside-heading"><h3>她可以记得</h3><button id="open-memory" class="text-button">管理</button></div><div id="aside-memories"></div><div class="aside-divider"></div><button id="open-reminder" class="aside-link">◷ 留一件事，之后继续聊 <span>↗</span></button><p class="aside-footnote">亲近的节奏由你决定。<br>这里没有打卡，也没有必须回复的消息。</p></aside>
+  </div>
+  <div id="audio-panel" class="audio-panel floating-audio" hidden><span id="audio-status">准备语音中</span><audio id="audio-player" controls hidden></audio><button id="stop-audio" class="text-button">停止</button></div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <div id="startup-error" class="startup-error" hidden><h2>还没连上有间</h2><p id="startup-error-text"></p><button id="retry-startup" class="primary-button">重试连接</button></div>
+</body>
+</html>

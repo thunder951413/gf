@@ -1,0 +1,12 @@
+{
+  "asset": "coast.png",
+  "generator": "built-in imagegen",
+  "sourceOutput": "/Users/surfing/.codex/generated_images/01a08191-9cb8-7f61-894b-d5f8c8139ea5/exec-aa60667d-8797-4e2a-a606-11b82e86adda.png",
+  "sha256": "e81cd34b93881e1957a9d9f216cb4e0654631b7274fcae346f730ad3d8802d83",
+  "dimensions": { "width": 1024, "height": 1536 },
+  "prompt": "Use case: photorealistic-natural\nAsset type: reusable empty desktop-companion background, final vertical 1024x1536 image.\nPrimary request: a calm seaside promenade meeting clean sand, with blue-green distant sea, a small band of coastal grass only at the far LEFT edge, and the horizon in the upper middle. Keep the center and near foreground completely clear for later compositing of a full-body adult person at normalized placement x=0.22, y=0.12, width=0.60, height=0.82. Leave the bottom 10 percent as plausible sand or promenade ground for feet.\nSubject: empty coast; absolutely no people, animals, boats close by, furniture, umbrellas, or foreground objects.\nStyle/medium: high-quality photoreal coastal photograph with natural sand, stone, grass, and water textures; no illustration, CGI, dollhouse effect, or miniature effect.\nComposition/framing: vertical 2:3, chest-level camera, moderate natural perspective, no fisheye, clear central foreground.\nLighting/mood: calm soft overcast daytime light coming from the LEFT.\nConstraints: no people, no text, no logos, no watermark, no baked-in character. This must be a standalone reusable background.",
+  "qa": {
+    "accepted": true,
+    "notes": "Empty coast with left-edge grass, blue-green sea, upper-middle horizon, clear promenade foreground, and soft overcast left lighting."
+  }
+}
