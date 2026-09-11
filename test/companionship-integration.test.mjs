@@ -17,7 +17,8 @@ async function fixture(t){
 test('same-call annotations stay optional, bounded, and outside the stable system prefix',()=>{
  const messages=[{role:'system',content:'persona'},{role:'user',content:'dynamic'},{role:'user',content:'current'}];
  const result=withCompanionshipProtocol(messages,'fixed protocol');assert.equal(result[0].content,'persona');assert.match(result[1].content,/fixed protocol/);assert.equal(result.at(-1).content,'current');assert.equal(messages.length,3);
- assert.deepEqual(parseCompanionshipUpdates('plain reply'),{relationship:[],agenda:[]});assert.equal(parseCompanionshipUpdates({companionship:{agenda:Array(12).fill({action:'x'})}}).agenda.length,3);
+ assert.deepEqual(parseCompanionshipUpdates('plain reply'),{relationship:[],agenda:[],life:[]});assert.equal(parseCompanionshipUpdates({companionship:{agenda:Array(12).fill({action:'x'})}}).agenda.length,3);
+ assert.equal(parseCompanionshipUpdates({companionship:{life:Array(12).fill({action:'choose'})}}).life.length,3);
 });
 test('real chat writes explicit nickname and preference without model metadata and next prompt uses both',async t=>{
  const f=await fixture(t);assert.equal((await f.chat('以后叫我阿舟就好。')).status,200);

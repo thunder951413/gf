@@ -19,7 +19,7 @@ const server = http.createServer(async (req, res) => {
     if (requests.length === 6) return send(409, { error: '已有更新消息', code: 'MODEL_CANCELLED' });
     const number = requests.length - 1;
     await new Promise(resolve => setTimeout(resolve, number === 2 ? 450 : 100));
-    const rows = [{ id: `u-${number}`, speaker: 'user', text: '【桌面互动】' }, { id: `a-${number}`, speaker: 'assistant', text: `桌面关怀测试 ${number}` }];
+    const rows = [{ id: `a-${number}`, speaker: 'assistant', text: `桌面关怀测试 ${number}` }];
     messages.push(...rows); return send(200, { messages: rows });
   }
   if (req.url === '/api/conversations/miyue') return send(200, { messages });
@@ -48,6 +48,8 @@ try {
             check(false, "condition timed out")
         }
         await pause(400)
+        let figureItem = makeMenu().item(withTitle: "切换角色形象")
+        check(figureItem?.action == #selector(switchCharacterFigure), "quick appearance switch missing from desktop context menu")
         previewUntil = .distantPast
         for count in 1...4 { click(photoPet, count) }
         await pause(650)
@@ -108,7 +110,8 @@ try {
   assert.equal(requests.length, 6, 'cancelled request must not retry or dispatch retained affection');
   assert.equal(requests[0].requestId, requests[1].requestId, 'busy retries must reuse the request ID');
   assert.deepEqual(requests.map(r => r.level), ['care', 'care', 'affection', 'affection', 'affection', 'affection']);
-  assert.equal(messages.length, 8);
+  assert.equal(messages.length, 4);
+  assert.ok(messages.every(message => message.speaker === 'assistant'));
   console.log('Native HTTP contract and saved message counts passed.');
 } finally {
   await new Promise(resolve => server.close(resolve)); fs.rmSync(temp, { recursive: true, force: true });

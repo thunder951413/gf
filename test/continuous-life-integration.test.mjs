@@ -39,6 +39,28 @@ test('only an explicitly eligible transparent activity asset drives the compact 
  f.set('2026-09-08T06:30:00Z');state=f.app.companionRuntime.advance();assert.equal(state.settings.automaticScenes,false);assert.equal(f.app.sceneImages.snapshot().activeSceneId,'autumn-cafe');assert.equal(f.app.runtimeScenes.read().mode,'manual');
  const auto=await f.request('/api/companion-runtime/settings',{revision:state.revision,settings:{automaticScenes:true}});assert.equal(auto.status,200);assert.equal(f.app.sceneImages.snapshot().enabled,true);assert.equal(f.app.sceneImages.snapshot().activeSceneId,'study');assert.equal(f.calls.length,0);
 });
+test('desktop quick switch returns the new snapshot without dialogue and preserves manual rotation settings',async t=>{
+ const f=await fixture(t);
+ const alpha='data:image/png;base64,'+fs.readFileSync(path.join(process.cwd(),'desktop/assets/visual-v2/recolors/original-long-soft-knit-idle-soft-smile-dusty-rose.png')).toString('base64');
+ for(const [i,image] of [png,alpha].entries()){
+  assert.equal((await f.request('/api/image-library/upload',{image,name:`工作人物${i}`,activity:'work',environment:'indoor'})).status,200);
+ }
+ const items=f.app.imageLibrary.snapshot().items;assert.equal(items.length,2);
+ const secondAlpha='data:image/png;base64,'+fs.readFileSync(path.join(process.cwd(),'desktop/assets/visual-v2/recolors/original-long-soft-knit-reading-neutral-dusty-rose.png')).toString('base64');
+ for(const [i,item] of items.entries()){
+  assert.equal((await f.request('/api/image-library/derivative',{id:item.id,image:i?secondAlpha:alpha})).status,200);
+  assert.equal((await f.request('/api/image-library/metadata',{id:item.id,desktopEligible:true})).status,200);
+ }
+ const state=f.app.companionRuntime.advance();
+ assert.equal((await f.request('/api/companion-runtime/settings',{revision:state.revision,settings:{automaticScenes:false,imageRotationMinutes:0}})).status,200);
+ const active=s=>s.scenes.find(row=>row.id===s.activeSceneId).imageUrl;
+ const before=active(f.app.sceneImages.snapshot());
+ const switched=await f.request('/api/companion-runtime/appearance/next',{});
+ assert.equal(switched.status,200,JSON.stringify(switched.body));assert.notEqual(active(switched.body),before);assert.equal(switched.body.enabled,true);
+ f.app.companionRuntime.advance();assert.equal(active(f.app.sceneImages.snapshot()),active(switched.body));
+ assert.equal(f.app.companionRuntime.snapshot().settings.automaticScenes,false);
+ assert.equal(f.calls.length,0);assert.equal(f.app.store.getMessages('miyue').length,0);
+});
 test('crossing an activity boundary during generation discards old draft and retries exactly once',async t=>{
  const f=await fixture(t,{respond:async(_payload,count,set)=>{if(count===1)set('2026-09-08T04:15:00Z');}});
  const result=await f.request('/api/chat',{role:'miyue',text:'说说你现在在做什么。'});assert.equal(result.status,200,JSON.stringify(result.body));

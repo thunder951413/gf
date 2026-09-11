@@ -53,12 +53,42 @@ function renderRuntime() {
   const next=(Array.isArray(runtime.next)?runtime.next:runtime.next?[runtime.next]:[]).slice(0,5); $('next').replaceChildren(...(next.length ? next.map(planNode) : [element('p','empty','还没有排定的下一件事。')]));
   const day=(runtime.dayPlan || []).filter(item=>!item.endsAt || Date.parse(item.endsAt)>Date.parse(runtime.at)).slice(0,12); $('day-plan').replaceChildren(...(day.length ? day.map(planNode) : [element('p','empty','今天暂时没有额外安排。')]));
   const pending=runtime.pending; $('pending').hidden=!pending; if(pending) $('pending').textContent=typeof pending === 'string' ? pending : (pending.title || '等待确认');
+  const dailyEvents=runtime.events||runtime.dailyLife?.events||[];
+  $('event-clock').textContent=`服务持续检查 · ${runtime.dailyLife?.nextAt?`下一处生活变化预计 ${beijingTime(runtime.dailyLife.nextAt)}`:'等待下一段空闲时间'}`;
+  $('daily-life').replaceChildren(...(dailyEvents.length?dailyEvents.map(event=>{
+    const row=element('article','plan');row.append(element('strong','',event.title),element('span','badge',event.phaseLabel),element('p','',event.detail));
+    if(event.type==='meter'){const meter=element('progress');meter.max=100;meter.value=event.value;meter.setAttribute('aria-label',`${event.title} ${event.value}/100`);row.append(meter,element('span','meta',` ${event.value}/100`));if(event.endsAt)row.append(element('p','meta',`下一阶段预计 ${beijingTime(event.endsAt)}`));}
+    else row.append(element('p','meta',`${beijingTime(event.instanceStartedAt||event.startedAt)} 开始 · ${event.location} · 当前阶段至 ${beijingTime(event.endsAt)} · 保留到 ${beijingTime(event.expiresAt)}`));
+    if(event.source){const source=element('a','meta',`来源：${event.source.title}`);source.href=event.source.url;source.target='_blank';source.rel='noopener noreferrer';row.append(source);}
+    if(event.choice){
+      const choice=event.choice;
+      row.append(element('p','meta',`${choice.label}：${choice.selected} · ${choice.adopted?'采纳了你的建议':'她自己的选择'}${choice.editable?'':' · 已定下'}`));
+      if(choice.evidence)row.append(element('p','meta',`当时你说：“${choice.evidence}”`));
+      if(choice.editable){
+        const label=element('label','meta','更改选择 '),select=element('select');select.setAttribute('aria-label',`${event.title}：更改${choice.label}`);
+        for(const option of choice.options){const node=element('option','',option);node.value=option;select.append(node);}select.value=choice.selected;
+        const revision=runtime.dailyLife.revision;
+        select.addEventListener('change',async()=>{select.disabled=true;try{runtime=await api('/api/companion-runtime/choice',{revision,eventId:event.id,value:select.value});$('choice-status').textContent='选择已修改，后续进展会沿用这个选择。';renderRuntime();}catch(error){$('choice-status').textContent=error.status===409?'事件已经变化，请刷新后查看当前选择。':error.message;select.disabled=false;}});
+        label.append(select);row.append(label);
+      }
+    }
+    return row;
+  }):[element('p','empty','眼下没有特别的小事。空闲时她会有新的生活安排。')]));
+  renderEventChanges();
   const transitions=runtime.transitions || []; const list=$('transitions'); list.replaceChildren(...(transitions.length ? transitions.slice(-10).reverse().map(item=>{const row=element('article','transition');row.append(element('time','',beijingTime(item.at || item.createdAt)),element('div','',item.summary || item.text || item.title || `${value(item.from,'')} → ${value(item.to,'')}`));return row;}) : [element('p','empty','还没有记录到状态变化。')]));
   const running = service.running ?? availability.running; $('service-badge').textContent=running === false ? '未运行' : running === true ? '正在运行' : '状态未知'; $('service-badge').className=`badge ${running === true ? 'good' : 'warn'}`;
   const desktop=runtime.desktop || {};
   $('service').replaceChildren(fact('最近检查',service.lastTickAt ? beijingTime(service.lastTickAt) : availability.lastTickAt ? beijingTime(availability.lastTickAt) : null),fact('服务状态',running === true ? '正常运行' : running === false ? '暂未运行' : '等待状态'),fact('最近错误',service.lastError || availability.lastError || '没有'),fact('桌面图片',desktop.reason || (runtime.settings?.automaticScenes?'等待匹配当前场景':'已手动固定')));
   $('desktop-selection').replaceChildren(fact('已选图片',desktop.itemName),fact('匹配条件',`${({spring:'春季',summer:'夏季',autumn:'秋季',winter:'冬季'}[desktop.season]||'自动')} · ${({indoor:'室内',outdoor:'室外'}[desktop.environment]||'自动')}`),fact('候选图片',desktop.candidateCount === 0 ? '没有符合条件的图片' : desktop.candidateCount),fact('上次选择',desktop.selectedAt ? beijingTime(desktop.selectedAt) : null),fact('下次更换',desktop.nextRotationAt ? beijingTime(desktop.nextRotationAt) : runtime.settings?.automaticScenes ? '等待活动或情境变化' : '自动匹配已关闭'),fact('选择原因',desktop.reason),fact('图片版本',desktop.variant === 'original' ? '完整原图' : desktop.variant === 'cutout' ? '透明桌面人物' : null));
   if (!settingsDirty) { const settings=imageSettings(runtime.settings); $('enabled').checked=Boolean(settings.enabled); $('automatic-scenes').checked=Boolean(settings.automaticScenes); $('image-rotation-minutes').value=settings.imageRotationMinutes; setSelectValue('image-season',settings.imageSeason,imageSettingValues.imageSeason,imageSettingDefaults.imageSeason); setSelectValue('image-environment',settings.imageEnvironment,imageSettingValues.imageEnvironment,imageSettingDefaults.imageEnvironment); setSelectValue('image-variant',settings.imageVariant,imageSettingValues.imageVariant,imageSettingDefaults.imageVariant); $('reload-settings').hidden=true; }
+}
+function renderEventChanges(){
+  const reasons={chosen:'采纳了聊天中的建议',unchanged:'已经是这个选择',manual:'你在面板中修改了选择',unknown_field:'修改包含不支持的内容',invalid_choice:'不在这件事的可选范围内',not_editable:'这件事已过了选择阶段',unverified_evidence:'原话没有明确确认这个选择',duplicate:'这次选择已处理过',stale_revision:'事件已经变化'};
+  const changes=(runtime?.dailyLife?.recentChanges||[]).map(change=>({at:change.at,text:`${change.title||'生活事件'} · ${change.status==='accepted'?'已采用':change.status==='rejected'?'未采用':change.status}：${reasons[change.reason]||change.reason||''}${change.to?`（${change.from||'未定'} → ${change.to}）`:''}`}));
+  const fields=Object.fromEntries((companionship?.inner?.fields||[]).map(field=>[field.key,field.label]));
+  for(const item of companionship?.inner?.journal||[])changes.push({at:item.at,text:`${item.cause} · ${Object.entries(item.changes||{}).map(([key,amount])=>`${fields[key]||key} ${amount>0?'+':''}${amount}`).join('，')||'状态记录'}`});
+  changes.sort((a,b)=>Date.parse(b.at)-Date.parse(a.at));
+  $('event-changes').replaceChildren(...(changes.length?changes.slice(0,12).map(item=>{const row=element('article','transition');row.append(element('time','',beijingTime(item.at)),element('div','',item.text));return row;}):[element('p','empty','还没有选择或身心变化记录。')]));
 }
 function renderAgenda() {
   if (!companionship?.agenda || agendaDirty) return;

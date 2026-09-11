@@ -31,18 +31,32 @@ async function request(base, pathname, options = {}) {
   const body = type.includes('application/json') ? await response.json() : await response.arrayBuffer();
   return { response, body };
 }
-async function rawRequest(base, pathname, headers) {
+async function rawRequest(base, pathname, headers, {method='GET',body}={}) {
   const target = new URL(pathname, base);
   return new Promise((resolve, reject) => {
-    const req = http.request({ hostname: target.hostname, port: target.port, path: target.pathname, headers }, (res) => {
+    const req = http.request({ hostname: target.hostname, port: target.port, path: target.pathname, headers, method }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
       res.on('end', () => resolve({ response: { status: res.statusCode }, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) }));
     });
-    req.on('error', reject); req.end();
+    req.on('error', reject); req.end(body);
   });
 }
 const json = (body, extra = {}) => ({ ...extra, method: extra.method || 'POST', headers: { 'content-type': 'application/json', ...(extra.headers || {}) }, body: JSON.stringify(body) });
+
+test('explicit LAN access preserves localhost and rejects other hosts and cross-origin requests', async t => {
+  const {app,base}=await start(t,{listenHost:'0.0.0.0',allowedHosts:['192.168.1.145'],startProactive:false,startResearch:false,startRuntime:false});
+  assert.equal(app.server.address().address,'0.0.0.0');
+  const port=new URL(base).port,host=`192.168.1.145:${port}`;
+  assert.equal((await request(base,'/api/conversations/miyue')).response.status,200);
+  assert.equal((await rawRequest(base,'/api/conversations/miyue',{host,origin:`http://${host}`})).response.status,200);
+  const badHost=await rawRequest(base,'/api/conversations/miyue',{host:`192.168.1.146:${port}`});
+  assert.equal(badHost.response.status,403);assert.equal(badHost.body.code,'INVALID_HOST');
+  const badOrigin=await rawRequest(base,'/api/conversations/miyue',{host,origin:'https://other.example'});
+  assert.equal(badOrigin.response.status,403);assert.equal(badOrigin.body.code,'INVALID_ORIGIN');
+  const posted=await rawRequest(base,'/api/conversations/miyue/read',{host,origin:`http://${host}`,'content-type':'application/json'},{method:'POST',body:JSON.stringify({messageId:'missing'})});
+  assert.equal(posted.response.status,404,'same-origin LAN POST reaches the route');
+});
 
 test('chat context includes only shared and current-role memory and persists atomically', async (t) => {
   let providerRequest;

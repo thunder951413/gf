@@ -40,15 +40,17 @@ test('double-click receives contextual care even with scheduled contact disabled
   const settings = f.app.proactiveRepo.getSettings();
   const r = await f.attention('care-click-001');
   assert.equal(r.status, 200, JSON.stringify(r));
-  assert.equal(r.messages.length, 2);
-  assert.equal(r.messages[0].text, '【桌面互动：双击，想被关心、被惦记】');
-  assert.equal(r.messages[1].speaker, 'assistant');
+  assert.equal(r.messages.length, 1);
+  assert.equal(r.messages[0].speaker, 'assistant');
+  assert.equal(f.app.store.getMessages('miyue').filter(m=>m.speaker==='user').length, 1);
+  assert.doesNotMatch(f.app.store.getMessages('miyue').map(m=>m.text).join('\n'), /双击|桌面互动/);
   const prompt = f.requests.at(-1).messages.map(m => m.content).join('\n');
   assert.match(prompt, /整理书架/);
-  assert.match(prompt, /用户主动发起的桌面互动/);
+  assert.match(prompt, /本轮内部交流意图/);
+  assert.match(prompt, /感觉他也在想你/);
   assert.match(prompt, /不是用户说出的原话/);
   assert.doesNotMatch(prompt, /可以补充自己的虚构阅读经历/);
-  assert.equal(f.app.interactionPolicy.receipt(r.messages[1].id).behavior.intent, 'affection_reply');
+  assert.equal(f.app.interactionPolicy.receipt(r.messages[0].id).behavior.intent, 'affection_reply');
   assert.deepEqual(f.app.proactiveRepo.getSettings(), settings);
   assert.equal(f.app.store.getSettings().quiet, true);
   assert.equal(f.app.proactiveRepo.countContactsSince('2020-01-01'), 0);
@@ -60,12 +62,15 @@ test('second double-click requests hugs and kisses while keeping the previous an
   f.generate(async () => '再给你一个抱抱，亲一下。今天也很想你。');
   const r = await f.attention('affection-002', 'affection');
   assert.equal(r.status, 200, JSON.stringify(r));
-  assert.match(r.messages[0].text, /再次双击.*亲亲抱抱/);
+  assert.equal(r.messages.length, 1);
+  assert.equal(r.messages[0].speaker, 'assistant');
+  assert.match(r.messages[0].text, /抱抱|亲/);
   const prompt = f.requests.at(-1).messages.map(m => m.content).join('\n');
   assert.match(prompt, /想你了呀/);
   assert.match(prompt, /刚才的亲近基础上/);
   assert.match(prompt, /无需再次问他要不要聊天/);
-  assert.equal(f.app.store.getMessages('miyue').length, 4);
+  assert.equal(f.app.store.getMessages('miyue').length, 2);
+  assert.ok(f.app.store.getMessages('miyue').every(m=>m.speaker==='assistant'));
 });
 
 test('duplicate concurrent requests share generation and durable receipt prevents resending', async t => {
@@ -87,7 +92,7 @@ test('duplicate concurrent requests share generation and durable receipt prevent
   const replay = await restarted.request({ requestId: 'same-click-001', level: 'care' });
   assert.deepEqual(replay.messages.map(m => m.id), a.messages.map(m => m.id));
   assert.equal((await f.attention('same-click-001', 'affection')).status, 409);
-  assert.equal(f.app.store.getMessages('miyue').length, 2);
+  assert.equal(f.app.store.getMessages('miyue').length, 1);
 });
 
 test('invalid input and failed pending chat do not lose or replace a draft', async t => {
@@ -130,5 +135,26 @@ test('failed model call has no false successful receipt and the same click may r
   assert.equal(f.app.store.getMessages('miyue').length, 0);
   f.generate(async () => '我在呢，今天也很惦记你。');
   assert.equal((await f.attention('retry-click-001')).status, 200);
-  assert.equal(f.app.store.getMessages('miyue').length, 2);
+  assert.equal(f.app.store.getMessages('miyue').length, 1);
+});
+
+test('operation wording is repaired before delivery and never saved as a user message', async t => {
+  const f = await fixture(t);
+  f.generate(async () => f.requests.length === 1 ? '看到你双击我啦，我也想你了。' : '刚刚忽然觉得你在想我，我也有点想你了。');
+  const r = await f.attention('natural-care-001');
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.equal(f.requests.length, 2);
+  assert.equal(r.messages.length, 1);
+  assert.match(r.messages[0].text, /觉得你在想我/);
+  assert.ok(f.app.store.getMessages('miyue').every(m=>m.speaker==='assistant'&&!/双击|桌面互动/.test(m.text)));
+});
+
+test('an ordinary typed reply after a gesture keeps its own user message', async t => {
+  const f = await fixture(t);
+  await f.attention('natural-care-002');
+  f.generate(async () => '好呀，今天过得怎么样？');
+  const r=await f.request('/api/chat',{role:'miyue',text:'我想和你聊聊今天的事。',userTexts:[]});
+  assert.equal(r.status,200,JSON.stringify(r));
+  assert.deepEqual(f.app.store.getMessages('miyue').map(m=>m.speaker),['assistant','user','assistant']);
+  assert.equal(r.messages[0].text,'我想和你聊聊今天的事。');
 });

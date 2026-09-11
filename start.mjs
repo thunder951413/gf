@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { createApp } from './server.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const allowed = new Set(['LIFE_ZHIHU_ACCESS_SECRET', 'LIFE_ZHIHU_PROXY', 'LIFE_FEED_PROXY', 'LIFE_MODEL_BASE_URL', 'LIFE_MODEL_NAME', 'LIFE_MODEL_API_KEY', 'LIFE_TTS_BASE_URL', 'QWEN_TTS_ACCESS_PASSWORD']);
+const allowed = new Set(['LIFE_LISTEN_HOST', 'LIFE_ALLOWED_HOSTS', 'LIFE_ZHIHU_ACCESS_SECRET', 'LIFE_ZHIHU_PROXY', 'LIFE_FEED_PROXY', 'LIFE_MODEL_BASE_URL', 'LIFE_MODEL_NAME', 'LIFE_MODEL_API_KEY', 'LIFE_TTS_BASE_URL', 'QWEN_TTS_ACCESS_PASSWORD']);
 const envFile = path.join(root, '.env.local');
 if (fs.existsSync(envFile)) {
   for (const raw of fs.readFileSync(envFile, 'utf8').split(/\r?\n/)) {

@@ -122,6 +122,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     var sceneImageStudio: SceneImageStudioController!
     var connected = false
     var polling = false
+    var switchingFigure = false
     var lastLifeCheck = Date.distantPast
     var pollTimer: Timer?
     var mouseTimer: Timer?
@@ -858,6 +859,8 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         if let world { _ = item(world.world.location, nil) }
         menu.addItem(.separator())
         _ = item(tracker.pendingCount > 0 ? "打开聊天（\(tracker.pendingCount) 条新消息）" : "打开聊天", #selector(openChat))
+        let switchFigure = item(switchingFigure ? "正在切换形象…" : "切换角色形象", #selector(switchCharacterFigure))
+        switchFigure.isEnabled = connected && !demo && !switchingFigure
         _ = item("场景图片 · 上传与切换…", #selector(openVisualStudio))
         _ = item("图片素材库 · 批量上传与分类…", #selector(openImageLibrary))
         _ = item("持续生活 · 状态与安排…", #selector(openRuntimeSettings))
@@ -989,6 +992,31 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         panel.orderFrontRegardless(); pet.isPlaying = !pet.isHidden; sceneCanvas.setMotionRequested(true); savePosition(); updateMenu()
     }
     @objc func reconnect() { lastLifeCheck = .distantPast; if !demo { poll(); web?.load(URLRequest(url: baseURL)) } }
+    @objc func switchCharacterFigure() {
+        guard !switchingFigure && !demo else { return }
+        switchingFigure = true; updateMenu()
+        Task { @MainActor in
+            defer { switchingFigure = false; updateMenu() }
+            do {
+                var request = URLRequest(url: endpoint("api/companion-runtime/appearance/next"))
+                request.httpMethod = "POST"; request.timeoutInterval = 15
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = Data("{}".utf8)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                    let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                    throw NSError(domain: "YoujianFigure", code: 1, userInfo: [NSLocalizedDescriptionKey: body?["error"] as? String ?? "切换没有成功，请稍后重试。"])
+                }
+                defaults.set("photo", forKey: "pet.renderer")
+                await sceneImageStudio.accept(try JSONDecoder().decode(SceneImageSnapshot.self, from: data))
+                refreshPetAppearance()
+            } catch {
+                let alert = NSAlert(); alert.messageText = "暂时无法切换形象"
+                alert.informativeText = error.localizedDescription
+                alert.addButton(withTitle: "好"); alert.runModal()
+            }
+        }
+    }
     @objc func woke() { lastLifeCheck = .distantPast; if !demo { poll() } }
     @objc func screenChanged() { clampPosition(); savePosition() }
     func clampPosition() {

@@ -63,6 +63,27 @@ test('manual image choices remain untouched by automatic eligibility', () => {
   assert.equal(f.applied.length, 0);
 });
 
+test('manual quick switch bypasses interval, excludes the shown image and retains matching cutout rules',()=>{
+ const f=fixture(['a','b','c'].map(id=>item({id,desktopEligible:true,cutoutUrl:`/api/image-library/files/${id}.png`})));
+ const r=runtime();r.settings.imageRotationMinutes=0;
+ const first=f.scenes.sync(r);const second=f.scenes.sync(r,{force:true});
+ assert.notEqual(second.itemId,first.itemId);
+ assert.equal(f.scenes.sync(r).itemId,second.itemId,'following automatic poll retains the manual switch');
+ r.settings.automaticScenes=false;r.settings.imageVariant='original';
+ f.scenes.sync(r);
+ const third=f.scenes.sync(r,{force:true});assert.notEqual(third.itemId,second.itemId);assert.equal(third.avatarMode,'cutout');
+ assert.equal(r.settings.automaticScenes,false,'quick switch does not enable automatic rotation');
+});
+
+test('manual switch with no alternative preserves the current image and metadata',()=>{
+ const f=fixture([item({desktopEligible:true})]);const r=runtime();f.scenes.sync(r);
+ const before=structuredClone(f.images),state=f.scenes.read();
+ assert.throws(()=>f.scenes.sync(r,{force:true}),{status:409});
+ assert.deepEqual(f.images,before);assert.deepEqual(f.scenes.read(),state);
+ const empty=fixture([item({desktopEligible:false})]);const old=structuredClone(empty.images);
+ assert.throws(()=>empty.scenes.sync(r,{force:true}),{status:409});assert.deepEqual(empty.images,old);
+});
+
 test('rotation waits for the interval, consumes all candidates before repeating and persists across restart',()=>{
  const items=['a','b','c'].map(id=>item({id,name:id,desktopEligible:true,cutoutUrl:`/api/image-library/files/${id}.png`}));
  const f=fixture(items),r=runtime();r.settings.imageRotationMinutes=20;

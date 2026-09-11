@@ -71,6 +71,18 @@ function engine(repo, model, options = {}) {
   return new ProactiveEngine({ repo, roles: options.roles || roles, model, refreshContent: options.refreshContent || (async () => ({ added: 0, errors: [], items: [], feeds: [] })), clock: options.clock || (() => baseNow), random: options.random || (() => 0), isBusy: options.isBusy || (() => false), onDelivery: options.onDelivery || (() => {}), getWakeEvent: options.getWakeEvent || (() => null), tickIntervalMs: 60_000 });
 }
 
+test('life openings cannot bypass prepared source exclusions via regional source hints', async () => {
+  const repo=new FakeRepo({candidates:[{...candidate,title:'苏州这座城市是不是过誉了',summary:'苏州城市生活里的游客体验和居民感受各有不同，这是一段关于苏州的完整资料摘要。'}]});
+  const model=new FakeModel(JSON.stringify({skip:true,contentId:null,reason:'暂时没有新资料',message:''}));
+  const e=engine(repo,model);
+  e.getPreparedCandidates=()=>[];
+  e.getRoleContext=()=>({lifeTopicKey:'work-boundary',lifeTopic:{sourceHints:['苏州'],publicQuery:'苏州 城市生活'}});
+  await e.runNow({roleId:'miyue'});
+  assert.equal(model.calls.length,1);
+  assert.doesNotMatch(JSON.stringify(model.calls[0].messages),/是不是过誉/);
+  assert.equal(repo.commits.length,0);
+});
+
 test('a fresh event wake advances contact time without resetting a deferred deadline for the same key', async () => {
   const wake = { key: 'runtime:meal:lunch', expiresAt: '2026-09-06T13:00:00.000Z' };
   const earlyRepo = new FakeRepo({ runtime: { nextFetchAt: '2026-09-07T12:00:00.000Z', nextContactAt: '2026-09-06T18:00:00.000Z' }, candidates: [candidate] });
