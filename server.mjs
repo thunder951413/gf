@@ -1,3 +1,6 @@
+import { WeixinClient } from './lib/weixin-client.mjs';
+import { WeixinBridge } from './lib/weixin-bridge.mjs';
+import { encodeWeixinQr } from './lib/weixin-qr.mjs';
 import {selectCompanionSources,companionSourceContext} from './lib/companion-sources.mjs';
 import { networkConfig } from './lib/network-config.mjs';
 import { mentionedSources } from './lib/source-mentions.mjs';
@@ -619,6 +622,15 @@ export async function createApp(options = {}) {
     getRevision: () => chatQueue.get('miyue').revision,
     isClosing: () => closing,
   });
+  const weixin = new WeixinBridge(store, {
+    client: options.weixinClient || new WeixinClient(),
+    submit: (role, text, id) => chatQueue.submit('miyue', text, id),
+    isBusy: () => activeRoles.has('miyue') || proactive.thinking,
+    hasPendingReplies: () => activeRoles.has('miyue') || ['queued','retrying','generating','waiting'].includes(chatQueue.get('miyue').phase) || replyDelivery.pending('miyue') > 0,
+    getChatError: () => chatQueue.get('miyue').phase === 'failed' ? '林雨薇的回复生成失败，可在聊天页面重试，或发来新的消息' : null,
+    clock: options.clock, intervalMs: options.weixinIntervalMs,
+  });
+  let weixinQrCache = null;
   async function performChat(body,control={}) {
     for(let attempt=0;attempt<2;attempt++){
       try{return await performChatOnce(body,control);}
@@ -760,6 +772,28 @@ export async function createApp(options = {}) {
   }
 
   async function api(req, res, url) {
+    if (url.pathname.startsWith('/api/weixin')) {
+      res.setHeader('cache-control','no-store');
+      if (req.method==='GET' && url.pathname==='/api/weixin') return sendJson(res,200,weixin.snapshot());
+      if (req.method==='POST' && url.pathname==='/api/weixin/login') {
+        await readJsonBody(req,4096); weixinQrCache=null;
+        return sendJson(res,200,await weixin.beginLogin());
+      }
+      if (req.method==='POST' && url.pathname==='/api/weixin/settings') return sendJson(res,200,weixin.updateSettings(await readJsonBody(req,4096)));
+      if (req.method==='POST' && url.pathname==='/api/weixin/disconnect') {
+        await readJsonBody(req,4096); weixinQrCache=null;return sendJson(res,200,weixin.disconnect());
+      }
+      if (req.method==='GET' && url.pathname==='/api/weixin/login/qr.png') {
+        const login=weixin.login;
+        if (!login?.qrContent || !['waiting','scanned'].includes(login.status) || weixin.now()>=login.expiresAt) throw fail(410,'二维码已失效，请重新生成');
+        if (weixinQrCache?.content!==login.qrContent) {
+          const png=await (options.weixinQrEncode || encodeWeixinQr)(login.qrContent);
+          weixinQrCache={content:login.qrContent,png};
+        }
+        res.writeHead(200,{'content-type':'image/png','x-content-type-options':'nosniff'});return res.end(weixinQrCache.png);
+      }
+    }
+
     if(req.method==='GET'&&url.pathname==='/api/companion-runtime')return sendJson(res,200,runtimeSnapshot());
     if(req.method==='POST'&&url.pathname==='/api/companion-runtime/appearance/next'){
       await readJsonBody(req);
@@ -1195,16 +1229,16 @@ export async function createApp(options = {}) {
   const tickLifeThreads=()=>{if(!closing&&!activeRoles.has('miyue')&&!chatQueue.busy('miyue')&&!replyDelivery.pending('miyue')){if(options.startLifeThreads!==false)lifeThreads.tick('miyue',life.get('miyue'));pursuits?.tick('miyue');companionAgenda.tick('miyue');}};
 
   return {
-    server, store, model, proactive, proactiveRepo, refreshContent, zhihuClient, zhihuRepo, research, characters, recall, recallRepo, usage, life, lifeTopics, inner, scenarios, dossiers, gentle, preferences, background, roleVoices, chatQueue, replyDelivery, followups, topicTracking, moments, episodes, interactionPolicy, lifeThreads, pursuits, personalExperiences, sourceChanges, companionTuning, companionBehavior, contentInbox, sharedExperiences, companionRelationship, companionAgenda, wardrobe, appearance, sceneImages, imageLibrary, companionRuntime, runtimeScenes, roleContext,
+    server, store, model, weixin, proactive, proactiveRepo, refreshContent, zhihuClient, zhihuRepo, research, characters, recall, recallRepo, usage, life, lifeTopics, inner, scenarios, dossiers, gentle, preferences, background, roleVoices, chatQueue, replyDelivery, followups, topicTracking, moments, episodes, interactionPolicy, lifeThreads, pursuits, personalExperiences, sourceChanges, companionTuning, companionBehavior, contentInbox, sharedExperiences, companionRelationship, companionAgenda, wardrobe, appearance, sceneImages, imageLibrary, companionRuntime, runtimeScenes, roleContext,
     listen(port = options.port ?? 8765) {
       return new Promise((resolve, reject) => {
         server.once('error', reject);
-        server.listen(port, network.listenHost, () => { if(options.startRuntime!==false)companionRuntime.start(); if(options.startChatQueue!==false){chatQueue.start();replyDelivery.start();} server.off('error', reject); if (options.startLife !== false && options.startProactive !== false) life.start(); if (options.startRecall !== false && options.startProactive !== false) recall.start(); if (options.startProactive !== false) { tickLifeThreads();lifeThreadTimer=setInterval(tickLifeThreads,options.proactiveIntervalMs||15000);lifeThreadTimer.unref();proactive.start(); scheduleDossiers(); } if (options.startResearch !== false && options.startProactive !== false) research.start(); resolve(server.address()); });
+        server.listen(port, network.listenHost, () => { if(options.startWeixin!==false)weixin.start(); if(options.startRuntime!==false)companionRuntime.start(); if(options.startChatQueue!==false){chatQueue.start();replyDelivery.start();} server.off('error', reject); if (options.startLife !== false && options.startProactive !== false) life.start(); if (options.startRecall !== false && options.startProactive !== false) recall.start(); if (options.startProactive !== false) { tickLifeThreads();lifeThreadTimer=setInterval(tickLifeThreads,options.proactiveIntervalMs||15000);lifeThreadTimer.unref();proactive.start(); scheduleDossiers(); } if (options.startResearch !== false && options.startProactive !== false) research.start(); resolve(server.address()); });
       });
     },
     async close() {
       if (closing) return Promise.resolve(); closing = true; clearInterval(reminderTimer);clearInterval(lifeThreadTimer);
-      desktopAttention.interrupt();companionRuntime.stop();life.stop();replyDelivery.stop();await chatQueue.stop();
+      await weixin.stop();desktopAttention.interrupt();companionRuntime.stop();life.stop();replyDelivery.stop();await chatQueue.stop();
       await Promise.all([proactive.stop(), research.stop(), recall.stop(), quotaPromise?.catch(() => {})]); if (refreshPromise) await refreshPromise; if (dossierJob) await dossierJob;
       await new Promise(resolve=>server.close(resolve));
       if(typeof integrations.closeSpeech==='function')await Promise.allSettled([...voiceJobs].map(id=>integrations.closeSpeech(id)));voiceJobs.clear();
