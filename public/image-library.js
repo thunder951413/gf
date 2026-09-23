@@ -1,5 +1,9 @@
 const $ = id => document.getElementById(id);
 let library = {items:[],scenes:[]}, selectedID = null, variant = 'original', busy = false, dirty = false;
+const desktopPicker = new URLSearchParams(window.location.search).get('pick') === 'desktop';
+let runtime = null;
+const activityNames = {sleep:'睡觉',reading:'读书',work:'工作',cafe:'咖啡与小聚',walk:'散步逛街',travel:'旅行',rest:'居家休息',idle:'日常待机'};
+const outfitStyleNames = {ladylike:'淑女',homewear:'居家服',lingerie:'内衣',swimwear:'泳装',sailor:'水手服',bodycon:'包臀裙',shorts:'热裤',sportswear:'运动套装',resort:'罩衫度假穿搭'};
 const current = () => library.items.find(item => item.id === selectedID);
 function note(id, message, error = false) { $(id).textContent = message; $(id).classList.toggle('error', error); }
 async function api(route, body) {
@@ -8,26 +12,79 @@ async function api(route, body) {
   if (!response.ok) throw new Error(value.error || '操作失败，请重试');
   return value;
 }
+async function rootApi(route) {
+  const response = await fetch(route);
+  const value = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(value.error || '无法读取当前桌面情景');
+  return value;
+}
 function option(value, title) { const el = document.createElement('option'); el.value = value; el.textContent = title; return el; }
+function desktopVariant(item) { return item.cutoutUrl ? 'cutout' : 'original'; }
+function desktopCandidate(item) { return item.desktopEligible === true && Boolean(item.cutoutUrl || item.background === 'transparent'); }
+function currentScene() { return runtime?.current?.sceneId || null; }
+function currentSceneName() { return library.scenes.find(scene => scene.id === currentScene())?.name || runtime?.current?.title || '当前情景'; }
+function renderPickerContext() {
+  if (!desktopPicker) return;
+  const sceneId = currentScene();
+  note('status', sceneId ? `当前情景：${currentSceneName()}。点击透明人物图即可固定到桌面。` : '暂时无法确定当前桌面情景，请稍后刷新重试。', !sceneId);
+}
 function setBusy(value) {
   busy = value;
   document.querySelectorAll('button,input,select').forEach(el => { el.disabled = value; });
   if (!value) { $('show-cutout').disabled = !current()?.cutoutUrl; }
 }
 function render() {
-  const search = $('search').value.trim().toLowerCase(), scene = $('scene-filter').value, season=$('season-filter').value, environment=$('environment-filter').value, background = $('background-filter').value;
-  const items = library.items.filter(item => (!scene || (scene === 'unclassified' ? !item.sceneIds.length : item.sceneIds.includes(scene))) && (!season || !item.seasons.length || item.seasons.includes(season)) && (!environment || item.environment==='any' || item.environment===environment) && (!background || (background === 'cutout' ? item.cutoutUrl : item.background === background && !item.cutoutUrl)) && (!search || [item.name,item.activity,...item.tags].join(' ').toLowerCase().includes(search)));
-  $('count').textContent = `${items.length} / ${library.items.length} 张`;
+  const search = $('search').value.trim().toLowerCase(), scene = $('scene-filter').value, season=$('season-filter').value, environment=$('environment-filter').value, background = $('background-filter').value, activity = $('activity-filter').value, outfitStyle=$('outfit-style-filter').value;
+  const items = library.items.filter(item => (!desktopPicker || desktopCandidate(item)) && (!activity || (item.activities||[]).includes(activity)) && (!outfitStyle || item.outfitStyle===outfitStyle) && (!scene || (scene === 'unclassified' ? !item.sceneIds.length : item.sceneIds.includes(scene))) && (!season || !item.seasons.length || item.seasons.includes(season)) && (!environment || item.environment==='any' || item.environment===environment) && (!background || (background === 'cutout' ? item.cutoutUrl : item.background === background && !item.cutoutUrl)) && (!search || [item.name,item.activity,...item.tags].join(' ').toLowerCase().includes(search)));
+  if (!desktopPicker) renderCoverage(season, environment);
+  $('count').textContent = desktopPicker ? `${items.length} 张可选角色图` : `${items.length} / ${library.items.length} 张`;
   $('gallery').replaceChildren();
-  if (!items.length) { const el = document.createElement('p'); el.className='empty'; el.textContent=library.items.length ? '没有符合筛选条件的图片。' : '还没有图片，先把喜欢的照片传进来。'; $('gallery').append(el); }
+  if (!items.length) { const el = document.createElement('p'); el.className='empty'; el.textContent=desktopPicker ? '没有符合筛选条件的透明角色图。请先在素材库审核透明版本。' : library.items.length ? '没有符合筛选条件的图片。' : '还没有图片，先把喜欢的照片传进来。'; $('gallery').append(el); }
   for (const item of items) {
     const card = document.createElement('button'); card.className='card'; card.type='button'; card.disabled=busy;
-    const img=document.createElement('img'); img.src=item.originalUrl; img.alt=item.name; img.loading='lazy';
+    const img=document.createElement('img'); img.src=desktopPicker ? (item.cutoutUrl || item.originalUrl) : item.originalUrl; img.alt=item.name; img.loading='lazy';
     const info=document.createElement('div'), title=document.createElement('strong'), details=document.createElement('p'), status=document.createElement('p');
     title.textContent=item.name; details.textContent=item.sceneIds.map(id=>library.scenes.find(s=>s.id===id)?.name || id).join(' · ') || '待分类';
     const seasonNames={spring:'春',summer:'夏',autumn:'秋',winter:'冬'},environmentNames={indoor:'室内',outdoor:'室外',any:'室内外均可'};
-    status.textContent=[item.seasons.length?item.seasons.map(value=>seasonNames[value]).join('/'):'全年',environmentNames[item.environment],item.desktopEligible ? '透明版可自动用于桌面' : '', item.activity, item.cutoutUrl ? '已有透明版本' : item.background==='needs-removal' ? '待去背景' : ''].filter(Boolean).join(' · ');
-    info.append(title,details,status); card.append(img,info); card.addEventListener('click',()=>openEditor(item.id)); $('gallery').append(card);
+    status.textContent=[item.seasons.length?item.seasons.map(value=>seasonNames[value]).join('/'):'全年',environmentNames[item.environment],outfitStyleNames[item.outfitStyle],item.locationScope==='home'?'仅家中':item.locationScope==='waterfront'?'仅水边':'',item.desktopEligible ? '透明版可自动用于桌面' : '', (item.activities||[]).map(value=>activityNames[value]).join('/'), item.cutoutUrl ? '已有透明版本' : item.background==='needs-removal' ? '待去背景' : ''].filter(Boolean).join(' · ');
+    info.append(title,details,status);
+    if (desktopPicker) {
+      const action=document.createElement('span'); action.className='picker-action'; action.textContent='选为桌面角色图'; info.append(action);
+      card.addEventListener('click',()=>applyDesktopFigure(item));
+    } else card.addEventListener('click',()=>openEditor(item.id));
+    card.append(img,info); $('gallery').append(card);
+  }
+}
+async function applyDesktopFigure(item) {
+  if (busy) return;
+  setBusy(true);
+  try {
+    const latest=await rootApi('/api/companion-runtime');
+    runtime=latest.runtime || latest;
+    const sceneId=currentScene();
+    if (!sceneId) throw new Error('暂时无法确定当前桌面情景，请稍后重试。');
+    await api('/apply',{id:item.id,sceneId,variant:desktopVariant(item),fit:'contain'});
+    note('status',`已固定「${item.name}」为桌面角色图。`);
+  } catch(error) { note('status',error.message,true); }
+  finally { setBusy(false); }
+}
+function renderCoverage(season, environment) {
+  $('coverage').replaceChildren();
+  for (const [group,name] of Object.entries(activityNames)) {
+    if(group==='idle')continue;
+    const cells=library.coverage?.groups?.[group];
+    const ids=new Set();
+    // Report actual activity matches, never fill the count with generic fallback photos.
+    for(const s of season?[season]:['spring','summer','autumn','winter'])
+      for(const e of environment?[environment]:['indoor','outdoor']) {
+        const cell=cells?.[s]?.[e];
+        if(cell&&!cell.fallbackUsed)for(const id of cell.ids)ids.add(id);
+      }
+    const card=document.createElement('button');card.type='button';card.className='coverage-card';
+    card.classList.toggle('shortage',ids.size<5);card.setAttribute('aria-pressed',String($('activity-filter').value===group));
+    const label=document.createElement('span'),count=document.createElement('strong'),hint=document.createElement('small');
+    label.textContent=name;count.textContent=`${ids.size} 张`;hint.textContent=ids.size>=5?'可轮换':`还差 ${5-ids.size} 张`;
+    card.append(label,count,hint);card.addEventListener('click',()=>{$('activity-filter').value=$('activity-filter').value===group?'':group;render();});$('coverage').append(card);
   }
 }
 function showVariant(value) {
@@ -42,7 +99,10 @@ function showVariant(value) {
 function fillEditor() {
   const item=current(); if(!item) return;
   for(const field of ['name','activity','kind','background']) $(field).value=item[field];
+  $('outfit-style').value=item.outfitStyle||'';
+  $('location-scope').value=item.locationScope||'any';
   $('tags').value=item.tags.join('，');
+  for(const input of $('activity-checks').querySelectorAll('input'))input.checked=(item.activities||[]).includes(input.value);
   for(const input of $('season-checks').querySelectorAll('input'))input.checked=item.seasons.includes(input.value);
   $('environment').value=item.environment;
   $('season-inference').textContent=item.classificationInferred?.seasons?'这是根据名称、标签、活动或场景推断的结果；保存后可按你的选择覆盖。':'已由你明确设置。';
@@ -66,7 +126,7 @@ $('editor').addEventListener('cancel',e=>{e.preventDefault();closeEditor();});
 $('metadata-form').addEventListener('input',e=>{if(!['fit','apply-scene','cutout-upload'].includes(e.target.id))dirty=true;});
 $('show-original').addEventListener('click',()=>showVariant('original'));
 $('show-cutout').addEventListener('click',()=>showVariant('cutout'));
-for(const id of ['scene-filter','season-filter','environment-filter','background-filter','search']) $(id).addEventListener('input',render);
+for(const id of ['activity-filter','outfit-style-filter','scene-filter','season-filter','environment-filter','background-filter','search']) $(id).addEventListener('input',render);
 async function fileData(file, onlyPNG=false) {
   if(!file.size || file.size > 12*1024*1024) throw new Error('每张图片需要在 12 MB 以内');
   const mime=file.type || ({png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp'}[file.name.split('.').at(-1).toLowerCase()]);
@@ -90,7 +150,7 @@ $('metadata-form').addEventListener('submit',async e=>{
   e.preventDefault();if(busy || !current())return;
   setBusy(true);
   try {
-    library=await api('/metadata',{id:selectedID,name:$('name').value,activity:$('activity').value,kind:$('kind').value,background:$('background').value,desktopEligible:$('desktop-eligible').checked,tags:$('tags').value.split(/[,，\n]/).map(s=>s.trim()).filter(Boolean),sceneIds:[...$('scene-checks').querySelectorAll('input:checked')].map(el=>el.value),seasons:[...$('season-checks').querySelectorAll('input:checked')].map(el=>el.value),environment:$('environment').value});
+    library=await api('/metadata',{id:selectedID,name:$('name').value,activities:[...$('activity-checks').querySelectorAll('input:checked')].map(el=>el.value),activity:$('activity').value,kind:$('kind').value,background:$('background').value,desktopEligible:$('desktop-eligible').checked,tags:$('tags').value.split(/[,，\n]/).map(s=>s.trim()).filter(Boolean),sceneIds:[...$('scene-checks').querySelectorAll('input:checked')].map(el=>el.value),seasons:[...$('season-checks').querySelectorAll('input:checked')].map(el=>el.value),environment:$('environment').value,outfitStyle:$('outfit-style').value||null,locationScope:$('location-scope').value});
     dirty=false;$('desktop-eligible').checked=Boolean(current()?.desktopEligible);$('season-inference').textContent='已由你明确设置。';$('environment-inference').textContent='已由你明确设置。';render();note('editor-status','分类与桌面选图设置已保存。');
   }catch(error){note('editor-status',error.message,true);}finally{setBusy(false);}
 });
@@ -108,7 +168,23 @@ $('apply').addEventListener('click',async()=>{
   catch(error){note('editor-status',error.message,true);}finally{setBusy(false);}
 });
 try {
+  if (desktopPicker) {
+    document.body.classList.add('desktop-picker');
+    $('page-title').textContent='选择桌面角色图';
+    $('page-intro').textContent='只显示已审核的透明人物图。选择后会固定到当前桌面情景。';
+    for (const id of ['scene-filter','background-filter']) $(id).closest('label').hidden=true;
+  }
   library=await api('');
+  if (desktopPicker) {
+    try {
+      const value=await rootApi('/api/companion-runtime');
+      runtime=value.runtime || value;
+    } catch(error) { note('status',error.message,true); }
+  }
+  for(const [id,name] of Object.entries(activityNames)){
+    $('activity-filter').append(option(id,name));
+    const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=id;label.append(input,document.createTextNode(name));$('activity-checks').append(label);
+  }
   for(const scene of library.scenes){$('scene-filter').append(option(scene.id,scene.name));$('apply-scene').append(option(scene.id,scene.name));}
-  render();
+  render();renderPickerContext();
 }catch(error){note('status',`素材库加载失败：${error.message}。请刷新页面重试。`,true);$('uploads').disabled=true;}

@@ -11,7 +11,7 @@ test('acceptance fulfills the pending conversation without consuming a new life 
   const prior=app.store.saveChatTurn({role:'miyue',text:'最近还好吗',reply:'愿意陪我说说最近心里那件有点沉的小事吗？'}),pending=app.pursuits.get('miyue').pendingKey;
   const result=await chat('好，你说吧');assert.equal(result.status,200);assert.equal(calls.length,1);
   const background=calls[0].messages.find(m=>m.content.startsWith('【本轮背景开始】')).content;
-  assert.match(background,/实际兑现最后的提议/);assert.doesNotMatch(background,/百草园|个人生活线|当前片段/);
+  assert.match(calls[0].messages.find(m=>m.content.startsWith('【本轮对话计划】')).content,/实际兑现刚才接受的提议/);assert.doesNotMatch(background,/百草园|个人生活线|当前片段/);
   assert.equal(app.pursuits.get('miyue').pendingKey,pending);assert.deepEqual(app.companionTuning.get(),tuning);
   const receipt=app.interactionPolicy.receipt(result.messages.at(-1).id);assert.equal(receipt.behavior.acceptedOffer,true);assert.equal(receipt.behavior.extra,null);assert.ok(receipt.behavior.threadSourceIds.includes(prior.at(-1).id));
 });
@@ -20,10 +20,10 @@ test('reply to a recent source keeps that source and excludes an older unrelated
   app.store.saveChatTurn({role:'miyue',text:'刚才那本书呢',reply:'百草园那段我还在读。'});
   const feed=app.store.addFeed('https://example.org/feed','测试原文');app.store.addContent(feed,[{title:'苏州诗词与真实街巷',url:'https://example.org/suzhou',summary:'诗词记下的意象与今天街巷中的普通生活并不完全相同。资料独有标记：沿河晾晒的衣服。'}],feed.title);const item=app.store.listContent()[0];
   app.proactiveRepo.saveSettings({activeStart:'00:00',activeEnd:'23:59'});
-  const at=new Date();at.setHours(12);app.proactiveRepo.commitDelivery({role:'miyue',text:'你说我们读诗到底是在读一座城，还是读我们心里想让那座城成为的样子？',reason:'街巷资料',kind:'content',contentId:item.id,topicKey:'source',createdAt:at.toISOString(),expectedLastMessageId:app.proactiveRepo.getLastMessageId('miyue')});
+  const at=new Date();app.proactiveRepo.commitDelivery({role:'miyue',text:'你说我们读诗到底是在读一座城，还是读我们心里想让那座城成为的样子？',reason:'街巷资料',kind:'content',contentId:item.id,topicKey:'source',createdAt:at.toISOString(),expectedLastMessageId:app.proactiveRepo.getLastMessageId('miyue')});
   const result=await chat('读的是心里想的样子吧');assert.equal(result.status,200);
   const background=calls[0].messages.find(m=>m.content.startsWith('【本轮背景开始】')).content;
-  assert.match(background,/承接紧邻/);assert.doesNotMatch(background,/林雨薇最近在读|重读开头/);
+  assert.match(calls[0].messages.find(m=>m.content.startsWith('【本轮对话计划】')).content,/承接紧邻/);assert.doesNotMatch(background,/林晓薇最近在读|重读开头/);
   assert.match(JSON.stringify(calls[0]),/沿河晾晒的衣服/);
 });
 test('decorative draft gets one focused rewrite, and repeated style warnings never fail the message',async t=>{
@@ -34,27 +34,38 @@ test('decorative draft gets one focused rewrite, and repeated style warnings nev
 });
 
 for (const text of ['好，你说吧', '今天有点累，想抱抱']) {
-  test(`recent experience reaches the model without replacing the current conversation: ${text}`, async t => {
+  test(`irrelevant experience stays preserved history without forcing a digest into the current topic: ${text}`, async t => {
     const {app,calls,chat}=await setup(t,['我在呢，今天慢慢聊就好。']);
+    app.store.saveChatTurn({role:'miyue',text:'前一个问题',reply:'前一个回答。'});
     const rows=app.store.saveChatTurn({role:'miyue',text:'你看过什么电影',reply:'我看过《小森林》，里面做饭的节奏让我觉得很舒服。'});
     app.personalExperiences.observe('miyue',rows);
     app.store.saveChatTurn({role:'miyue',text:'你最近怎么样',reply:'我今天想跟你说说一个烦心事。'});
     const settings=app.companionTuning.get();
     assert.equal((await chat(text)).status,200);
-    const background=calls[0].messages.find(m=>m.content.startsWith('【本轮背景开始】')).content;
-    assert.match(background,/近期经历简记/);
-    assert.match(background,/小森林.*做饭/);
-    assert.match(background,/不强行转场/);
+    const messages=calls[0].messages,backgroundIndex=messages.findIndex(m=>m.content.startsWith('【本轮背景开始】'));
+    const background=messages[backgroundIndex].content,archive=messages.find(m=>m.content.startsWith('【历史资料｜'));
+    assert.doesNotMatch(background,/近期经历简记|小森林|不强行转场/);
+    const archived=JSON.parse(archive.content.split('\n')[1]);
+    assert.deepEqual(archived.map(({speaker,text})=>({speaker,text:text.split('\n').at(-1)})),[{speaker:'用户',text:'前一个问题'},{speaker:'林晓薇',text:'前一个回答。'}]);
+    assert.ok(archived.every(item=>item.text.startsWith('【历史消息·')),'archive retains its historical timestamp labels');
+    assert.ok(messages.filter(m=>m.content.startsWith('【历史资料｜')).every(m=>messages.indexOf(m)<backgroundIndex));
+    const suppliedHistory=messages.map(m=>m.content).join('\n');
+    assert.match(suppliedHistory,/我看过《小森林》，里面做饭的节奏让我觉得很舒服。/);
+    assert.match(suppliedHistory,/我今天想跟你说说一个烦心事。/);
+    assert.ok(app.personalExperiences.list('miyue').some(item=>item.title==='小森林'&&item.evidence.includes('做饭')));
     assert.deepEqual(app.companionTuning.get(),settings);
-    assert.equal(calls[0].messages.at(-1).content,text);
+    assert.equal(messages.at(-1).content,text);
   });
 }
 
-test('proactive context also receives the digest, isolated from other roles',async t=>{
+test('proactive history retains shared facts without reinserting an old-experience digest',async t=>{
   const {app}=await setup(t,['测试']);
   const rows=app.store.saveChatTurn({role:'miyue',text:'最近看了什么',reply:'我看过《小森林》，里面做饭的节奏很舒服。'});
   app.personalExperiences.observe('miyue',rows);
-  assert.match(app.proactive.getRoleContext('miyue').characterContext,/近期经历简记[\s\S]*小森林/);
+  const proactive=app.proactive.getRoleContext('miyue');
+  assert.match(JSON.stringify(proactive.conversation),/小森林/);
+  assert.doesNotMatch(proactive.characterContext,/近期经历简记/);
+  assert.match(app.roleContext('miyue',{initiating:false,text:'记得你说过小森林吗'}).characterContext,/小森林/);
   assert.doesNotMatch(app.proactive.getRoleContext('wenxi').characterContext,/近期经历简记|小森林/);
 });
 

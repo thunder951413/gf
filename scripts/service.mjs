@@ -13,6 +13,15 @@ const domain = `gui/${process.getuid?.()}`;
 const target = `${domain}/${label}`;
 const xml = value => String(value).replace(/[<>&"']/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;', '"':'&quot;', "'":'&apos;' }[c]));
 
+// Homebrew replaces versioned Cellar directories on upgrades. Keep launchd on
+// its stable symlink when it resolves to the same runtime we are installing with.
+function installedNodePath() {
+  for (const candidate of ['/opt/homebrew/bin/node', '/usr/local/bin/node']) {
+    try { if (fs.realpathSync(candidate) === fs.realpathSync(process.execPath)) return candidate; } catch {}
+  }
+  return process.execPath;
+}
+
 export function serviceDefinition(appRoot, nodePath, logDir) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -65,7 +74,7 @@ async function main(command) {
   if (info) launch(['bootout', target]);
   const temp = `${plist}.${process.pid}.tmp`;
   try {
-    fs.writeFileSync(temp, serviceDefinition(root, process.execPath, runtime), { mode: 0o600 });
+    fs.writeFileSync(temp, serviceDefinition(root, installedNodePath(), runtime), { mode: 0o600 });
     execFileSync('/usr/bin/plutil', ['-lint', temp], { stdio: 'pipe' });
     fs.renameSync(temp, plist); launch(['enable', target]); launch(['bootstrap', domain, plist]);
   } finally { if (fs.existsSync(temp)) fs.unlinkSync(temp); }

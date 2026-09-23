@@ -20,6 +20,7 @@ test('default startup leaves existing reading dormant while preserving named dis
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
   app = await createApp({ ...options, startPursuits: true });
+  app.pursuits.prepareSession({ current: { kind: 'home', remainingMinutes: 120 } });
   const pursuit = app.pursuits.get('miyue');
   const rows = app.store.saveChatTurn({ role: 'miyue', text: '你读到哪里了？', reply: pursuit.stage.action });
   const message = rows.at(-1);
@@ -47,7 +48,7 @@ test('default startup leaves existing reading dormant while preserving named dis
     assert.equal(context.pursuit, undefined);
     assert.equal(context.pursuitView, undefined);
     assert.equal(context.pursuitRoute, undefined);
-    const digest = context.characterContext.split('【林雨薇近期经历简记｜虚构角色连续性】')[1]?.split('【')[0] || '';
+    const digest = context.characterContext.split('【林晓薇近期经历简记｜虚构角色连续性】')[1]?.split('【')[0] || '';
     assert.doesNotMatch(digest, /百草园|三味书屋|重读开头/);
     assert.doesNotMatch(context.characterContext, /正在持续进行的阅读/);
   }

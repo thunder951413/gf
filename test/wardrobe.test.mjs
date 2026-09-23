@@ -159,7 +159,7 @@ test('model context is concise and identifies a desktop styling setting without 
     repo.update({outfitId:outfit.id});
     const text = repo.context();
     assert.ok(text.length <= 100, `${outfit.id}: ${text.length}`);
-    assert.match(text, /林雨薇当前衣着/u);
+    assert.match(text, /林晓薇当前衣着/u);
     assert.doesNotMatch(text, /正在穿|换上|场景/u);
   }
 });

@@ -204,6 +204,10 @@ struct MessageTracker {
         self.cursor = cursor; self.pendingID = pendingID
     }
 
+    func canIngestWithoutUnread(_ messages: [DesktopMessage]) -> Bool {
+        initialized || (cursor.map { id in messages.contains { $0.speaker == "assistant" && $0.id == id } } ?? false)
+    }
+
     mutating func ingest(_ messages: [DesktopMessage], unreadIDs: Set<String> = []) -> DesktopMessage? {
         let assistants = messages.filter { $0.speaker == "assistant" }
         var incoming: [DesktopMessage]

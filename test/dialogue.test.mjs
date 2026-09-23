@@ -50,7 +50,7 @@ test('online friend proactive conversation gets life events and recent chat with
   const result=await app.proactive.runNow();assert.equal(result.delivered,true);
   const quoted=requests[0].messages.filter(m=>m.role==='user').map(m=>m.content).join('\n');
   assert.ok(quoted.includes('先聊聊你的兴趣吧'));assert.ok(!quoted.includes(story.nodes.name.chatFacts[0]));
-  assert.ok(requests[0].messages[0].content.includes('林雨薇'));assert.equal(result.message.proactiveKind,'life');
+  assert.ok(requests[0].messages[0].content.includes('林晓薇'));assert.equal(result.message.proactiveKind,'life');
   assert.ok(requests[0].messages.some(message=>message.content.includes('【本轮触发方式：主动联系】')));
   assert.ok(!quoted.includes(story.nodes.name.body));
   assert.equal(app.store.getMessages('miyue')[1].text,story.nodes.name.body);assert.equal(app.store.getStory().node.id,'name');

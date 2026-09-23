@@ -9,6 +9,11 @@ const contents=path.join(app,'Contents');
 rmSync(app,{recursive:true,force:true});
 mkdirSync(path.join(contents,'MacOS'),{recursive:true});
 mkdirSync(path.join(contents,'Resources'),{recursive:true});
+const iconRenderer=path.join(root,'build','render-app-icon');
+const iconset=path.join(root,'build','Youjian.iconset');
+execFileSync('/usr/bin/xcrun',['swiftc',path.join(root,'MenuBarIcon.swift'),path.join(root,'render-app-icon.swift'),'-framework','AppKit','-o',iconRenderer],{stdio:'inherit'});
+execFileSync(iconRenderer,[iconset],{stdio:'inherit'});
+execFileSync('/usr/bin/iconutil',['-c','icns',iconset,'-o',path.join(contents,'Resources','Youjian.icns')],{stdio:'inherit'});
 const assetsRoot=path.join(root,'assets');
 const manifestPath=path.join(assetsRoot,'visual-catalog.json');
 if(existsSync(manifestPath)){
@@ -37,6 +42,7 @@ writeFileSync(path.join(contents,'Info.plist'),`<?xml version="1.0" encoding="UT
 <key>CFBundleDisplayName</key><string>有间桌面</string>
 <key>CFBundleIdentifier</key><string>local.youjian.desktop</string>
 <key>CFBundleExecutable</key><string>YoujianDesktop</string>
+<key>CFBundleIconFile</key><string>Youjian.icns</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>0.5.4</string>
 <key>CFBundleVersion</key><string>11</string>
@@ -47,7 +53,7 @@ writeFileSync(path.join(contents,'Info.plist'),`<?xml version="1.0" encoding="UT
 <key>NSMicrophoneUsageDescription</key><string>在有间聊天窗口中录制你主动发送的语音。</string>
 </dict></plist>`);
 execFileSync('/usr/bin/xcrun',['swiftc','-swift-version','5','-O','-target',`${process.arch==='arm64'?'arm64':'x86_64'}-apple-macosx14.0`,
-  path.join(root,'CompanionCore.swift'),path.join(root,'AttentionGesture.swift'),path.join(root,'CharacterScene.swift'),path.join(root,'SceneImages.swift'),path.join(root,'PhotoPetView.swift'),path.join(root,'VisualStudio.swift'),path.join(root,'main.swift'),
+  path.join(root,'CompanionCore.swift'),path.join(root,'AttentionGesture.swift'),path.join(root,'CharacterScene.swift'),path.join(root,'SceneImages.swift'),path.join(root,'PhotoPetView.swift'),path.join(root,'VisualStudio.swift'),path.join(root,'MenuBarIcon.swift'),path.join(root,'main.swift'),
   '-framework','AppKit','-framework','SceneKit','-framework','WebKit','-o',path.join(contents,'MacOS','YoujianDesktop')],{stdio:'inherit'});
 execFileSync('/usr/bin/codesign',['--force','--sign','-',app],{stdio:'inherit'});
 console.log(`已构建：${app}`);

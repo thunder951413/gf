@@ -38,6 +38,15 @@ import AppKit
         assert(abs(wideCover.width/wideCover.height-16.0/9.0)<0.001 && wideCover.width>displayBounds.width && wideCover.height==displayBounds.height,"Cover may crop but must never stretch")
         let tallContain=sceneImageRect(imageSize:NSSize(width:900,height:1600),bounds:displayBounds,fit:"contain")
         assert(tallContain.height==350 && tallContain.width<300)
+        let monitor = NSRect(x: -1440, y: 30, width: 1440, height: 870)
+        let art = NSRect(x: 80, y: 40, width: 140, height: 310)
+        let edge = characterPanelOrigin(proposed: NSPoint(x: 999, y: -999), visible: art, screen: monitor)
+        assert(edge.x + art.maxX == monitor.maxX - 2 && edge.y + art.minY == monitor.minY + 2, "Visible artwork must reach edges with only two points of margin")
+        assert(edge.x + 300 > monitor.maxX, "Transparent panel margin may extend beyond screen")
+        let opposite = characterPanelOrigin(proposed: NSPoint(x: -9999, y: 9999), visible: art, screen: monitor)
+        assert(opposite.x + art.minX == monitor.minX + 2 && opposite.y + art.maxY == monitor.maxY - 2, "Top and left edges protect all visible artwork on secondary displays")
+        let middle = NSPoint(x: -800, y: 160)
+        assert(characterPanelOrigin(proposed: middle, visible: art, screen: monitor) == middle, "Dragging inside the screen must preserve position")
         let uploadBase=URL(string:"http://127.0.0.1:8765/")!
         assert(sceneImageURL("/api/scene-images/files/"+String(repeating:"a",count:64)+".png",baseURL:uploadBase)?.host=="127.0.0.1")
         for bad in ["https://example.com/a.png","/api/scene-images/files/../../secret","/api/scene-images/files/test.svg","//evil.test/x.png"]{assert(sceneImageURL(bad,baseURL:uploadBase)==nil)}
@@ -59,6 +68,7 @@ import AppKit
         let uploaded=UploadedSceneView(frame:NSRect(x:0,y:0,width:100,height:100));uploaded.image=transparent
         assert(uploaded.containsImage(at:NSPoint(x:20,y:50)),"Visible uploaded pixels should remain clickable")
         assert(!uploaded.containsImage(at:NSPoint(x:80,y:50)),"Transparent uploaded pixels must pass desktop clicks through")
+        assert(uploaded.visibleArtworkRect.maxX < 60, "Transparent image margins must not contribute to screen clamping")
         final class RequestLog { var paths: [String] = [] }
         let log = RequestLog()
         let suite = "local.youjian.desktop.core-tests.\(ProcessInfo.processInfo.processIdentifier)"
@@ -146,6 +156,12 @@ import AppKit
         assert(reset.ingest([message("new-history")]) == nil, "Do not replay replaced history")
         var unread = MessageTracker()
         assert(unread.ingest([message("old"),message("proactive")],unreadIDs:["proactive"])?.id == "proactive")
+        let delayedInbox = MessageTracker()
+        assert(!delayedInbox.canIngestWithoutUnread([message("old")]), "First poll without an inbox must not baseline old history")
+        var savedCursor = MessageTracker(cursor: "old")
+        assert(savedCursor.canIngestWithoutUnread([message("old"), message("new")]), "A saved cursor permits messages even when the inbox request fails")
+        assert(savedCursor.ingest([message("old"), message("new")])?.id == "new")
+        assert(savedCursor.canIngestWithoutUnread([message("old"), message("new")]), "Subsequent polls must not depend on the inbox endpoint")
         func life(_ activity: String, type: String? = nil) throws -> LifeSnapshot {
             let world: [String:Any] = ["activity":activity,"location":"苏州","event":type.map{["type":$0]} as Any? ?? NSNull()]
             return try JSONDecoder().decode(LifeSnapshot.self,from:JSONSerialization.data(withJSONObject:["world":world]))
@@ -176,7 +192,7 @@ import AppKit
         assert(decodedWardrobe == .demo, "Confirmed wardrobe must survive local persistence")
         let visualJSON: [String: Any] = [
             "version": 1,
-            "identity": ["id": "lin-yuwei-v1", "name": "林雨薇", "age": 27],
+            "identity": ["id": "lin-yuwei-v1", "name": "林晓薇", "age": 27],
             "hairstyles": [["id": "long", "name": "长发", "status": "ready"]],
             "outfits": [["id": "coat", "name": "外套", "status": "ready"]],
             "scenes": [["id": "snow", "name": "雪夜", "status": "ready", "season": "winter",

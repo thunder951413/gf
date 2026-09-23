@@ -5,6 +5,17 @@ import { recentEventDigest, RECENT_EVENTS_BUDGET_CHARS } from '../lib/recent-eve
 const now = new Date('2026-09-07T12:00:00Z');
 const event = { id: 'trip', title: '丽江短途游', startedAt: '2026-09-04T12:00:00Z', phase: { title: '在丽江', location: '丽江', activity: '逛菜市场，尝了米线' }, phases: [{ activity: '明天抵达大理，尚未发生' }] };
 
+test('already repeated experiences retain their identity without reintroducing all details; naming one restores detail',()=>{
+  const thread={id:'collage',title:'用旧纸片拼一张小幅拼贴',history:[{deliveredAt:'2026-09-07T10:00:00Z',title:'装好相框',text:'我把旧纸片拼贴装进木相框，放在书架旁。'}]};
+  const conversation=[{speaker:'assistant',text:'旧纸片做成拼贴了。'},{speaker:'user',text:'好看。'},{speaker:'assistant',text:'纸片拼贴已经装好。'}];
+  const common=recentEventDigest({now,thread,conversation,userText:'你最近还有什么小事呀？'});
+  assert.match(common,/近期已分享多次/);
+  assert.doesNotMatch(common,/放在书架旁/);
+  const explicit=recentEventDigest({now,thread,conversation,userText:'那张拼贴放在哪里了？'});
+  assert.match(explicit,/放在书架旁/);
+  assert.doesNotMatch(explicit,/近期已分享多次/);
+});
+
 test('current and historical life are concise, deduplicated and do not expose scheduled phases', () => {
   const result = recentEventDigest({ now, life: { active: event, recent: [event] } });
   assert.equal(result.split('丽江短途游').length - 1, 1);

@@ -1,0 +1,295 @@
+{
+  "version": 1,
+  "roleId": "miyue",
+  "fixedNow": "2026-09-16T12:00:00.000Z",
+  "recentDistractors": [
+    {
+      "at": "2026-09-15T01:00:00.000Z",
+      "text": "早上把窗帘洗了。",
+      "reply": "晾起来以后屋里亮了不少。"
+    },
+    {
+      "at": "2026-09-15T02:00:00.000Z",
+      "text": "午饭想吃清淡一点。",
+      "reply": "可以看看当下想吃什么。"
+    },
+    {
+      "at": "2026-09-15T03:00:00.000Z",
+      "text": "路边新开了一家花店。",
+      "reply": "经过时闻到一点叶子的味道。"
+    },
+    {
+      "at": "2026-09-15T04:00:00.000Z",
+      "text": "刚把桌面收拾干净。",
+      "reply": "空出一块地方看着舒服。"
+    },
+    {
+      "at": "2026-09-15T05:00:00.000Z",
+      "text": "傍晚云层很低。",
+      "reply": "天色像是很快就会暗下来。"
+    },
+    {
+      "at": "2026-09-15T06:00:00.000Z",
+      "text": "今天听了一会儿纯音乐。",
+      "reply": "没有歌词的时候注意力会落到节奏上。"
+    },
+    {
+      "at": "2026-09-15T07:00:00.000Z",
+      "text": "睡前翻了几页杂志。",
+      "reply": "随手看看，不必赶着读完。"
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "heldout_filling",
+      "why": "Unseen private food preference recalled through a broader category, without substituting a popular default.",
+      "seeds": [
+        {
+          "at": "2026-08-11T01:00:00.000Z",
+          "text": "中秋礼盒我选的是桂花栗蓉月饼，不喜欢蛋黄馅。",
+          "reply": "记下你挑的口味了。"
+        }
+      ],
+      "turns": [
+        {
+          "id": "check",
+          "text": "之前我选的那盒节日点心，里面是什么馅？"
+        }
+      ],
+      "criteria": {
+        "evidenceAny": [
+          "桂花栗蓉"
+        ],
+        "evidenceNone": [],
+        "replyFacts": [
+          "桂花栗蓉"
+        ],
+        "prohibited": [
+          "莲蓉"
+        ]
+      }
+    },
+    {
+      "id": "heldout_cancelled",
+      "why": "A cancelled private trip must stay cancelled even if the original plan matches the question more closely.",
+      "seeds": [
+        {
+          "at": "2026-08-12T01:00:00.000Z",
+          "text": "我订了周末去景德镇的行程，想看瓷器。",
+          "reply": "有空慢慢逛。"
+        },
+        {
+          "at": "2026-08-23T01:00:00.000Z",
+          "text": "景德镇那趟已经取消，车票也退了，没有改期。",
+          "reply": "那就先不惦记这趟了。"
+        }
+      ],
+      "turns": [
+        {
+          "id": "check",
+          "text": "原先周末出门逛瓷都的计划还要去吗？"
+        }
+      ],
+      "criteria": {
+        "evidenceAny": [
+          "已经取消"
+        ],
+        "evidenceNone": [],
+        "replyFacts": [
+          "取消"
+        ],
+        "prohibited": [
+          "照常去",
+          "还没退票"
+        ]
+      }
+    },
+    {
+      "id": "heldout_name_correction",
+      "why": "A literal name correction is selected with its old source but the answer uses the corrected collaborator name.",
+      "seeds": [
+        {
+          "at": "2026-08-13T01:00:00.000Z",
+          "text": "和我一起做海报的搭档叫许南。",
+          "reply": "知道了。"
+        },
+        {
+          "at": "2026-08-22T01:00:00.000Z",
+          "text": "更正一下，搭档是许楠，木字旁的楠，不是许南。",
+          "reply": "好，用木字旁的楠。"
+        }
+      ],
+      "turns": [
+        {
+          "id": "check",
+          "text": "我那个一起画宣传物料的人，名字怎么写？"
+        }
+      ],
+      "criteria": {
+        "evidenceAny": [
+          "许楠"
+        ],
+        "evidenceNone": [],
+        "replyFacts": [
+          "许楠"
+        ],
+        "prohibited": [
+          "叫许南"
+        ]
+      }
+    },
+    {
+      "id": "heldout_two_people",
+      "why": "Two similar craft-learning episodes remain attached to their actual speaker in a joint recall question.",
+      "seeds": [
+        {
+          "at": "2026-08-15T01:00:00.000Z",
+          "text": "我在宁波跟唐老师学过篆刻，刻的是闲章。",
+          "reply": "我的话，是在南京跟小岑学过扎染，做了一条围巾。"
+        }
+      ],
+      "turns": [
+        {
+          "id": "check",
+          "text": "我们两个以前分别在哪里学过什么手艺？"
+        }
+      ],
+      "criteria": {
+        "evidenceAny": [
+          "宁波",
+          "南京"
+        ],
+        "evidenceNone": [],
+        "replyFacts": [
+          "宁波",
+          "篆刻",
+          "南京",
+          "扎染"
+        ],
+        "prohibited": [
+          "我们在宁波一起"
+        ]
+      }
+    },
+    {
+      "id": "heldout_ambiguous",
+      "why": "When two gifts equally fit a vague reference, ask which item rather than inventing a single recipient.",
+      "seeds": [
+        {
+          "at": "2026-08-14T01:00:00.000Z",
+          "text": "我做了一只藤编篮子，送给了阿姨。",
+          "reply": "挺用心的一份。"
+        },
+        {
+          "at": "2026-08-25T01:00:00.000Z",
+          "text": "我又做了一盏纸灯，送给了哥哥。",
+          "reply": "也是自己做的礼物。"
+        }
+      ],
+      "turns": [
+        {
+          "id": "check",
+          "text": "我做的那件礼物送给谁了？"
+        }
+      ],
+      "criteria": {
+        "evidenceAny": [
+          "藤编篮子",
+          "纸灯"
+        ],
+        "evidenceNone": [],
+        "replyFacts": [],
+        "prohibited": [
+          "送给了妈妈",
+          "送给了朋友"
+        ]
+      }
+    },
+    {
+      "id": "heldout_relative_date",
+      "why": "Mechanical source-time annotations turn a historical relative day into a calendar date, without treating it as tomorrow now.",
+      "seeds": [
+        {
+          "at": "2026-08-20T01:00:00.000Z",
+          "text": "明天下午去给小提琴换琴弦，预约在三点。",
+          "reply": "预约记住了。"
+        }
+      ],
+      "turns": [
+        {
+          "id": "check",
+          "text": "我之前预约去处理乐器的那次，是哪一天几点？"
+        }
+      ],
+      "criteria": {
+        "evidenceAny": [
+          "2026-08-21"
+        ],
+        "evidenceNone": [],
+        "replyFacts": [
+          "21",
+          "三点"
+        ],
+        "prohibited": [
+          "9月17",
+          "九月十七"
+        ]
+      }
+    },
+    {
+      "id": "heldout_topic_reset",
+      "why": "An explicit new subject must not pull an unwanted running setback into either reply or preview.",
+      "seeds": [
+        {
+          "at": "2026-08-19T01:00:00.000Z",
+          "text": "半马训练中途退赛让我很难受。",
+          "reply": "你为这次准备过很久。"
+        }
+      ],
+      "turns": [
+        {
+          "id": "check",
+          "text": "别再提跑步那件事了，我想聊刚看的悬疑电影。"
+        }
+      ],
+      "criteria": {
+        "evidenceAny": [],
+        "evidenceNone": [
+          "半马训练中途退赛"
+        ],
+        "replyFacts": [],
+        "prohibited": [
+          "退赛",
+          "半马"
+        ]
+      }
+    },
+    {
+      "id": "heldout_new_success",
+      "why": "An unseen spoken-performance milestone may acknowledge prior setbacks without imposing a relationship update or asking for an unnecessary debrief.",
+      "seeds": [
+        {
+          "at": "2026-08-16T01:00:00.000Z",
+          "text": "上次开放麦我忘词了三回，拿着稿子都没讲完。",
+          "reply": "那次确实卡住了。"
+        }
+      ],
+      "turns": [
+        {
+          "id": "check",
+          "text": "今天开放麦，我没看稿子讲完了整整三分钟！"
+        }
+      ],
+      "criteria": {
+        "evidenceAny": [
+          "忘词了三回"
+        ],
+        "evidenceNone": [],
+        "replyFacts": [],
+        "prohibited": [
+          "以后我每天监督你"
+        ]
+      }
+    }
+  ]
+}

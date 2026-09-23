@@ -48,7 +48,7 @@ const server=http.createServer(async(req,res)=>{
   }
   if(req.url==='/'){
     res.setHeader('Content-Type','text/html; charset=utf-8');
-    return res.end('<body style="background:#f7f0e9;font:20px -apple-system;padding:50px;color:#54414b"><h1>有间 · 桌面连接测试</h1><p>气泡点击已打开聊天窗口。本页不连接生产数据库或模型。</p><button class="role-button" data-role="miyue">林雨薇</button><p><textarea placeholder="独立测试，不会发送真实消息" style="font:inherit;width:80%;height:120px"></textarea></p></body>');
+    return res.end('<body style="background:#f7f0e9;font:20px -apple-system;padding:50px;color:#54414b"><h1>有间 · 桌面连接测试</h1><p>气泡点击已打开聊天窗口。本页不连接生产数据库或模型。</p><button class="role-button" data-role="miyue">林晓薇</button><p><textarea placeholder="独立测试，不会发送真实消息" style="font:inherit;width:80%;height:120px"></textarea></p></body>');
   }
   res.statusCode=404;json({error:'not found'});
 });

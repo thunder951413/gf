@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f6f1eb">
-  <title>林雨薇 · 微信连接</title>
+  <title>林晓薇 · 微信连接</title>
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/weixin.css">
   <script src="/weixin.js" type="module"></script>
@@ -12,14 +12,14 @@
 <body>
   <header class="site-header">
     <a href="/">← 回到有间</a>
-    <div><p class="eyebrow">微信配对</p><h1>林雨薇的微信</h1></div>
+    <div><p class="eyebrow">微信配对</p><h1>林晓薇的微信</h1></div>
     <button id="refresh" class="quiet-button" type="button">刷新</button>
   </header>
   <main>
     <p id="page-status" class="page-status" role="status" aria-live="polite">正在读取连接状态…</p>
     <section class="hero-card" aria-labelledby="connection-heading">
       <div class="section-heading"><div><p class="eyebrow">微信配对</p><h2 id="connection-heading">在手机上确认连接</h2></div><span id="connection-badge" class="badge">读取中</span></div>
-      <p class="intro">用微信扫描二维码并在手机上确认。聊天对象固定为林雨薇。</p>
+      <p class="intro">用微信扫描二维码并在手机上确认。聊天对象固定为林晓薇。</p>
       <div class="pairing-grid">
         <div class="qr-card">
           <div id="qr-placeholder" class="qr-placeholder">点击开始配对后显示二维码</div>
@@ -40,12 +40,12 @@
     </section>
     <form id="settings-form" class="card">
       <div class="section-heading"><div><h2>连接设置</h2><p class="note">关闭连接后不会通过微信收发消息。主动陪伴只在连接开启时才可能投递。</p></div></div>
-      <label class="check"><input id="enabled" type="checkbox"> 开启林雨薇的微信连接</label>
-      <label class="check"><input id="proactive-enabled" type="checkbox"> 允许林雨薇主动在微信留下消息</label>
+      <label class="check"><input id="enabled" type="checkbox"> 开启林晓薇的微信连接</label>
+      <label class="check"><input id="proactive-enabled" type="checkbox"> 允许林晓薇主动在微信留下消息</label>
       <div class="form-actions"><button id="save-settings" class="primary" type="submit">保存设置</button></div>
       <p id="settings-status" class="note" role="status"></p>
     </form>
-    <section class="card privacy-card"><h2>这段聊天怎么保存</h2><p>微信里的对话会进入林雨薇的既有聊天记录与记忆流程，和有间内与她的聊天共用同一段关系历史。它不会转给其他角色；这里只有林雨薇会回复。</p></section>
+    <section class="card privacy-card"><h2>这段聊天怎么保存</h2><p>微信里的对话会进入林晓薇的既有聊天记录与记忆流程，和有间内与她的聊天共用同一段关系历史。桌面端始终显示所有消息；桌面端发起的对话只在桌面回复，微信发起的对话通过微信回复。主动消息仅在最近一次输入来自微信时向微信发送。它不会转给其他角色；这里只有林晓薇会回复。</p></section>
   </main>
 </body>
 </html>

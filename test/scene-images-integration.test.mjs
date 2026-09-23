@@ -18,6 +18,6 @@ test('API keeps upload out of chat and model, serves immutable allowlisted bytes
   const badMime=await fetch(f.base+'/api/scene-images',{method:'POST',headers:{'content-type':'text/plain'},body:JSON.stringify({sceneId:'study',image:png})});assert.equal(badMime.status,415);
   const truncatedVp8x=Buffer.alloc(25);truncatedVp8x.write('RIFF',0);truncatedVp8x.writeUInt32LE(17,4);truncatedVp8x.write('WEBPVP8X',8);
   const malformed=await f.request('/api/scene-images',{sceneId:'study',image:`data:image/webp;base64,${truncatedVp8x.toString('base64')}`});assert.equal(malformed.response.status,400);assert.equal(malformed.body.code,'INVALID_IMAGE');
-  const chat=await f.request('/api/chat',{role:'miyue',text:'你现在穿什么？'});assert.equal(chat.response.status,200);const prompt=f.calls.at(-1).messages.map(x=>x.content).join('\n');assert.match(prompt,/用户亲自选择的完整场景照片/);assert.match(prompt,/无法从这张图片推断/);assert.doesNotMatch(prompt,/林雨薇当前衣着：/);
+  const chat=await f.request('/api/chat',{role:'miyue',text:'你现在穿什么？'});assert.equal(chat.response.status,200);const prompt=f.calls.at(-1).messages.map(x=>x.content).join('\n');assert.match(prompt,/用户亲自选择的完整场景照片/);assert.match(prompt,/无法从这张图片推断/);assert.doesNotMatch(prompt,/林晓薇当前衣着：/);
   assert.ok((await f.request('/api/appearance')).body.current,'legacy appearance remains available');
 });

@@ -49,12 +49,12 @@ test('retry exhaustion fails durably and non-retryable errors fail immediately',
   assert.equal(authCalls,1);assert.equal(auth.queue.get('miyue').retryCount,0);assert.match(auth.queue.get('miyue').error,/认证失败/);
 });
 
-test('companion behavior refusal never retries and stores only bounded issue metadata',async t=>{
+test('companion generation refusal retries within budget and stores only bounded issue metadata',async t=>{
   let calls=0;
   const f=fixture(t,{execute:async()=>{calls++;throw retryable('COMPANION_BEHAVIOR_REJECTED',{retryable:true,issues:['missing_affection_act',{code:'question_budget_exceeded'},'bad issue with secret body'],draft:'private response body'});}});
   f.queue.submit('miyue','自然聊聊','retry-behavior-001');await until(()=>f.queue.get('miyue').phase==='failed');
-  assert.equal(calls,1);assert.equal(f.queue.get('miyue').retryCount,0);assert.match(f.queue.get('miyue').error,/回复检查/);assert.doesNotMatch(f.queue.get('miyue').error,/private|secret|affection/i);
-  const failure={...f.store.db.prepare('SELECT error_code,issue_codes,scheduled FROM chat_failures').get()};
+  assert.equal(calls,3);assert.equal(f.queue.get('miyue').retryCount,2);assert.match(f.queue.get('miyue').error,/已自动重试 2 次/);assert.doesNotMatch(f.queue.get('miyue').error,/private|secret|affection/i);
+  const failure={...f.store.db.prepare('SELECT error_code,issue_codes,scheduled FROM chat_failures ORDER BY id DESC LIMIT 1').get()};
   assert.deepEqual(failure,{error_code:'COMPANION_BEHAVIOR_REJECTED',issue_codes:'["missing_affection_act","question_budget_exceeded"]',scheduled:0});
   assert.equal(f.store.db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='chat_failures'").get().sql.includes('draft'),false);
 });

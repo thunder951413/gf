@@ -29,17 +29,51 @@ test('metadata is editable and validation is strict',t=>{
   assert.throws(()=>repo.upload({image:transparent,unknown:true}),{code:'INVALID_IMAGE_LIBRARY'});assert.throws(()=>repo.metadata({id,sceneIds:['missing']}),{code:'INVALID_IMAGE_LIBRARY'});assert.equal(repo.file('../life.sqlite'),null);assert.equal(repo.file('0'.repeat(64)+'.png'),null);
 });
 
+test('multi-activity metadata is canonical, deduplicated, and legacy activity remains available',t=>{
+  const {repo}=fixture(t);const id=repo.upload({image:transparent,activity:'读书',activities:['reading','work','reading']}).items[0].id;
+  const item=repo.snapshot().items.find(entry=>entry.id===id);
+  assert.equal(item.activity,'读书');assert.deepEqual(item.activities,['reading','work']);
+  assert.deepEqual(repo.metadata({id,activities:[]}).items.find(entry=>entry.id===id).activities,[]);
+  assert.throws(()=>repo.metadata({id,activities:['sleepy']}),/活动分类无效/);
+  assert.throws(()=>repo.metadata({id,activities:['sleep','rest']}),/睡眠活动不能与其他活动分类共用/);
+  assert.throws(()=>repo.upload({image:opaque,activities:['sleep','work']}),/睡眠活动不能与其他活动分类共用/);
+});
+
+test('snapshots expose a season and environment coverage matrix for the approved desktop pool',t=>{
+  const {repo}=fixture(t);const id=repo.upload({image:rgba(0),activities:['work'],background:'transparent',seasons:['summer'],environment:'indoor'}).items[0].id;
+  repo.metadata({id,desktopEligible:true});
+  const cell=repo.snapshot().coverage.groups.work.summer.indoor;
+  assert.deepEqual(cell.ids,[id]);assert.equal(cell.count,1);assert.equal(cell.fallbackUsed,false);
+});
+
 test('season and environment metadata validate strictly and override legacy inference',t=>{
   const {repo}=fixture(t);const inferred=repo.upload({image:transparent,name:'冬日街角',tags:['街边']}).items[0];
   assert.deepEqual(inferred.seasons,['winter']);assert.equal(inferred.environment,'outdoor');
-  assert.deepEqual(inferred.classificationInferred,{seasons:true,environment:true});
+  assert.deepEqual(inferred.classificationInferred,{seasons:true,environment:true,activities:true});
   const explicit=repo.metadata({id:inferred.id,seasons:[],environment:'indoor'}).items[0];
   assert.deepEqual(explicit.seasons,[]);assert.equal(explicit.environment,'indoor');
-  assert.deepEqual(explicit.classificationInferred,{seasons:false,environment:false});
+  assert.deepEqual(explicit.classificationInferred,{seasons:false,environment:false,activities:true});
   assert.throws(()=>repo.metadata({id:inferred.id,seasons:'winter'}),/适用季节无效/);
   assert.throws(()=>repo.metadata({id:inferred.id,seasons:['monsoon']}),/适用季节无效/);
   assert.throws(()=>repo.metadata({id:inferred.id,environment:'outside'}),/室内外分类无效/);
   assert.throws(()=>repo.upload({image:opaque,seasons:['winter','spring','summer','autumn','winter'],environment:'any'}),/适用季节无效/);
+});
+
+test('outfit style is optional, location scope defaults to any, and both validate',t=>{
+  const {repo}=fixture(t);const id=repo.upload({image:transparent,outfitStyle:'lingerie',locationScope:'home'}).items[0].id;
+  let item=repo.snapshot().items.find(entry=>entry.id===id);
+  assert.equal(item.outfitStyle,'lingerie');assert.equal(item.locationScope,'home');
+  item=repo.metadata({id,outfitStyle:null,locationScope:'any'}).items.find(entry=>entry.id===id);
+  assert.equal(item.outfitStyle,null);assert.equal(item.locationScope,'any');
+  assert.throws(()=>repo.upload({image:opaque,outfitStyle:'formal'}),/服装风格无效/);
+  assert.throws(()=>repo.metadata({id,locationScope:'hotel'}),/地点范围无效/);
+});
+
+test('sportswear and resort are accepted while unknown outfit styles remain invalid',t=>{
+  const {repo}=fixture(t);const sports=repo.upload({image:transparent,outfitStyle:'sportswear'}).items[0];
+  const resort=repo.upload({image:opaque,outfitStyle:'resort'}).items.find(item=>item.id!==sports.id);
+  assert.equal(sports.outfitStyle,'sportswear');assert.equal(resort.outfitStyle,'resort');
+  assert.throws(()=>repo.metadata({id:sports.id,outfitStyle:'athleisure'}),/服装风格无效/);
 });
 
 test('legacy stored metadata remains unchanged while snapshots expose inferred classification',t=>{

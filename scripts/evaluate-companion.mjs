@@ -43,6 +43,6 @@ try{
  report.metrics={turns:report.turns.length,calls:report.requests.length,questionTurns:report.turns.filter(t=>/[？?]/u.test(t.reply)).length,meanReplyChars:Math.round(report.turns.reduce((sum,t)=>sum+t.reply.length,0)/report.turns.length),failedChecks:report.checks.filter(c=>!c.pass).length};
 }catch(error){report.error=error.message;process.exitCode=1;}finally{
  save();if(app)await app.close();fs.rmSync(path.join(dataDir,'provider.json'),{force:true});
- const text=['# 陪伴连续对话验收',`模型：${report.model} · 套件：${suiteVersion}`,`人工自然度审阅：${report.reviewStatus}。程序检查仅验证状态、记录和投递，不替代原话审阅。`,...report.turns.flatMap(t=>[`## ${t.id}`,`用户：${t.user}`,`林雨薇：${t.reply||t.error}`,`耗时 ${(t.durationMs/1000).toFixed(1)} 秒 · ${t.calls} 次调用 · HTTP ${t.status}`,`检查：${t.checks.map(c=>c.name+' '+(c.pass?'通过':'失败')).join('；')||'审阅对话内容'}`,`审阅重点：${t.reviewPrompt}`]),`\n指标：${JSON.stringify(report.metrics||{})}`].join('\n\n');
+ const text=['# 陪伴连续对话验收',`模型：${report.model} · 套件：${suiteVersion}`,`人工自然度审阅：${report.reviewStatus}。程序检查仅验证状态、记录和投递，不替代原话审阅。`,...report.turns.flatMap(t=>[`## ${t.id}`,`用户：${t.user}`,`林晓薇：${t.reply||t.error}`,`耗时 ${(t.durationMs/1000).toFixed(1)} 秒 · ${t.calls} 次调用 · HTTP ${t.status}`,`检查：${t.checks.map(c=>c.name+' '+(c.pass?'通过':'失败')).join('；')||'审阅对话内容'}`,`审阅重点：${t.reviewPrompt}`]),`\n指标：${JSON.stringify(report.metrics||{})}`].join('\n\n');
  fs.writeFileSync(path.join(folder,'transcript.md'),text,{mode:0o600});console.log('报告：'+output);
 }

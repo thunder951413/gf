@@ -28,6 +28,12 @@ func sceneImageRect(imageSize: NSSize, bounds: NSRect, fit: String) -> NSRect {
     return NSRect(x: bounds.midX-size.width/2, y: bounds.midY-size.height/2, width: size.width, height: size.height)
 }
 
+// Clamp the visible artwork, allowing transparent window margins to cross the edge.
+func characterPanelOrigin(proposed: NSPoint, visible: NSRect, screen: NSRect, gap: CGFloat = 2) -> NSPoint {
+    NSPoint(x: max(screen.minX + gap - visible.minX, min(proposed.x, screen.maxX - gap - visible.maxX)),
+            y: max(screen.minY + gap - visible.minY, min(proposed.y, screen.maxY - gap - visible.maxY)))
+}
+
 func shouldAcceptSceneImageSnapshot(_ incoming: SceneImageSnapshot, over current: SceneImageSnapshot?) -> Bool {
     current.map { incoming.revision >= $0.revision } ?? true
 }
@@ -66,6 +72,13 @@ final class UploadedSceneView: NSView {
     }
     override var isOpaque: Bool { false }
     var displayedRect: NSRect { image.map { sceneImageRect(imageSize:$0.size,bounds:bounds,fit:fit).intersection(bounds) } ?? bounds }
+    var visibleArtworkRect: NSRect {
+        guard let image, let alphaMask else { return displayedRect }
+        let rect = sceneImageRect(imageSize: image.size, bounds: bounds, fit: fit)
+        let opaque = alphaMask.opaqueSourceRect
+        return NSRect(x: rect.minX + rect.width * opaque.x, y: rect.minY + rect.height * opaque.yFromBottom,
+                      width: rect.width * opaque.width, height: rect.height * opaque.height).intersection(bounds)
+    }
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
         guard let image else {
@@ -133,7 +146,7 @@ final class SceneImageStudioController: NSObject, NSWindowDelegate {
         return NSImage(cgImage:cg,size:NSSize(width:cg.width,height:cg.height))
     }
     func show(){
-        if window==nil { let w=NSWindow(contentRect:NSRect(x:0,y:0,width:950,height:700),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false);w.title="林雨薇 · 场景图片";w.minSize=NSSize(width:900,height:650);w.isReleasedWhenClosed=false;w.delegate=self;w.appearance=NSAppearance(named:.aqua);w.center();window=w }
+        if window==nil { let w=NSWindow(contentRect:NSRect(x:0,y:0,width:950,height:700),styleMask:[.titled,.closable,.miniaturizable,.resizable],backing:.buffered,defer:false);w.title="林晓薇 · 场景图片";w.minSize=NSSize(width:900,height:650);w.isReleasedWhenClosed=false;w.delegate=self;w.appearance=NSAppearance(named:.aqua);w.center();window=w }
         rebuild();NSApp.activate(ignoringOtherApps:true);window?.makeKeyAndOrderFront(nil);refresh();Task { @MainActor in await self.loadSelectedPreview() }
     }
     func refresh(){

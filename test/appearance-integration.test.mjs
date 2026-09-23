@@ -9,7 +9,7 @@ const choice=(id,name,status='ready',extra={})=>({id,name,status,...extra});
 const asset=(id,outfitId,extra={})=>({id,identityId:'lin-yuwei-v1',hairstyleId:'original-long',outfitId,
   poseId:'idle',expressionId:'soft-smile',paletteId:'original',file:`looks/${id}.png`,status:'approved',width:1024,height:1536,...extra});
 function catalogFixture(){return {
-  version:1,identity:{id:'lin-yuwei-v1',name:'林雨薇',age:27},
+  version:1,identity:{id:'lin-yuwei-v1',name:'林晓薇',age:27},
   hairstyles:[choice('original-long','原始长发')],
   outfits:[choice('everyday','日常格纹','ready',{description:'格纹外套和蓝色牛仔裤。'}),choice('soft-knit','温柔针织','ready',{description:'燕麦针织开衫和灰蓝长裙。'}),choice('homewear','舒适居家','ready',{description:'暗玫瑰居家上衣。'})],
   scenes:[choice('study','书房','ready',{season:'all',compatibleOutfitIds:['everyday','soft-knit','homewear']}),choice('autumn-cafe','秋日咖啡馆','ready',{season:'autumn',compatibleOutfitIds:['everyday','soft-knit']})],
@@ -52,7 +52,7 @@ test('actual model request receives only current clothing context and appearance
   const chat=await f.request('/api/chat',{role:'miyue',text:'你今天穿什么？'});
   assert.equal(chat.status,200,JSON.stringify(chat.body));
   const prompt=f.calls.at(-1).messages.map(message=>message.content).join('\n');
-  assert.match(prompt,/林雨薇当前衣着：温柔针织/);
+  assert.match(prompt,/林晓薇当前衣着：温柔针织/);
   assert.match(prompt,/燕麦针织开衫和灰蓝长裙/);
   assert.doesNotMatch(prompt,/日常格纹|舒适居家|looks\/|"assets"|"manifest"/);
 });

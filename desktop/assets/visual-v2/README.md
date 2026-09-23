@@ -1,6 +1,6 @@
 # visual-v2 素材目录
 
-此目录保存林雨薇 v2 写实视觉素材：`cutouts/` 是桌面要加载的透明人物 PNG，`scenes/` 是场景背景，`masks/` 是已验收的局部换色遮罩，`recolors/` 是已验收的本地换色完整 PNG，`portraits/` 与各 `.provenance.json` 保留原始生成结果和来源记录。
+此目录保存林晓薇 v2 写实视觉素材：`cutouts/` 是桌面要加载的透明人物 PNG，`scenes/` 是场景背景，`masks/` 是已验收的局部换色遮罩，`recolors/` 是已验收的本地换色完整 PNG，`portraits/` 与各 `.provenance.json` 保留原始生成结果和来源记录。
 
 目录的唯一引用来源是上层的 [`../visual-catalog.json`](../visual-catalog.json)。不要根据文件名推测可用组合，也不要直接把 `portraits/` 当作桌面资源：只有 catalog 中 `status: "approved"` 的安全相对路径会被应用加载。
 

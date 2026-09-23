@@ -13,7 +13,7 @@ export function createDesktopControl({ api, toast }) {
     show.disabled = busy || Boolean(error);
     refresh.disabled = busy;
     badge.textContent = busy ? '正在切换' : error ? '状态未确认' : !current ? '正在读取' : !current.available ? '暂不可用' : current.running ? '已开启' : '已关闭';
-    note.textContent = error || current?.reason || (current?.running ? '桌面角色已运行。如果暂时隐藏了，点击“显示角色”即可找回。' : '开启后，林雨薇会出现在桌面上。退出桌面程序后，也可以随时从这里重新打开。');
+    note.textContent = error || current?.reason || (current?.running ? '桌面角色已运行。如果暂时隐藏了，点击“显示角色”即可找回。' : '开启后，林晓薇会出现在桌面上。退出桌面程序后，也可以随时从这里重新打开。');
   }
 
   async function load() {

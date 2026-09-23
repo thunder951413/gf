@@ -52,7 +52,7 @@ test('background rejects invalid full objects without mutation and leaves prefer
   const oversized = `data:image/png;base64,${Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(2 * 1024 * 1024)]).toString('base64')}`;
   assert.equal((await request(base, '/api/background', json({ ...saved, image: oversized }))).status, 400);
   assert.deepEqual((await request(base, '/api/background')).body, saved);
-  assert.deepEqual((await request(base, '/api/preferences')).body, { replyPace: 'natural', avatars: {} });
+  assert.deepEqual((await request(base, '/api/preferences')).body, { replyPace: 'natural', avatars: {}, historyWindowDays: 7, historyMaxTokens: 60000 });
 });
 
 test('background has a three-megabyte request limit', async t => {

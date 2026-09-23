@@ -129,6 +129,28 @@ test('two malformed drafts create no sent memory or false progress receipt',asyn
   assert.equal(app.pursuits.get('miyue').history.length,0);
 });
 
+test('an unescaped quote triggers repair and only the complete answer reaches history',async t=>{
+ const malformed='{"reply":"其实喜欢那种"认真做过"的东西。","signals":null}';
+ const complete='我喜欢纸张带一点纹理、边角裁得很整齐的包装。';
+ const {app,calls,chat}=await fixture(t,{answer:(_body,index)=>index===1?malformed:{reply:complete,extra:''}});
+ const result=await chat('你平时喜欢什么包装？');
+ assert.equal(result.status,200,JSON.stringify(result));assert.equal(calls.length,2);
+ assert.match(prompt(calls[1]),/invalid_reply_envelope/);
+ assert.equal(result.messages.at(-1).text,complete);
+ assert.deepEqual(app.store.getMessages('miyue').filter(m=>m.speaker==='assistant').map(m=>m.text),[complete]);
+ await chat('为什么呢？');
+ assert.ok(calls.at(-1).messages.some(m=>m.role==='assistant'&&m.content.includes(complete)));
+ assert.ok(calls.at(-1).messages.every(m=>!m.content.includes('其实喜欢那种')));
+});
+
+test('repeated unescaped quotes cannot commit partial messages or remembered experiences',async t=>{
+ const {app,calls,chat}=await fixture(t,{answer:()=>'{"reply":"其实喜欢那种"认真做过"的东西。","experience":{"kind":"daily","title":"包装","summary":"错误残稿"}}'});
+ const result=await chat('你平时喜欢什么包装？');
+ assert.equal(result.status,502);assert.equal(result.code,'MODEL_REPLY_INVALID');assert.equal(calls.length,2);
+ assert.equal(app.store.getMessages('miyue').length,0);assert.equal(app.pursuits.get('miyue').history.length,0);
+ assert.equal(app.store.db.prepare('SELECT COUNT(*) n FROM shared_experiences').get().n,0);
+});
+
 test('short, playful, and analytical model voices share the same delivery and continuation contract',async t=>{
   for(const reply of ['这段我挺喜欢的。','她最后那一下犹豫，我看得都替她着急。','我更在意她为什么改变了主意，前后的选择其实不矛盾。']){
     await t.test(reply,async t=>{

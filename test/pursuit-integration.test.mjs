@@ -49,7 +49,7 @@ function envelope(reply) {
   return JSON.stringify({ reply, extra: '', signals: { tone: 'neutral', closeness: 'unspecified', evidence: '' } });
 }
 
-async function fixture(t, { failure = false, catalog = pursuitCatalog, modelEnvelope = null } = {}) {
+async function fixture(t, { failure = false, catalog = pursuitCatalog, modelEnvelope = null, naturalMaterialDelivery = false, materialPresentation } = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pursuit-integration-'));
   const calls = [];
   let app;
@@ -95,6 +95,8 @@ async function fixture(t, { failure = false, catalog = pursuitCatalog, modelEnve
     env: { LIFE_MODEL_BASE_URL: 'https://model.test/v1', LIFE_MODEL_NAME: 'fixture' },
     fetchImpl,
     pursuitCatalog: catalog,
+    naturalMaterialDelivery,
+    materialPresentation,
   });
   const { port } = await app.listen(0);
   t.after(async () => {
@@ -107,6 +109,16 @@ async function fixture(t, { failure = false, catalog = pursuitCatalog, modelEnve
     chat: (role, text) => request(`http://127.0.0.1:${port}`, '/api/chat', json({ role, text })),
   };
 }
+
+for (const presentation of [{ name: 'legacy natural material delivery', options: { naturalMaterialDelivery: true } }, { name: 'explicit generated presentation', options: { naturalMaterialDelivery: false, materialPresentation: 'generated' } }]) test(`${presentation.name} accepts an HTTP pursuit paraphrase and records the actual reply`, async (t) => {
+  const paraphrase = '我把刚才那几页折角摊平了，想慢慢记住里面那个停顿。';
+  const { app, chat } = await fixture(t, { ...presentation.options, modelEnvelope: { reply: paraphrase, extra: '' } });
+  const before = app.pursuits.get('miyue'); const result = await chat('miyue', '说说你的近况');
+  assert.equal(result.status, 200, JSON.stringify(result)); assert.equal(result.body.messages.at(-1).text, paraphrase);
+  assert.doesNotMatch(result.body.messages.at(-1).text, new RegExp(before.stage.action));
+  const receipt = app.pursuits.get('miyue').history[0];
+  assert.equal(receipt.selectedAction, before.stage.action); assert.equal(receipt.actualReply, paraphrase);
+});
 
 test('Miyue handoff delivers and records one pursuit stage, then related talk keeps that stage without repeating its anchor', async (t) => {
   const { app, chat } = await fixture(t);
@@ -225,7 +237,7 @@ test('a spontaneous fictional reading experience is saved with the delivered rep
  const first=await chat('miyue','你读过《局外人》吗？');assert.equal(first.status,200);assert.match(first.body.messages.at(-1).text,/我以前读过/);
  const saved=app.personalExperiences.list('miyue');assert.equal(saved.length,1);assert.equal(saved[0].messageId,first.body.messages.at(-1).id);assert.equal(saved[0].source,'fictional_conversation');assert.equal(app.pursuits.get('miyue').history.length,0);
  const next=await chat('miyue','你说的那个共鸣，我想听听');assert.equal(next.status,200);
- assert.match(calls.at(-1).messages.map(m=>m.content).join('\n'),/近期经历简记｜虚构角色连续性/);assert.match(calls.at(-1).messages.map(m=>m.content).join('\n'),/以前读过，对克制的表达有共鸣/);
+ assert.match(calls.at(-1).messages.map(m=>m.content).join('\n'),/共享经历/);assert.match(calls.at(-1).messages.map(m=>m.content).join('\n'),/以前读过，对克制的表达有共鸣/);assert.equal(app.roleContext('miyue',{initiating:false,text:'你说的那个共鸣，我想听听'}).sharedExperience.title,'局外人');
 });
 test('a random fresh-content share can arrive while her planned reading remains pending', async (t) => {
  const modelEnvelope=body=>{const prompt=body.messages.map(m=>m.content).join('\n'),id=prompt.match(/ID:([^\n]+)/)?.[1];return{skip:false,contentId:id,reason:'分享一个新看到的细节',message:'我看了《窗边的光》，里面那段观察让我想起画草图时忽略的小地方。',extra:'',experience:{kind:'reading',title:'窗边的光',summary:'读到窗边的光，对细节观察有共鸣。',evidence:'我看了《窗边的光》'}};};
@@ -235,4 +247,16 @@ test('a random fresh-content share can arrive while her planned reading remains 
  assert.match(result.message.text,/窗边的光/);assert.equal(result.message.sourceUrl,'https://example.test/window');assert.ok(app.store.db.prepare('SELECT content_id FROM messages WHERE id=?').get(result.message.id).content_id);assert.equal(app.pursuits.get('miyue').pendingKey,before.pendingKey);assert.equal(app.pursuits.get('miyue').history.length,0);
  assert.equal(app.personalExperiences.list('miyue')[0].title,'窗边的光');
  const receipt=app.interactionPolicy.receipt(result.message.id);assert.equal(receipt.tuningRevision,1);assert.equal(receipt.behavior.style.warmth,'柔软体贴');assert.equal(receipt.behavior.style.stance,'偏爱迁就小偏好');
+});
+
+test('ordinary HTTP reply mentioning the active work also cools its scheduled invitation',async t=>{
+ const {app,chat}=await fixture(t,{materialPresentation:'generated',modelEnvelope:{reply:'晚饭我准备煮面。顺便翻了翻慢读书，想把那一小段留到明天再看。',extra:''}});
+ app.pursuits.get('miyue');
+ assert.ok(app.pursuits.pending('miyue'));
+ const result=await chat('miyue','晚饭准备吃什么？');
+ assert.equal(result.status,200,JSON.stringify(result));
+ assert.equal(app.pursuits.pending('miyue'),null);
+ const raw=JSON.parse(app.store.db.prepare('select state_json from companion_pursuit_state where role_id=?').get('miyue').state_json);
+ assert.ok(raw.lastMentionMessageId);assert.ok(raw.lastMentionedAt);
+ assert.equal(app.pursuits.get('miyue').history.length,0,'mention is not a fabricated formal stage delivery');
 });

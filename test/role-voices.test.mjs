@@ -14,7 +14,7 @@ const settings = {
   qwen_clone_mode: 'icl',
 };
 const defaultVoices = [
-  { id: 'voice-miyue', name: '龙安柔', referencePath: '/catalog/default-miyue.wav', transcript: '雨薇的参考文本。' },
+  { id: 'voice-miyue', name: '龙安柔', referencePath: '/catalog/default-miyue.wav', transcript: '晓薇的参考文本。' },
   { id: 'voice-wenxi', name: '龙安欢', referencePath: '/catalog/default-wenxi.wav', transcript: '闻溪的参考文本。' },
   { id: 'voice-zhixia', name: '龙星', referencePath: '/catalog/default-zhixia.wav', transcript: '' },
   { id: 'voice-extra', name: '测试音色', referencePath: '/catalog/extra.wav', transcript: '测试音色自己的参考文本。' },

@@ -83,7 +83,7 @@ function render(data) {
     makeFact('投递失败', `${Number(data.failedCount || 0)} 条`),
     makeFact('最近收到', time(data.lastInboundAt)),
     makeFact('最近微信已受理', time(data.lastOutboundAt)),
-    makeFact('角色', data.roleName || '林雨薇')
+    makeFact('角色', data.roleName || '林晓薇')
   );
   $('last-error').hidden = !data.lastError;
   $('last-error').textContent = data.lastError ? `服务返回：${data.lastError}` : '';

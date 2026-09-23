@@ -9,7 +9,7 @@ async function fixture(t,{fetchImpl,...options}={}){
  return {app,calls,setTime:value=>time=new Date(value),advance:hours=>time=new Date(+time+hours*3600000),now:()=>new Date(time),request:async(url,body,method)=>{const r=await fetch(`http://127.0.0.1:${port}${url}`,body===undefined?{}:json(body,method));return {status:r.status,body:await r.json()}}};
 }
 test('upgrade archives old persona recall, preserves raw messages and user preferences, and excludes retired assistant history',async t=>{
- const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'life-event-migrate-'));const store=new Store({dataDir,story:JSON.parse(fs.readFileSync('app-data/story.json','utf8'))});const repo=new RecallRepository(store);store.saveChatTurn({role:roleId,text:'我喝茶不要太浓。',reply:'旧人物独有秘密：毕业那天我们一起修书。'});repo.replace(roleId,'旧摘要：我们是老同学。');store.addMemory(roleId,'我喜欢具体、有来有回的分享。');store.close();
+ const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'life-event-migrate-'));const store=new Store({dataDir,story:JSON.parse(fs.readFileSync('app-data/story.json','utf8')),clock:()=>new Date('2026-09-07T01:00:00Z')});const repo=new RecallRepository(store);store.saveChatTurn({role:roleId,text:'我喝茶不要太浓。',reply:'旧人物独有秘密：毕业那天我们一起修书。'});repo.replace(roleId,'旧摘要：我们是老同学。');store.addMemory(roleId,'我喜欢具体、有来有回的分享。');store.close();
  const {app,request,calls}=await fixture(t,{dataDir});assert.equal(app.store.getMessages(roleId).length,2);assert.match(app.store.db.prepare('SELECT summary FROM persona_recall_archive').get().summary,/老同学/);
  await request('/api/chat',{role:roleId,text:'从现在认识，你先说说自己。'});const quoted=calls.at(-1).messages.filter(m=>m.role!=='system').map(m=>m.content).join('\n');assert.match(quoted,/我喝茶不要太浓/);assert.match(quoted,/具体、有来有回/);assert.doesNotMatch(quoted,/旧人物独有秘密|旧摘要|老同学/);assert.equal(app.store.getMessages(roleId).length,4);
 });
@@ -58,10 +58,14 @@ test('the authoritative runtime activity drives API and model context across tra
    assert.equal(snapshot.world.event.phase.id,phase.id);
    assert.ok(Date.parse(snapshot.world.nextTransitionAt)>Date.parse(snapshot.world.at));
    assert.deepEqual(snapshot.world.traits,tuning.values);
-   const proactive=app.proactive.getRoleContext('miyue').characterContext;
+   const prepared=app.proactive.getRoleContext('miyue');
+   const proactive=prepared.characterContext;
    assert.ok(proactive.includes(`地点：${snapshot.world.location}`));
-   assert.ok(proactive.includes(`正在做：${snapshot.world.activity}`));
-   assert.ok(proactive.includes(`阶段：${phase.title}`));
+   assert.equal(prepared.runtime.world.activity,snapshot.world.activity);
+   if(prepared.lifeParticipation.detailedState){
+     assert.ok(proactive.includes(`正在做：${snapshot.world.activity}`));
+     assert.ok(proactive.includes(`阶段：${phase.title}`));
+   }else assert.match(proactive,/连续性背景/);
    const sent=await request('/api/chat',{role:roleId,text:'你现在在哪儿，在做什么？'});
    assert.equal(sent.status,200);
    const context=calls.at(-1).messages.find(m=>m.content.startsWith('【本轮背景开始】')).content;

@@ -1,8 +1,9 @@
 import { createCompanionshipPage } from './companionship.js';
 import { createDesktopControl } from './desktop-control.js';
+import { createCompanionDynamicsSettings } from './companion-dynamics.js';
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-const state = { roles: [], role: 'miyue', view: 'chat', settings: {}, provider: {}, memories: [], episodes: { roleId: null, items: [], preferences: null }, feeds: [], items: [], contentInbox: { status: 'unread', query: '', page: 1, pageSize: 20, total: 0, pages: 1, counts: { unread: 0, read: 0, archived: 0, expired: 0, all: 0 }, selectedId: null, selectedItem: null, request: 0 }, reminders: [], conversations: {}, pending: new Map(), story: null, scenario: null, scenarioChoice: null, lifeChoice: null, content: null, memoryEdit: null, voice: null, audioJob: null, audioEpoch: 0, recorder: null, recordStream: null, character: {}, characterRenderKey: '', recall: {}, recallRequest: 0, usage: null, usageError: '', life: null, lifeError: '', proactive: { settings: {}, runtime: {}, recent: [], inbox: { items: [], unreadByRole: {} }, formDirty: false, inboxReady: false, notified: new Set(), readIds: new Set(), typingTimer: null }, zhihu: { config: {}, runtime: {}, recent: [], formDirty: false }, companionTuning: { revision: null, saved: null, draft: null, fields: [], presets: [], preview: null, dirty: false, loading: null, saving: false, previewTimer: null, previewRequest: 0, conflict: false }, chatScroll: { following: true, unseen: false, epoch: 0, tail: '' } };
+const state = { roles: [], role: 'miyue', view: 'chat', settings: {}, provider: {}, memories: [], episodes: { roleId: null, items: [], preferences: null }, feeds: [], items: [], contentInbox: { status: 'unread', query: '', page: 1, pageSize: 20, total: 0, pages: 1, counts: { unread: 0, read: 0, archived: 0, expired: 0, all: 0 }, selectedId: null, selectedItem: null, request: 0 }, reminders: [], conversations: {}, pending: new Map(), lifeChoice: null, content: null, memoryEdit: null, voice: null, audioJob: null, audioEpoch: 0, recorder: null, recordStream: null, character: {}, characterRenderKey: '', recall: {}, recallRequest: 0, usage: null, usageError: '', life: null, lifeError: '', proactive: { settings: {}, runtime: {}, recent: [], inbox: { items: [], unreadByRole: {} }, formDirty: false, inboxReady: false, notified: new Set(), readIds: new Set(), typingTimer: null }, zhihu: { config: {}, runtime: {}, recent: [], formDirty: false }, companionTuning: { revision: null, saved: null, draft: null, fields: [], presets: [], preview: null, dirty: false, loading: null, saving: false, previewTimer: null, previewRequest: 0, conflict: false }, chatScroll: { following: true, unseen: false, epoch: 0, tail: '' } };
 let toastTimer;
 function node(tag, className, text) { const n = document.createElement(tag); if (className) n.className = className; if (text !== undefined) n.textContent = text; return n; }
 function button(text, className, onClick) { const n = node('button', className, text); n.type = 'button'; n.addEventListener('click', onClick); return n; }
@@ -16,15 +17,19 @@ async function api(path, options = {}) {
 }
 function action(fn) { return async (...args) => { try { await fn(...args); } catch (error) { toast(error.name === 'TimeoutError' ? '等待超时，后台可能仍在处理，请稍后刷新查看。' : error.message || '操作未完成。'); } }; }
 const desktopControl = createDesktopControl({ api, toast });
+const companionDynamicsSettings = createCompanionDynamicsSettings({ api, toast });
 function roleById(id = state.role) { return state.roles.find(r => r.id === id); }
-function roleName(roleOrId = state.role) { const role = typeof roleOrId === 'string' ? roleById(roleOrId) : roleOrId; if (role?.id === 'zhixia') return '阮绵'; if (role?.id === 'miyue') return '林雨薇'; return role?.name || (roleOrId === 'miyue' ? '林雨薇' : typeof roleOrId === 'string' ? roleOrId : '角色'); }
+function roleName(roleOrId = state.role) { const role = typeof roleOrId === 'string' ? roleById(roleOrId) : roleOrId; if (role?.id === 'miyue' || roleOrId === 'miyue') return '林晓薇'; if (['wenxi', 'zhixia'].includes(typeof roleOrId === 'string' ? roleOrId : role?.id)) return '已移除角色'; return role?.name || (typeof roleOrId === 'string' ? roleOrId : '角色'); }
 function dateText(value, withTime = false) { const date = new Date(value); return !value||Number.isNaN(date.valueOf()) ? '时间未提供' : date.toLocaleString('zh-CN', withTime ? { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' } : { month: 'long', day: 'numeric' }); }
-function scopeText(scope) { return scope === 'shared' ? '三人共享' : `只告诉${roleName(scope)}`; }
+function scopeText(scope) { return scope === 'shared' ? '共享记忆' : `只告诉${roleName(scope)}`; }
 function empty(title, text) { const n = node('div', 'empty-state'); n.append(node('h3', '', title), node('p', '', text)); return n; }
 function safeLink(url, text) { const a = node('a', '', text); try { const u = new URL(url); if (!['https:', 'http:'].includes(u.protocol) || u.username || u.password) throw new Error(); a.href = u.href; a.target = '_blank'; a.rel = 'noopener noreferrer'; } catch { a.removeAttribute('href'); } return a; }
 
 const appearance = { replyPace: 'natural', avatars: {} };
 let preferencesBusy = false;
+let historyWindowDirty = false;
+let historyWindowSaving = false;
+let historyWindowRevision = 0;
 function avatarNode(role, extraClass = '', override) {
   const avatar = node('span', `avatar ${extraClass}`, roleName(role).slice(-1));
   avatar.style.setProperty('--role-color', role.color);
@@ -34,10 +39,43 @@ function avatarNode(role, extraClass = '', override) {
 }
 function refreshAvatars() { renderRoles(); renderNavigation(); if (state.view === 'chat') renderChat(true); }
 async function loadPreferences() {
-  Object.assign(appearance, await api('/api/preferences', {timeout:15000}));
+  const requestedHistoryRevision = historyWindowRevision;
+  const preferences = await api('/api/preferences', {timeout:15000});
+  const { historyWindowDays, historyMaxTokens, ...otherPreferences } = preferences;
+  Object.assign(appearance, otherPreferences);
   $('#reply-pace').value = appearance.replyPace;
   $('#preferences-status').textContent = appearance.replyPace === 'instant' ? '当前为即时回复。' : '当前为自然节奏。生成较慢时会直接显示，不再叠加等待。';
+  if (!historyWindowDirty && !historyWindowSaving && requestedHistoryRevision === historyWindowRevision) {
+    if (historyWindowDays !== undefined) appearance.historyWindowDays = historyWindowDays;
+    if (historyMaxTokens !== undefined) appearance.historyMaxTokens = historyMaxTokens;
+    if (historyWindowDays !== undefined) $('#history-window-days').value = historyWindowDays;
+    if (historyMaxTokens !== undefined) $('#history-max-tokens').value = historyMaxTokens;
+  }
   renderAvatarEditors(); refreshAvatars();
+}
+async function saveHistoryWindow() {
+  if (historyWindowSaving) return;
+  const daysInput = $('#history-window-days');
+  const tokensInput = $('#history-max-tokens');
+  const status = $('#history-window-status');
+  const daysText = daysInput.value.trim();
+  const tokensText = tokensInput.value.trim();
+  if (!daysText) { status.textContent = '请填写窗口天数（1–30）。'; return; }
+  if (!tokensText) { status.textContent = '请填写最大 token 数（1,000–200,000）。'; return; }
+  const days = Number(daysText), maxTokens = Number(tokensText);
+  if (!Number.isSafeInteger(days) || days < 1 || days > 30) { status.textContent = '窗口天数须为 1–30 的整数。'; return; }
+  if (!Number.isSafeInteger(maxTokens) || maxTokens < 1000 || maxTokens > 200000) { status.textContent = '最大 token 数须为 1,000–200,000 的整数。'; return; }
+  const button = $('#save-history-window');
+  historyWindowRevision += 1;
+  historyWindowSaving = true; button.disabled = true; daysInput.disabled = true; tokensInput.disabled = true;
+  try {
+    Object.assign(appearance, await api('/api/preferences', { method: 'POST', body: { historyWindowDays: days, historyMaxTokens: maxTokens } }));
+    daysInput.value = appearance.historyWindowDays;
+    tokensInput.value = appearance.historyMaxTokens;
+    historyWindowDirty = false;
+    status.textContent = `已保存：林晓薇从下一条日常聊天起使用最近 ${appearance.historyWindowDays} 天，最多 ${appearance.historyMaxTokens.toLocaleString()} token 的历史窗口。`;
+  } catch (error) { status.textContent = error.message || '保存失败，请稍后重试。'; }
+  finally { historyWindowSaving = false; button.disabled = false; daysInput.disabled = false; tokensInput.disabled = false; }
 }
 async function saveReplyPace() {
   if (preferencesBusy) return;
@@ -222,7 +260,7 @@ async function saveCompanionTuning() {
   try {
     const result = await api('/api/companion-tuning', { method: 'POST', body: { revision: tuning.revision, values: tuningValues() }, timeout: 15000 });
     tuning.revision = result.revision; tuning.saved = { ...(result.values || tuning.draft) }; tuning.draft = { ...tuning.saved }; tuning.preview = result.preview || tuning.preview; tuning.dirty = false; tuning.conflict = false; renderTuningPreview();
-    $('#companion-tuning-status').textContent = '已保存，从林雨薇下一次回复开始生效。'; toast('林雨薇的相处偏好已保存。');
+    $('#companion-tuning-status').textContent = '已保存，从林晓薇下一次回复开始生效。'; toast('林晓薇的相处偏好已保存。');
   } catch (error) {
     if (error.status === 409) { tuning.conflict = true; $('#companion-tuning-status').textContent = '保存时发现已有更新。你的调整仍保留；请重新读取已保存的设置后再决定。'; renderCompanionTuningControls(); return; }
     throw error;
@@ -238,7 +276,7 @@ function renderRoles() {
   }
 }
 const companionshipPage = createCompanionshipPage({api,node,button,action,toast,onTuning:async()=>{await showView('settings');$('#companion-tuning').scrollIntoView({block:'start'});}});
-const views = { companionship: ['慢慢积累的相处', '相处与约定'], scenarios: ['阮绵的情境故事', '情境恋爱冒险'], chat: ['', ''], content: ['读到的东西', '一起看看'], story: ['可选的虚构篇章', '雾港来信 · 双人剧本'], memory: ['属于你的记忆', '记得的事'], life: ['林雨薇的近况', '生活足迹'], usage: ['本地服务记录', '用量'], reminders: ['有约定的主动联系', '留到以后聊'], proactive: ['给你留一盏灯', '主动陪伴'], settings: ['让服务适合你', '设置'] };
+const views = { companionship: ['慢慢积累的相处', '相处与约定'], chat: ['', ''], content: ['读到的东西', '一起看看'], memory: ['属于你的记忆', '记得的事'], life: ['林晓薇的近况', '生活足迹'], usage: ['本地服务记录', '用量'], reminders: ['有约定的主动联系', '留到以后聊'], proactive: ['给你留一盏灯', '主动陪伴'], settings: ['让服务适合你', '设置'] };
 function renderNavigation() {
   const role = roleById();
   $$('.role-button').forEach(b => { const on = state.view === 'chat' && b.dataset.role === state.role; b.classList.toggle('active', on); b.setAttribute('aria-pressed', String(on)); });
@@ -246,26 +284,24 @@ function renderNavigation() {
   $$('.view').forEach(el => { el.hidden = el.id !== `view-${state.view}`; });
   $('#view-title').textContent = state.view === 'chat' ? roleName(role) : views[state.view][1];
   $('#view-kicker').textContent = state.view === 'chat' ? role?.title || '' : views[state.view][0];
-  $('#top-hint').textContent = state.view === 'chat' ? (state.role === 'wenxi' ? '给一个观点留一点余地' : state.role === 'miyue' ? '隔着屏幕，也能慢慢熟悉' : '一句想说的话，就可以开始') : '本地保存 · 随时继续';
+  $('#top-hint').textContent = state.view === 'chat' ? '隔着屏幕，也能慢慢熟悉' : '本地保存 · 随时继续';
   $('#setup-shortcut').hidden = Boolean(state.provider.configured) || state.view === 'settings';
   document.documentElement.style.setProperty('--accent', role?.color || '#a56675');
   $('#open-character').hidden = state.view !== 'chat';
   renderAside();
 }
-async function selectRole(id) { state.role = id; state.chatScroll.following = true; state.chatScroll.unseen = false; state.chatScroll.tail = ''; state.chatScroll.epoch++; updateChatScrollButton(); state.scenarioChoice = null; state.lifeChoice = null; if (roleById(id)?.interaction?.mode === 'scenario') await loadScenarios(); state.content = null; state.storyMode = false; renderContext(); await showView('chat'); }
+async function selectRole(id) { if (!roleById(id)) return; state.role = id; state.chatScroll.following = true; state.chatScroll.unseen = false; state.chatScroll.tail = ''; state.chatScroll.epoch++; updateChatScrollButton(); state.lifeChoice = null; state.content = null; renderContext(); await showView('chat'); }
 async function showView(view) {
   state.view = view; renderNavigation();
   if (view === 'chat') { renderChat(); await Promise.all([loadChat(), loadCharacter()]); }
   else if (view === 'content') { await Promise.all([loadContent(),loadTopics()]); loadZhihu(false).catch(() => {}); }
   else if (view === 'memory') { await loadMemories(); renderMemories(); await Promise.all([loadRecall(state.role), loadEpisodes(state.role)]); }
-  else if (view === 'scenarios') await loadScenarios();
   else if (view === 'companionship') await companionshipPage.load();
   else if (view === 'life') await Promise.all([loadLife(),loadMoments()]);
   else if (view === 'usage') await loadUsage();
-  else if (view === 'story') { state.story = await api('/api/story'); renderStory(); }
   else if (view === 'reminders') await Promise.all([loadReminders(),loadFollowups()]);
   else if (view === 'proactive') { await loadProactiveStatus(true); renderProactive(true); }
-  else if (view === 'settings') { await Promise.all([loadPreferences(),loadBackground(),loadCompanionTuning(),desktopControl.load()]); renderProvider(); renderZhihu(true); loadZhihu(true).catch(() => {}); loadLife(true).catch(() => {}); await loadVoice(); }
+  else if (view === 'settings') { await Promise.all([loadPreferences(),loadBackground(),loadCompanionTuning(),companionDynamicsSettings.load(),desktopControl.load()]); renderProvider(); renderZhihu(true); loadZhihu(true).catch(() => {}); loadLife(true).catch(() => {}); await loadVoice(); }
 }
 function renderQuiet() {
   $('#quiet').checked = Boolean(state.settings.quiet);
@@ -282,7 +318,7 @@ function proactiveReason(reason, runtime = {}) {
   return map[reason] || reason || '后台会在合适的时间检查内容与联系节奏。';
 }
 function updateRoleBadges() {
-  const unread = state.proactive.inbox.unreadByRole || {}; $('#proactive-count').textContent = Object.values(unread).reduce((sum, n) => sum + Number(n || 0), 0) || '';
+  const unread = state.proactive.inbox.unreadByRole || {}; $('#proactive-count').textContent = state.roles.reduce((sum, role) => sum + Number(unread[role.id] || 0), 0) || '';
   $$('.role-button').forEach(b => { const existing = $('.unread-badge', b); const count = Number(unread[b.dataset.role] || 0); if (existing) existing.remove(); if (count) b.lastElementChild.append(node('i', 'unread-badge', count > 9 ? '9+' : String(count))); });
 }
 function renderProactive(fillForm = false) {
@@ -294,11 +330,11 @@ function renderProactive(fillForm = false) {
   const notification = s.notifications && window.Notification?.permission === 'granted'; $('#enable-notifications').textContent = notification ? '浏览器提醒已开启' : '开启浏览器提醒'; $('#desktop-notification-note').textContent = r.desktopNotificationsAvailable ? '由本机后台服务发送通用桌面提示；系统权限允许时，页面关闭后仍可提示。' : '当前后台服务未提供桌面提醒；页面关闭后无法承诺收到提示。'; $('#notification-note').textContent = notification ? '浏览器提醒已开启；提示不会显示私密内容。页面关闭后无法承诺仍能收到提醒，也不会自动播放语音。' : '浏览器提醒默认关闭，只有你点击后才会请求授权；页面关闭后无法承诺仍能收到提醒，也不会自动播放语音。';
   const recent = $('#proactive-recent'); recent.replaceChildren(); if (!p.recent.length) recent.append(empty('还没有主动联系记录。', '启用后，后台会在合适的时间留下消息。')); for (const item of p.recent) { const card = node('article', 'recent-item'); card.append(node('span', 'badge', `${roleName(item.role)} · ${item.kind === 'story' ? '故事邀请' : item.kind === 'content' ? '主动分享' : '接着聊'}`), node('p', '', proactiveReason(item.reason))); if (item.sourceTitle) card.append(item.sourceUrl ? safeLink(item.sourceUrl, item.sourceTitle) : node('span', 'source-note', item.sourceTitle)); card.append(node('time', '', dateText(item.createdAt, true))); recent.append(card); }
 }
-async function loadProactiveStatus(render = false) { const result = await api('/api/proactive', { timeout: 20000 }); state.proactive.settings = result.settings || {}; state.proactive.runtime = result.runtime || {}; state.proactive.recent = result.recent || []; state.proactive.inbox.unreadByRole = result.unreadByRole || state.proactive.inbox.unreadByRole; if (render || state.view === 'proactive') renderProactive(render); else updateRoleBadges(); }
+async function loadProactiveStatus(render = false) { const result = await api('/api/proactive', { timeout: 20000 }), visibleRoles = new Set(state.roles.map(role => role.id)); state.proactive.settings = result.settings || {}; state.proactive.runtime = result.runtime || {}; state.proactive.recent = (result.recent || []).filter(item => visibleRoles.has(item.role)); state.proactive.inbox.unreadByRole = Object.fromEntries(Object.entries(result.unreadByRole || {}).filter(([role]) => visibleRoles.has(role))); if (render || state.view === 'proactive') renderProactive(render); else updateRoleBadges(); }
 async function saveProactiveSettings(event) { event.preventDefault(); const body = { enabled: $('#proactive-enabled').checked, fetchIntervalMinutes: Number($('#proactive-fetch-interval').value), minGapMinutes: Number($('#proactive-min-gap').value), maxGapMinutes: Number($('#proactive-max-gap').value), dailyLimit: Number($('#proactive-daily-limit').value), activeStart: $('#proactive-start').value, activeEnd: $('#proactive-end').value, topics: $('#proactive-topics').value.trim(), desktopNotifications: $('#desktop-notifications').checked }; const result = await api('/api/proactive/settings', { method: 'POST', body }); state.proactive.settings = result.settings || state.proactive.settings; state.proactive.runtime = result.runtime || state.proactive.runtime; state.proactive.recent = result.recent || state.proactive.recent; state.proactive.formDirty = false; renderProactive(true); toast('主动陪伴设置已保存。'); }
 async function runProactiveNow() { const b = $('#proactive-run'); b.disabled = true; b.textContent = '正在看看…'; try { const result = await api('/api/proactive/run', { method: 'POST', timeout: 95000 }); await pollProactive(); if (result.delivered) toast('她已经把话留在会话里了。', 6000, () => selectRole(result.message?.role || state.role)); else toast(proactiveReason(result.reason, state.proactive.runtime)); } finally { b.disabled = false; b.textContent = '现在找我聊一次'; } }
 async function enableNotifications() { if (!('Notification' in window)) throw new Error('这个浏览器不支持系统提醒。'); const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission(); if (permission !== 'granted') { toast('没有开启浏览器提醒；你仍会在应用内看到新消息。'); return; } const result = await api('/api/proactive/settings', { method: 'POST', body: { notifications: true } }); state.proactive.settings = result.settings || state.proactive.settings; state.proactive.runtime = result.runtime || state.proactive.runtime; renderProactive(false); toast('浏览器提醒已开启。'); }
-async function pollInbox() { const result = await api('/api/inbox', { timeout: 15000 }); const items = result.items || [], previous = new Set(state.proactive.inbox.items.map(item => item.messageId)); state.proactive.inbox = { items, unreadByRole: result.unreadByRole || {} }; updateRoleBadges(); if (state.proactive.inboxReady) for (const item of items) if (!previous.has(item.messageId) && !state.proactive.notified.has(item.messageId)) { state.proactive.notified.add(item.messageId); const open = () => selectRole(item.role); toast(`${roleName(item.role)}给你留了一个话题`, 7000, open); if (state.proactive.settings.notifications && !(state.proactive.settings.desktopNotifications && state.proactive.runtime.desktopNotificationsAvailable) && 'Notification' in window && Notification.permission === 'granted') { const notice = new Notification('有间有新消息', { body: '打开有间查看。' }); notice.onclick = () => { window.focus(); open(); notice.close(); }; } } state.proactive.inboxReady = true; }
+async function pollInbox() { const result = await api('/api/inbox', { timeout: 15000 }), visibleRoles = new Set(state.roles.map(role => role.id)); const items = (result.items || []).filter(item => visibleRoles.has(item.role)), previous = new Set(state.proactive.inbox.items.map(item => item.messageId)); state.proactive.inbox = { items, unreadByRole: Object.fromEntries(Object.entries(result.unreadByRole || {}).filter(([role]) => visibleRoles.has(role))) }; updateRoleBadges(); if (state.proactive.inboxReady) for (const item of items) if (!previous.has(item.messageId) && !state.proactive.notified.has(item.messageId)) { state.proactive.notified.add(item.messageId); const open = () => selectRole(item.role); toast(`${roleName(item.role)}给你留了一个话题`, 7000, open); if (state.proactive.settings.notifications && !(state.proactive.settings.desktopNotifications && state.proactive.runtime.desktopNotificationsAvailable) && 'Notification' in window && Notification.permission === 'granted') { const notice = new Notification('有间有新消息', { body: '打开有间查看。' }); notice.onclick = () => { window.focus(); open(); notice.close(); }; } } state.proactive.inboxReady = true; }
 async function pollProactive() { try { await Promise.all([loadProactiveStatus(false), pollInbox()]); await markVisibleInboxRead(); } catch { /* Existing chat stays usable during a transient local-service outage. */ } }
 async function markVisibleInboxRead() { if (document.visibilityState !== 'visible' || state.view !== 'chat' || !state.proactive.inbox.items.length) return; const role = state.role, scroll = $('#chat-scroll'); if (scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight > 24) return; const escape = window.CSS?.escape || (value => String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&')); const candidates = new Map(state.proactive.inbox.items.filter(item => item.role === role && !state.proactive.readIds.has(item.messageId)).map(item => [item.messageId, item])); const rendered = $$('.message[data-message-id]', $('#chat-messages')).map(element => candidates.get(element.dataset.messageId)).filter(Boolean); const last = rendered.at(-1); if (!last) return; state.proactive.readIds.add(last.messageId); try { await api(`/api/conversations/${role}/read`, { method: 'POST', body: { messageId: last.messageId }, timeout: 15000 }); await pollInbox(); } catch (error) { state.proactive.readIds.delete(last.messageId); throw error; } }
 function zhihuStatusText() { const { config, runtime } = state.zhihu; const count = runtime.discoveredCount !== undefined ? ` 已发现 ${runtime.discoveredCount} 个公开话题。` : ''; if (!config.enabled) return '知乎资料研究已关闭。' + count; if (runtime.paused) return '主动陪伴已关闭，资料研究暂停。' + count; if (!config.configured) return '等待填写 Access Secret 后检索知乎回答。' + count; if (runtime.running) return '正在从公开热点和知乎观点整理资料…' + count; if (runtime.lastError) return `上次研究未完成：${runtime.lastError}` + count; return runtime.nextRunAt ? `下次自动研究：${dateText(runtime.nextRunAt, true)}。${count}` : '等待下一次研究安排。' + count; }
@@ -339,6 +375,8 @@ function renderCharacterProfile() {
   const details = document.createElement('details'); details.className = 'profile-details';
   const summary = node('summary', ''); summary.append(node('span', '', `${name}的资料与此刻`), node('small', '', '展开查看')); details.append(summary,button('设置头像','text-button',action(async()=>{await showView('settings');$('#avatar-settings').scrollIntoView({block:'start'});})));
   const intro = node('p', 'profile-background', profile.background || ''); if (profile.background) details.append(intro);
+  const physique = [profile.heightCm ? `身高 ${profile.heightCm} 厘米` : '', profile.weightKg ? `体重 ${profile.weightKg} 公斤` : '', profile.braCup ? `罩杯 ${profile.braCup}` : ''].filter(Boolean).join(' · ');
+  if (physique) details.append(node('p', 'profile-background', physique));
   const fields = node('dl', 'profile-grid');
   for (const [label, value] of [['年龄', profile.age], ['职业', profile.occupation], ['住处', profile.home], ['性情', profile.temperament], ['关系', data.life?.companionship?.relationship?.status?.explicit ? data.life.companionship.relationship.status.label : profile.relationship], ['关系进展', current.relationshipStage], ['人物走向', profile.arc]]) if (value) { const item = node('div', 'profile-field'); item.append(node('dt', '', label), node('dd', '', value)); fields.append(item); }
   for (const [label, values] of [['共同经历', profile.sharedPast], ['喜欢', profile.likes], ['不喜欢', profile.dislikes], ['相处中的需要', profile.needs], ['边界', profile.boundaries]]) if (values?.length) fields.append(profileList(label, values));
@@ -450,9 +488,7 @@ function renderMessage(message) {
 }
 async function sendProactiveFeedback(messageId, value) { await api('/api/proactive/feedback', { method: 'POST', body: { messageId, value } }); toast(value === 'good' ? '知道了，会多留意这类话题。' : value === 'less' ? '知道了，之后会少一些这类内容。' : '好，等你方便时再接着聊。'); await pollProactive(); }
 function renderContext() {
-  const n = $('#chat-context'); n.hidden = !state.content && !state.storyMode && roleById()?.interaction?.mode !== 'scenario'; n.replaceChildren();
-  if (roleById()?.interaction?.mode === 'scenario' && state.scenario) n.append(node('span', '', `${state.scenario.state.paused ? '暂停中 · ' : ''}${state.scenario.scene.chapter||state.scenario.current.title} · ${state.scenario.scene.title}`), button('情境与选择', 'text-button', action(() => showView('scenarios'))));
-  if (state.storyMode) n.append(node('span', '', '正在一起玩：雾港来信'), button('回到日常', 'text-button', () => { state.storyMode = false; renderContext(); }));
+  const n = $('#chat-context'); n.hidden = !state.content; n.replaceChildren();
   if (state.content) n.append(node('span', '', `一起聊：${state.content.title}`), button('移除', 'text-button', () => { state.content = null; renderContext(); }));
 }
 let pendingPollBusy=false;
@@ -469,7 +505,6 @@ async function pollPending(force=false) {
       if(force||old!==JSON.stringify([...state.pending]))renderChat(true);
       if(old!==JSON.stringify([...state.pending])) {
         loadCharacter().catch(()=>{});
-        if(roleById()?.interaction?.mode==='scenario')loadScenarios().catch(()=>{});
       }
     }
   } finally {pendingPollBusy=false;}
@@ -498,14 +533,14 @@ async function sendChat(event) {
   if(!text||state.submitting)return;
   if(!state.provider.configured){await showView('settings');toast('先保存模型接口，写好的消息会保留。');return;}
   const content=state.content,lifeChoice=role==='miyue'?state.lifeChoice:null;
-  const key=[role,text,content?.id||'',state.scenarioChoice?.id||'',lifeChoice?.id||'',lifeChoice?.version??''].join(':');
+  const key=[role,text,content?.id||'',lifeChoice?.id||'',lifeChoice?.version??''].join(':');
   const clientId=uncertainSubmissions.get(key)||crypto.randomUUID();uncertainSubmissions.set(key,clientId);
-  const body={role,text,clientId,storyMode:Boolean(state.storyMode&&role==='miyue'),...(content?{contentId:content.id}:{}),...(state.scenarioChoice&&role===state.scenario?.roleId?{scenarioChoiceId:state.scenarioChoice.id,scenarioVersion:state.scenarioChoice.version}:{}),...(lifeChoice?{lifeChoiceId:lifeChoice.id,lifeVersion:lifeChoice.version}:{})};
+  const body={role,text,clientId,...(content?{contentId:content.id}:{}),...(lifeChoice?{lifeChoiceId:lifeChoice.id,lifeVersion:lifeChoice.version}:{})};
   state.submitting=true;$('#message-input').value='';state.chatScroll.following=true;state.chatScroll.unseen=false;renderChat(false,true);
   try {
     const result=await submitChatWithRetry(body);
     if($('#toast').textContent.startsWith('连接短暂中断，正在自动重试发送'))toast('连接已恢复，消息已收到。',1800);
-    uncertainSubmissions.delete(key);state.pending.set(role,result.pending);state.scenarioChoice=null;state.lifeChoice=null;
+    uncertainSubmissions.delete(key);state.pending.set(role,result.pending);state.lifeChoice=null;
     if(state.role===role){state.content=null;renderContext();}
   } catch(error) {
     if(state.role===role&&!$('#message-input').value)$('#message-input').value=text;
@@ -621,7 +656,8 @@ function renderRecall() {
   const status = $('#recall-status');
   const bits = [];
   if (recall?.updatedAt) bits.push(`上次整理：${dateText(recall.updatedAt, true)}`);
-  if (recall?.pendingCount !== undefined) bits.push(recall.pendingCount ? `还有 ${recall.pendingCount} 段对话待整理` : '已整理到当前可用内容');
+  if (select.value==='miyue'&&recall?.eligibleCount!==undefined) bits.push(`短期原文 ${recall.shortTermCount} 条 · 较早待整理 ${recall.eligibleCount} 条`);
+  else if (recall?.pendingCount !== undefined) bits.push(recall.pendingCount ? `还有 ${recall.pendingCount} 段对话待整理` : '已整理到当前可用内容');
   if (recall?.error) bits.push(`上次整理未完成：${recall.error}`);
   status.textContent = bits.join(' · ') || '尚未生成自动摘要。点击“重新整理”可根据已有对话生成。';
 }
@@ -633,14 +669,14 @@ async function saveRecall(summary) {
 }
 async function refreshRecall() {
   const id = $('#recall-role').value, control = $('#refresh-recall'); control.disabled = true; control.textContent = '正在整理…';
-  try { const result = await api(`/api/recall/${id}/refresh`, { method: 'POST', body: {}, timeout: 95000 }); if (result.recall) state.recall[id] = result.recall; if ($('#recall-role').value === id) renderRecall(); const reason = { threshold: '自动整理会在累计 20 条对话后进行；当前仍保留最近 10 条短期上下文。', backoff: '刚整理过，系统会稍后再试。', 'model-unconfigured': '尚未配置模型，无法整理自动回忆。', stale: '这份回忆已被更新，已保留较新的版本。' }[result.reason] || result.reason; if (result.status === 'updated') toast('已更新自动回忆。'); else if (result.status === 'skipped') toast(reason || '这次无需重新整理。'); else if (result.status === 'stale') toast(reason || '回忆已由较新的内容更新。'); else if (result.status === 'failed') throw new Error(reason || '自动整理未完成。'); else toast('整理请求已完成。'); } finally { control.disabled = false; control.textContent = '重新整理'; }
+  try { const result = await api(`/api/recall/${id}/refresh`, { method: 'POST', body: {}, timeout: 95000 }); if (result.recall) state.recall[id] = result.recall; if ($('#recall-role').value === id) renderRecall(); const reason = { 'short-term-window': '近期原文继续保留；较早的小批内容会稍后合并，无需提前压缩。', 'oversized-source': '有一条旧原文超过单次整理容量，已保留原文，未推进进度。', cooldown: '刚整理过，稍后会继续处理较早内容。', 'invalid-consolidation': '整理未通过原文或归属检查，原文和上次记忆保持不变。', threshold: '自动整理会在累计 20 条对话后进行；当前仍保留最近 10 条短期上下文。', backoff: '刚整理过，系统会稍后再试。', 'model-unconfigured': '尚未配置模型，无法整理自动回忆。', stale: '这份回忆已被更新，已保留较新的版本。' }[result.reason] || result.reason; if (result.status === 'updated') toast('已更新自动回忆。'); else if (result.status === 'skipped') toast(reason || '这次无需重新整理。'); else if (result.status === 'stale') toast(reason || '回忆已由较新的内容更新。'); else if (result.status === 'failed') throw new Error(reason || '自动整理未完成。'); else toast('整理请求已完成。'); } finally { control.disabled = false; control.textContent = '重新整理'; }
 }
 function tokenText(value) { return value === null || value === undefined ? '未返回' : Number(value).toLocaleString('zh-CN'); }
 function cacheRateText(value) { return Number.isFinite(value) && value >= 0 && value <= 1 ? `${(value * 100).toLocaleString('zh-CN', { maximumFractionDigits: 1 })}%` : '未知'; }
 function cacheCoverageText(stats) { return `${tokenText(stats?.cacheObservedRequests)} / ${tokenText(stats?.requests)}`; }
 function usageCells(stats) { const wrap = node('div', 'usage-cells'); for (const [label, value] of [['请求', tokenText(stats?.requests)], ['输入', tokenText(stats?.inputTokens)], ['输出', tokenText(stats?.outputTokens)], ['缓存', tokenText(stats?.cachedTokens)], ['缓存输入占比', cacheRateText(stats?.cacheHitRate)], ['可观测请求', cacheCoverageText(stats)], ['推理', tokenText(stats?.reasoningTokens)], ['已知总计', tokenText(stats?.totalTokens)], ['未返回请求', tokenText(stats?.unknownRequests)], ['失败', tokenText(stats?.failedRequests)], ['已停止', tokenText(stats?.cancelledRequests)]]) { const cell = node('div', 'usage-cell'); cell.append(node('small', '', label), node('strong', '', value)); wrap.append(cell); } return wrap; }
 function recentTokenCells(stats) { const wrap = node('div', 'usage-cells'); for (const [label, value] of [['输入', tokenText(stats?.inputTokens)], ['输出', tokenText(stats?.outputTokens)], ['缓存', tokenText(stats?.cachedTokens)], ['缓存输入占比', cacheRateText(stats?.cacheHitRate)], ['推理', tokenText(stats?.reasoningTokens)], ['已知总计', tokenText(stats?.totalTokens)]]) { const cell = node('div', 'usage-cell'); cell.append(node('small', '', label), node('strong', '', value)); wrap.append(cell); } return wrap; }
-function purposeName(value) { const map = { chat: '对话回复', memory: '回忆整理', 'connection-test': '连接测试', recall: '自动回忆', recall_refresh: '重新整理回忆', proactive: '主动陪伴', life: '生活分享', emotion: '心情分享', research: '资料研究', zhihu: '知乎资料研究', content: '内容整理', story: '双人剧本', system: '系统调用' }; return map[value] || value || '未标注用途'; }
+function purposeName(value) { const map = { understanding: '对话语义判断', chat: '对话回复', memory: '回忆整理', 'connection-test': '连接测试', recall: '自动回忆', recall_refresh: '重新整理回忆', proactive: '主动陪伴', life: '生活分享', emotion: '心情分享', research: '资料研究', zhihu: '知乎资料研究', content: '内容整理', story: '双人剧本', system: '系统调用' }; return map[value] || value || '未标注用途'; }
 function usageStatusName(value) { return ({ success: '成功', completed: '完成', failed: '失败', error: '失败', pending: '处理中', cancelled: '补充消息后已停止', skipped: '已跳过', unknown: '状态未提供' })[value] || value || '状态未提供'; }
 function usageRoleName(row) { if (row.roleId) return roleName(row.roleId); return /research|zhihu|content/i.test(row.purpose || '') ? '公共研究' : '系统调用'; }
 function renderUsage() {
@@ -698,7 +734,7 @@ function renderLife(fillSettings = false) {
   const discussion = data.discussion;
   if (discussion?.angles?.length) { const card = node('article', 'life-event'); card.append(node('h3', '', '这件事能聊什么'), node('p', '', '她会从一个具体细节说起，顺着你感兴趣的地方继续聊。')); const list = node('ul', 'life-facts'); for (const angle of discussion.angles) { const row = node('li', ''); row.append(node('span', '', angle.title), node('span', 'badge', angle.shared ? '已聊起' : '待聊')); list.append(row); } card.append(list); if (discussion.sources?.length) { card.append(node('h4', '', '可以一起读的资料')); for (const source of discussion.sources) card.append(safeLink(source.url, source.title)); } current.append(card); }
   const pursuit=data.pursuit, pursuitBox=$('#life-pursuit');
-  if(pursuit){pursuitBox.hidden=false;pursuitBox.append(node('h3','','最近在读、在看'),node('h4','',pursuit.title));if(pursuit.origin)pursuitBox.append(node('p','fine-print',pursuit.origin));pursuitBox.append(node('p','',pursuit.stage.label),node('p','',pursuit.stage.action),safeLink(pursuit.source.url,pursuit.source.title));if(pursuit.completed?.length){const past=node('details','');past.append(node('summary','','这些事留下了什么'));for(const item of pursuit.completed.slice(-4))past.append(node('h4','',item.title),node('p','',item.residue));pursuitBox.append(past);}}
+  if(pursuit){pursuitBox.hidden=false;pursuitBox.append(node('h3','','最近在读、在看'),node('h4','',pursuit.title));if(pursuit.origin)pursuitBox.append(node('p','fine-print',pursuit.origin));const session=pursuit.session;const progress=pursuit.readable===false?'已选好，等有空再读':session?.status==='active'?`正在读 · 这次安排 ${session.minutes} 分钟`:session?.status==='interrupted'?'暂时放下，之后接着读':pursuit.status==='resting'?'这轮告一段落，先消化几天':'这次先读到这里，过几天再继续';pursuitBox.append(node('p','fine-print',progress));if(pursuit.readable!==false)pursuitBox.append(node('p','',pursuit.stage.label),node('p','',pursuit.stage.action));pursuitBox.append(safeLink(pursuit.source.url,pursuit.source.title));if(pursuit.completed?.length){const past=node('details','');past.append(node('summary','','这些事留下了什么'));for(const item of pursuit.completed.slice(-4))past.append(node('h4','',item.title),node('p','',item.residue));pursuitBox.append(past);}}
   else pursuitBox.hidden=true;
   if(data.personalExperiences?.length){pursuitBox.hidden=false;const memories=node('details','');memories.append(node('summary','','聊天里留下的经历'));for(const item of data.personalExperiences.slice(0,5))memories.append(node('h4','',item.title),node('p','',item.summary));pursuitBox.append(memories);}
   renderLifeThread(data.thread);
@@ -751,9 +787,9 @@ function renderContentDetail() {
   const research = contentResearch(item), source = node('div', 'content-source'); source.append(node('span', '', research ? (research.generatedBy ? '知乎资料 · AI整理' : '知乎回答摘录') : item.source || '来源未提供'), node('time', '', dateText(research?.generatedAt || item.publishedAt)));
   box.append(source, node('h3', '', contentTitle(item)), node('p', 'content-detail-summary', item.summary || '这个来源未提供摘要，可以打开原文。')); appendContentEvidence(box, item);
   const actions = node('div', 'content-actions');
-  actions.append(button('关注后续','text-button',action(async()=>{await api('/api/topics',{method:'POST',body:{action:'follow',contentId:item.id}});await loadTopics();toast('已关注，闻溪会留意后续收集到的相关内容。');})), contentExternalLink(item, research ? '打开话题来源 ↗' : '打开原文 ↗'));
+  actions.append(button('关注后续','text-button',action(async()=>{await api('/api/topics',{method:'POST',body:{action:'follow',contentId:item.id}});await loadTopics();toast('已关注，后续收集到的相关内容会优先展示。');})), contentExternalLink(item, research ? '打开话题来源 ↗' : '打开原文 ↗'));
   if (contentStatus(item) === 'archived' || contentStatus(item) === 'expired') actions.append(button('恢复', 'text-button', action(() => setContentState([item.id], 'restore')))); else actions.append(button('标记未读', 'text-button', action(() => setContentState([item.id], 'unread'))), button('归档', 'text-button', action(() => setContentState([item.id], 'archive'))));
-  actions.append(button('和闻溪聊聊', '', action(async () => { await selectRole('wenxi'); state.content = item; renderContext(); $('#message-input').value = `先简单说说这篇《${contentTitle(item)}》讲了什么`; $('#message-input').focus(); }))); box.append(actions);
+  actions.append(button('和林晓薇聊聊', '', action(async () => { await selectRole('miyue'); state.content = item; renderContext(); $('#message-input').value = `先简单说说这篇《${contentTitle(item)}》讲了什么`; $('#message-input').focus(); }))); box.append(actions);
 }
 function renderContent() {
   const inbox = state.contentInbox; $('#content-count').textContent = inbox.counts.unread || ''; $('#feed-count').textContent = `${state.feeds.length} 个来源`;
@@ -777,12 +813,12 @@ async function refreshContent() {
   finally { b.disabled = false; b.textContent = '收集新内容'; }
 }
 async function runNewsBrief() {
-  const b = $('#news-brief-trigger'); b.disabled = true; b.textContent = '闻溪正在挑…';
+  const b = $('#news-brief-trigger'); b.disabled = true; b.textContent = '林晓薇正在挑…';
   try {
     const result = await api('/api/news/brief', { method: 'POST', body: {}, timeout: 95000 });
     if (!result.delivered) { await loadProactiveStatus(false).catch(() => {}); toast(proactiveReason(result.reason, { ...state.proactive.runtime, lastError: null })); return; }
-    await selectRole('wenxi'); await Promise.all([loadChat(), pollInbox()]); toast('闻溪已经挑好一条，放在聊天里了。');
-  } finally { b.disabled = false; b.textContent = '让闻溪讲一条'; }
+    await selectRole('miyue'); await Promise.all([loadChat(), pollInbox()]); toast('林晓薇已经挑好一条，放在聊天里了。');
+  } finally { b.disabled = false; b.textContent = '让林晓薇讲一条'; }
 }
 async function addFeed(event) { event.preventDefault(); const form = new FormData(event.currentTarget); await api('/api/feeds', { method: 'POST', body: { url: String(form.get('url')).trim(), title: String(form.get('title')).trim() } }); event.target.reset(); await loadContent(); toast('已添加来源，点击收集来读取。'); }
 
@@ -798,7 +834,7 @@ async function loadMoments() {
     file.addEventListener('change',action(async()=>{if(!file.files[0])return;draftImage=await prepareAvatar(file.files[0]);image.src=draftImage;image.hidden=false;file.value='';toast('配图已预览，点击保存。');}));
     const actions=node('div','form-row wrap');actions.append(button('保存','small-button',action(async()=>{await api('/api/moments',{method:'POST',body:{action:'update',messageId:item.messageId,image:draftImage,caption:note.value}});toast('配图与备注已保存。');})),button('移除配图','text-button',()=>{draftImage=null;image.hidden=true;}));details.append(node('p','fine-print','本地配图，居中裁成正方形；来源由你说明。'),file,note,actions);card.append(details);
     if(item.caption)card.append(node('p','fine-print',item.caption));
-    const footer=node('div','form-row wrap');footer.append(button('回去聊聊','text-button',action(async()=>{await selectRole(item.roleId);$('#message-input').value='想接着聊你我之前说的：“'+item.text.slice(0,160)+'”';$('#message-input').focus();})),button('取消收藏','text-button',action(async()=>{await api('/api/moments',{method:'POST',body:{action:'remove',messageId:item.messageId}});await loadMoments();})));card.append(footer);box.append(card);
+    const footer=node('div','form-row wrap'); if (roleById(item.roleId)) footer.append(button('去聊聊','text-button',action(async()=>{await selectRole(item.roleId);$('#message-input').value='想接着聊你我之前说的：“'+item.text.slice(0,160)+'”';$('#message-input').focus();}))); footer.append(button('取消收藏','text-button',action(async()=>{await api('/api/moments',{method:'POST',body:{action:'remove',messageId:item.messageId}});await loadMoments();})));card.append(footer);box.append(card);
   }
 }
 async function loadTopics() {
@@ -836,46 +872,13 @@ async function loadFollowups() {
     copy.append(controls);row.append(copy);box.append(row);
   }
 }
-async function loadScenarios() { state.scenario = await api('/api/scenarios'); renderScenarios(); if (roleById()?.interaction?.mode === 'scenario') renderContext(); }
-async function changeScenario(id) { const next = await api('/api/scenarios', {method:'POST',body:{action:'select',id,version:state.scenario.version}}); state.scenario = next; renderScenarios(); if (state.role === next.roleId) { await loadCharacter(); renderContext(); } }
-async function scenarioChat(text, choice) { await selectRole(state.scenario.roleId); if (choice) state.scenarioChoice = {id:choice.id,version:state.scenario.version}; $('#message-input').value = text; await sendChat(); }
-function renderScenarios() {
-  const data = state.scenario; if (!data) return;
-  const library = $('#scenario-library'); library.replaceChildren();
-  for (const scene of data.scenarios) { const card = node('section','settings-card'); card.append(node('h3','',scene.title),node('p','',scene.summary),button(scene.id === data.current.id ? '当前情境' : '进入 / 接着玩','small-button',action(()=>changeScenario(scene.id)))); library.append(card); }
-  const panel = $('#scenario-current'); panel.replaceChildren();
-  if(data.current.id==='rain-lantern'){const figure=node('figure','scenario-art'),img=node('img','');img.src='/art/rain-lantern-cover.png';img.alt='雨夜骑楼下，阮绵拿着铜钥匙的原创情境插画';figure.append(img,node('figcaption','fine-print','《雨夜拾光》· 原创场景插画'));panel.append(figure);}
-  panel.append(node('small','eyebrow',data.state.paused ? '已暂停，存档保留' : data.state.ended ? '已抵达这一篇的结尾' : data.current.title),node('p','eyebrow',data.scene.chapter||'独立短篇'),node('h2','',data.scene.title),node('p','fine-print',`${data.scene.place} · ${data.scene.time}`));
-  for (const text of data.scene.opening) panel.append(node('p','',text));
-  if (data.scene.callback) { const callback = node('aside', 'scenario-callback'); callback.append(node('small', '', '此前选择在这一幕的回响'), node('p', '', data.scene.callback.text)); panel.append(callback); }
-  if (data.consequences?.effects?.length) { const effects = node('details', 'scenario-effects'); effects.append(node('summary', '', '这些选择仍在故事里')); const list = node('ul'); for (const effect of data.consequences.effects) list.append(node('li', '', effect.text)); effects.append(list); panel.append(effects); }
-  const choices = node('div','story-choices');
-  for (const choice of data.choices) choices.append(button(choice.label,'story-choice',action(()=>scenarioChat(choice.label,choice))));
-  panel.append(choices);
-  const controls = node('div','form-row wrap'); controls.append(button(data.state.paused ? '和她聊会儿' : '让阮绵接着说','primary-button',action(()=>scenarioChat(data.state.paused ? '先不推进故事，陪我聊两句' : '你来起头，接着当前情境说吧'))),button(data.state.paused ? '恢复剧情' : '暂停剧情','small-button',action(async()=>{ state.scenario=await api('/api/scenarios',{method:'POST',body:{action:'pause',paused:!data.state.paused,version:data.version}});renderScenarios();renderContext(); })));panel.append(controls);
-  const history = node('details','story-history'); history.append(node('summary','',`已经留下的选择 · ${data.state.history.length}`));const list=node('ol');for(const item of data.state.history)list.append(node('li','',`${item.label}：${item.consequence}`));history.append(list);panel.append(history);
-}
-
-function renderStory() {
-  if (!state.story?.node) return;
-  const { node: current, history } = state.story; $('#story-title').textContent = current.title;
-  const body = $('#story-body'); body.replaceChildren(); for (const p of current.body.split(/\n\s*\n/)) body.append(node('p', '', p));
-  $('#story-progress').textContent = current.ending ? '第一夜 · 已抵达结尾' : `${history.length} 次选择已保存`;
-  const choices = $('#story-choices'); choices.replaceChildren();
-  for (const c of current.choices || []) { const b = button('', 'story-choice', action(async () => { $$('.story-choice').forEach(x => x.disabled = true); try { state.story = await api('/api/story/choose', { method: 'POST', body: { choiceId: c.id, expectedNodeId: current.id } }); renderStory(); $('#view-story').scrollTop = 0; toast(c.effect); } catch (error) { state.story = await api('/api/story'); renderStory(); throw error; } })); b.dataset.choice = c.id; b.append(node('span', '', c.label), node('span', '', '↗')); choices.append(b); }
-  const list = $('#story-history'); list.replaceChildren(); if (!history.length) list.append(node('li', '', '故事刚刚开始。')); for (const h of history) list.append(node('li', '', `${h.label} · ${dateText(h.createdAt, true)}`));
-  $('#story-save-note').textContent = current.ending ? '结尾已经保存在本地。可以回到私聊，继续与弥月交谈。' : '这里是预先写好的原创故事。选择会保存到本地，自由聊天不会改写分支。';
-  $('#confirm-story-reset').hidden = true;
-}
-async function resetStory() { state.story = await api('/api/story/reset', { method: 'POST' }); renderStory(); toast('故事已重新开始，普通聊天和记忆仍然保留。'); }
-
-async function loadReminders() { const result = await api('/api/reminders'); state.reminders = result.reminders; renderReminders(); }
+async function loadReminders() { const result = await api('/api/reminders'), visibleRoles = new Set(state.roles.map(role => role.id)); state.reminders = (result.reminders || []).filter(item => visibleRoles.has(item.role)); renderReminders(); }
 function renderReminders() {
   const box = $('#reminder-items'); box.replaceChildren();
   if (!state.reminders.length) box.append(empty('留一个以后再聊的理由。', '可以是一次近况、一部电影，或者一个还没聊完的问题。'));
   for (const item of state.reminders) {
     const card = node('article', 'reminder-card'), copy = node('div');
-    copy.append(node('span', 'badge', `${roleById(item.role)?.name} · ${item.status === 'delivered' ? '已留在会话里' : state.settings.quiet ? '等待恢复联系' : '待到约定时间'}`), node('p', '', item.text), node('time', '', dateText(item.dueAt, true)));
+    copy.append(node('span', 'badge', `${roleName(item.role)} · ${item.status === 'delivered' ? '已留在会话里' : state.settings.quiet ? '等待恢复联系' : '待到约定时间'}`), node('p', '', item.text), node('time', '', dateText(item.dueAt, true)));
     card.append(copy, button(item.status === 'delivered' ? '移除记录' : '取消', 'text-button', action(async () => { await api(`/api/reminders/${item.id}`, { method: 'DELETE' }); await loadReminders(); })));
     box.append(card);
   }
@@ -996,7 +999,6 @@ function wireEvents() {
   $('#content-page-read').addEventListener('click', action(() => setContentState(state.items.map(item => item.id), 'read')));
   $('#zhihu-refresh').addEventListener('click', action(refreshZhihu)); $('#zhihu-settings').addEventListener('click', action(() => showView('settings'))); $('#zhihu-form').addEventListener('submit', action(saveZhihu)); $('#zhihu-test').addEventListener('click', action(testZhihuQuota)); $('#zhihu-clear-key').addEventListener('click', action(async () => { const result = await api('/api/zhihu/config', { method: 'POST', body: { clearKey: true } }); state.zhihu.config = result.config || state.zhihu.config; state.zhihu.runtime = { ...state.zhihu.runtime, ...(result.runtime || {}) }; $('#zhihu-secret').value = ''; renderZhihu(false); toast('已清除本地保存的知乎 Access Secret。'); })); $$('#zhihu-form input,#zhihu-form select').forEach(input => input.addEventListener('input', () => { state.zhihu.formDirty = true; }));
   $('#open-character').addEventListener('click', () => { const details = $('#character-profile details'); if (details) { state.chatScroll.following=false;state.chatScroll.epoch++;updateChatScrollButton();details.open = true; $('#chat-scroll').scrollTop = 0; details.querySelector('summary')?.focus(); } });
-  $('#story-chat').addEventListener('click', action(async () => { await selectRole('miyue'); state.storyMode = true; renderContext(); })); $('#story-reset').addEventListener('click', () => { $('#confirm-story-reset').hidden = false; }); $('#confirm-story-reset').addEventListener('click', action(resetStory));
   $('#reminder-form').addEventListener('submit', action(addReminder)); $('#provider-form').addEventListener('submit', action(saveProvider)); $('#test-provider').addEventListener('click', testProvider);
   $('#proactive-form').addEventListener('submit', action(saveProactiveSettings)); $('#proactive-run').addEventListener('click', action(runProactiveNow)); $('#enable-notifications').addEventListener('click', action(enableNotifications)); $('#refresh-proactive').addEventListener('click', action(async () => { await loadProactiveStatus(true); await pollInbox(); toast('主动陪伴状态已刷新。'); })); $$('#proactive-form input').forEach(input => input.addEventListener('input', () => { state.proactive.formDirty = true; }));
   $('#clear-provider-key').addEventListener('click', action(async () => { const result = await api('/api/provider', { method: 'POST', body: { clearKey: true } }); state.provider = result.provider; renderProvider(); toast(result.provider.hasKey ? '环境变量中的密钥仍然生效，请在启动配置中调整。' : '已清除本地保存的密钥。'); }));
@@ -1007,6 +1009,12 @@ function wireEvents() {
   for(const id of ['background-mode','background-position','background-veil','background-blur'])$('#'+id).addEventListener('input',editBackground);
   $('#save-background').addEventListener('click',action(()=>saveBackground()));$('#reset-background').addEventListener('click',action(()=>saveBackground(true)));$('#cancel-background').addEventListener('click',cancelBackground);renderBackgroundSettings();
   $('#reply-pace').addEventListener('change',action(saveReplyPace));
+  $('#save-history-window').addEventListener('click',action(saveHistoryWindow));
+  $$('#history-window-days,#history-max-tokens').forEach(input => input.addEventListener('input', () => {
+    historyWindowDirty = true;
+    historyWindowRevision += 1;
+    $('#history-window-status').textContent = '';
+  }));
   $('#save-companion-tuning').addEventListener('click', action(saveCompanionTuning));
   $('#restore-companion-defaults').addEventListener('click', () => { const preset = state.companionTuning.presets.find(item => item.id === 'default'); if (preset) applyTuningPreset(preset); });
   $('#reload-companion-tuning').addEventListener('click', action(async () => { await loadCompanionTuning({ force: true }); toast('已重新读取保存的相处偏好。'); }));
@@ -1016,12 +1024,12 @@ function wireEvents() {
 }
 async function bootstrap() {
   try {
-    const data = await api('/api/bootstrap', { timeout: 15000 }); Object.assign(state, { roles: data.roles, settings: data.settings, provider: data.provider, memories: data.memories, feeds: data.feeds, story: data.story });
+    const data = await api('/api/bootstrap', { timeout: 15000 }); const roles = (data.roles || []).filter(role => role.id === 'miyue'); Object.assign(state, { roles, role: roles[0]?.id || 'miyue', settings: data.settings, provider: data.provider, memories: data.memories, feeds: data.feeds });
     $('#startup-error').hidden = true; renderRoles(); renderProvider(); renderQuiet(); renderNavigation(); await Promise.all([loadChat(), loadCharacter()]);await pollPending(true);
-    loadBackground().catch(() => {}); loadPreferences().catch(() => {}); loadVoice().catch(() => {}); loadContent().catch(() => {}); loadZhihu(false).catch(() => {}); pollProactive();
+    loadBackground().catch(() => {}); loadPreferences().catch(() => {}); companionDynamicsSettings.load().catch(() => {}); loadVoice().catch(() => {}); loadContent().catch(() => {}); loadZhihu(false).catch(() => {}); pollProactive();
   } catch (error) { $('#startup-error').hidden = false; $('#startup-error-text').textContent = `${error.message} 请确认本地服务正在运行。`; }
 }
 wireEvents(); await bootstrap();
-setInterval(async () => { if (!state.roles.length) return; try { if (!document.hidden && state.view === 'chat') await Promise.all([loadChat(true), loadCharacter()]); if (!document.hidden && state.view === 'reminders') await Promise.all([loadReminders(),loadFollowups()]); if (!document.hidden && ['settings', 'content'].includes(state.view)) { await loadZhihu(false); if (state.view === 'settings') await Promise.all([loadCompanionTuning(),desktopControl.load()]); if (state.view === 'content') await loadContent(true); } await pollProactive(); } catch { /* Keep the visible conversation during a transient outage. */ } }, 8000);
+setInterval(async () => { if (!state.roles.length) return; try { if (!document.hidden && state.view === 'chat') await Promise.all([loadChat(true), loadCharacter()]); if (!document.hidden && state.view === 'reminders') await Promise.all([loadReminders(),loadFollowups()]); if (!document.hidden && ['settings', 'content'].includes(state.view)) { await loadZhihu(false); if (state.view === 'settings') await Promise.all([loadCompanionTuning(),companionDynamicsSettings.load(),desktopControl.load()]); if (state.view === 'content') await loadContent(true); } await pollProactive(); } catch { /* Keep the visible conversation during a transient outage. */ } }, 8000);
 
 setInterval(()=>{if(state.roles.length&&!document.hidden&&state.view==='chat')pollPending().catch(()=>{});},900);

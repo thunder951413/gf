@@ -46,14 +46,24 @@ test('companion system is a stable compact prefix without repeated legacy prompt
   const changedRuntimeFields = { ...miyue, systemPrompt: '巨量重复系统提示'.repeat(1000), replyExamples: [{ user: 'x', assistant: 'y' }] };
   const second = compactCompanionSystem(changedRuntimeFields);
   assert.equal(first, second);
-  assert.ok(first.length >= 650 && first.length <= 1000, `system prefix length was ${first.length}`);
+  assert.ok(first.length >= 650 && first.length <= 1700, `system prefix length was ${first.length}`);
+  assert.match(first, /身高165厘米，体重50公斤，罩杯B\+/);
   assert.match(first, /27岁.*成年虚构女性|成年虚构女性.*27岁/);
   assert.match(first, /苏州/);
   assert.match(first, /自由平面设计师/);
+  assert.match(first, /父亲做电气维修，母亲做社区工作，父母住在同城/);
   assert.match(first, /没有预设.*共同前史/);
-  assert.match(first, /可以回应用户明确邀请的温柔、撒娇或含蓄亲近/);
+  assert.match(first, /可以回应用户明确邀请的温柔、撒娇或身体亲近/);
+  assert.match(first, /亲近愿望影响你想怎样与他相处/);
   assert.doesNotMatch(first, /巨量重复系统提示/);
-  assert.equal((first.match(/你是林雨薇/g) || []).length, 1);
+  assert.equal((first.match(/你是林晓薇/g) || []).length, 1);
+});
+
+test('body facts follow the durable profile without inventing an unconfigured bust circumference', () => {
+  const updated = compactCompanionSystem({...miyue, profile: {...miyue.profile, weightKg: 51}});
+  assert.match(updated, /体重51公斤/);
+  assert.doesNotMatch(updated, /体重50公斤|胸围\d/);
+  assert.doesNotMatch(compactCompanionSystem({...miyue, profile: {}}), /固定身材设定/);
 });
 
 test('background only carries current structured facts and keeps unrelated life project out', () => {
@@ -69,6 +79,32 @@ test('background only carries current structured facts and keeps unrelated life 
   assert.doesNotMatch(text, /一册配色小样|已经选了偏暖的底色|未来作者片段/);
   assert.doesNotMatch(text, /不应默认展开的生活事件事实/);
   assert.doesNotMatch(text, /从网友开始认识|刚认识/);
+});
+
+test('non-narrative background keeps state facts but withholds unselected wishes as prose material', () => {
+  const text = compactCompanionBackground(fixture({
+    narrative: false,
+    world: {
+      at: '2026-09-07T03:04:00Z', location: '苏州的家中', activity: '给一份包装稿调整字体层级',
+      person: { name: '林晓薇', age: 27 }, nextTransitionAt: '2026-09-07T04:00:00Z',
+      body: { fatigue: 31, vitality: 66, affectionNeed: 92, desire: 88 },
+      traits: { warmth: 90, coyness: 80, initiative: 70 },
+      needs: { emotional: { due: true, status: '待表达' } },
+    },
+    episodicContext: '【原话】用户喜欢清淡一点的茶。',
+    followupContext: '仅这一轮的跟进事项。',
+    initiativeContext: '已选的主动线索。',
+  }));
+  assert.match(text, /人物：林晓薇，27岁/);
+  assert.match(text, /地点：苏州的家中/);
+  assert.match(text, /正在做：给一份包装稿调整字体层级/);
+  assert.match(text, /疲劳31.*活力66/);
+  assert.match(text, /温柔90.*撒娇倾向80/);
+  assert.match(text, /已记录互动 14 次/);
+  assert.doesNotMatch(text, /显著感受|想保持有来有回|想先把手里的选择理清楚/);
+  assert.doesNotMatch(text, /下次状态检查时间|喜欢程度表示|可以自然回应温柔与亲近|更愿意分享和靠近|【此刻的具体愿望】|需求节奏|待表达/);
+  assert.match(text, /【原话】用户喜欢清淡一点的茶/);
+  assert.match(text, /仅这一轮的跟进事项|已选的主动线索/);
 });
 
 test('relationship uses real interactions and explicit intimacy boundary, not stale friend-stage labels', () => {
@@ -87,7 +123,8 @@ test('relationship uses real interactions and explicit intimacy boundary, not st
   const friendly = compactCompanionBackground(fixture({
     inner: { ...fixture().inner, intimacyBoundary: 'friendly' },
   }));
-  assert.match(friendly, /用户明确要求朋友距离/);
+  assert.match(friendly, /按具体原话和有效期执行/);
+  assert.doesNotMatch(friendly, /用户明确要求朋友距离|直到用户明确重新邀请/);
   assert.doesNotMatch(friendly, /可以自然回应温柔与亲近/);
 });
 

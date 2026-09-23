@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ProactiveEngine } from '../lib/proactive.mjs';
+import { ProactiveEngine, buildProactiveMessages } from '../lib/proactive.mjs';
 
 const baseNow = new Date('2026-09-06T12:00:00.000Z');
 const roles = [
@@ -14,6 +14,23 @@ const candidate = {
   source: '可信来源映射', category: '科技', publishedAt: '2026-09-05T12:00:00.000Z',
 };
 
+test('dynamic proactive schema receives only offered content IDs, never opportunity keys',()=>{
+  const base={role:roles[2],kind:'content',memories:[],conversation:[],candidates:[candidate],dynamicOptions:{trigger:{type:'scheduled_opportunity',at:baseNow.toISOString()},lifeParticipation:{mode:'contact',detailedState:false}}};
+  const withCandidate=buildProactiveMessages(base).map(row=>row.content).join('\n');
+  assert.match(withCandidate,/\["content-1"\]/);assert.doesNotMatch(withCandidate,/"reply":"正文"/);
+  const pursuit=buildProactiveMessages({...base,kind:'life',candidates:[],dynamicOptions:{...base.dynamicOptions,
+    turnPlan:{mode:'initiate',discussion:null,selectedOpportunity:{kind:'pursuit',key:'companion-pursuit:miyue:book:1',title:'一本书',cue:'读到第三章'}}}}).map(row=>row.content).join('\n');
+  assert.match(pursuit,/contentId 必须为 null/);assert.doesNotMatch(pursuit,/\["companion-pursuit:miyue:book:1"\]/);
+});
+
+test('a reunion cue is carried by the selected turn plan in dynamic generation', () => {
+  const trigger = { type: 'scheduled_opportunity', at: baseNow.toISOString() };
+  const turnPlan = { version: 1, mode: 'initiate', trigger, engagement: 'answer', selectedOpportunity: { kind: 'conversation', key: null, title: '', cue: '' } };
+  const prompt = buildProactiveMessages({ role: roles[2], kind: 'continuation', turnPlan, reunionCue: '隔了一阵才联系，轻轻问候。', dynamicOptions: { trigger, turnPlan, lifeParticipation: { mode: 'contact', detailedState: false } } }).map(row => row.content).join('\n');
+  assert.match(prompt, /【本轮唯一交流目的】[\s\S]*久别语气：隔了一阵才联系，轻轻问候。/);
+  assert.equal((prompt.match(/隔了一阵才联系/g) || []).length, 1);
+});
+
 class FakeRepo {
   constructor(overrides = {}) {
     this.settings = {
@@ -25,6 +42,7 @@ class FakeRepo {
     this.runtime = { nextFetchAt: null, nextContactAt: null, lastFetchAt: null, lastContactAt: null, lastDecisionAt: null, lastReason: null, lastError: null, ...(overrides.runtime || {}) };
     this.quiet = overrides.quiet || false; this.lastUserAt = overrides.lastUserAt || null;
     this.lastIds = { zhixia: null, wenxi: null, miyue: null, ...(overrides.lastIds || {}) };
+    this.lastUnanswered = { ...(overrides.lastUnanswered || {}) };
     this.contacts = [...(overrides.contacts || [])]; this.attempts = [...(overrides.attempts || [])];
     this.unanswered = overrides.unanswered || 0; this.candidates = [...(overrides.candidates || [])];
     this.memories = overrides.memories || {}; this.conversations = overrides.conversations || {};
@@ -38,10 +56,11 @@ class FakeRepo {
   getQuiet() { return this.quiet; }
   getLastUserAt() { return this.lastUserAt; }
   getLastMessageId(role) { return this.lastIds[role] ?? null; }
+  getLastUnansweredAssistantAt(role) { return this.lastUnanswered[role] || null; }
   countContactsSince(since) { return this.contacts.filter((item) => item.createdAt >= since).length; }
   countAttemptsSince(since) { return this.attempts.filter((at) => at >= since).length; }
   recordAttempt(at) { this.attempts.push(at); }
-  unansweredCount() { return this.unanswered; }
+  unansweredCount(role) { return typeof this.unanswered === 'number' ? this.unanswered : this.unanswered[role] || 0; }
   getCandidates() { return this.candidates.map((item) => ({ ...item })); }
   getRecentContacts(limit = 10) { return [...this.contacts].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit); }
   getMemories(role) { this.contextReads.push(`memory:${role}`); return this.memories[role] || []; }
@@ -51,9 +70,11 @@ class FakeRepo {
   releaseLease(name, token) { if (this.leases.get(name) === token) this.leases.delete(name); }
   commitDelivery(input) {
     if (this.forceCommitNull || this.lastIds[input.role] !== input.expectedLastMessageId || this.quiet || !this.settings.enabled || this.topics.has(input.topicKey)) return null;
+    if (this.lastUnanswered[input.role] && new Date(input.createdAt) < new Date(+new Date(this.lastUnanswered[input.role]) + (input.unansweredCooldownMinutes || 0) * 60_000)) return null;
     this.topics.add(input.topicKey); this.commits.push({ ...input });
     const message = { id: `message-${this.commits.length}`, role: input.role, text: input.text, kind: 'proactive', proactiveKind: input.kind, createdAt: input.createdAt };
     this.lastIds[input.role] = message.id; this.contacts.push({ role: input.role, kind: input.kind, contentId: input.contentId, createdAt: input.createdAt });
+    this.lastUnanswered[input.role] = input.createdAt;
     this.runtime.nextContactAt = input.nextContactAt;
     return message;
   }
@@ -68,8 +89,28 @@ class FakeModel {
 const contentResult = (id = 'content-1') => JSON.stringify({ skip: false, contentId: id, reason: '这项发现和我们聊过的好奇心有关', message: '看到一项挺安静的新发现。你想从它可能改变日常的地方聊起吗？' });
 const continuationResult = JSON.stringify({ skip: false, contentId: null, reason: '延续我们之前的话题', message: '刚才那件事我还在想。你现在更在意哪一部分？' });
 function engine(repo, model, options = {}) {
-  return new ProactiveEngine({ repo, roles: options.roles || roles, model, refreshContent: options.refreshContent || (async () => ({ added: 0, errors: [], items: [], feeds: [] })), clock: options.clock || (() => baseNow), random: options.random || (() => 0), isBusy: options.isBusy || (() => false), onDelivery: options.onDelivery || (() => {}), getWakeEvent: options.getWakeEvent || (() => null), tickIntervalMs: 60_000 });
+  return new ProactiveEngine({ repo, roles: options.roles || roles, model, refreshContent: options.refreshContent || (async () => ({ added: 0, errors: [], items: [], feeds: [] })), clock: options.clock || (() => baseNow), random: options.random || (() => 0), isBusy: options.isBusy || (() => false), onDelivery: options.onDelivery || (() => {}), getWakeEvent: options.getWakeEvent || (() => null), getRoleContext: options.getRoleContext || (() => ({})), tickIntervalMs: 60_000 });
 }
+
+test('centrally selected material and life opportunities are not replaced by independent content or story selection', async t => {
+  for (const opportunityKind of ['material', 'life']) await t.test(opportunityKind, async () => {
+    const repo = new FakeRepo({ candidates: [candidate] });
+    const model = new FakeModel(JSON.stringify({ skip: false, contentId: null, reason: '旅行中的一件小事', message: '路过时想到一件想和你聊的小事。', extra: '' }));
+    const result = await engine(repo, model, {
+      roles: [roles[2]],
+      getRoleContext: () => ({
+        opportunity: { kind: opportunityKind, value: { key: 'life-topic:travel:culture' } },
+        lifeTopicKey: 'life-topic:travel:culture',
+        turnPlan: { mode: 'initiate', budget: { replyChars: 240 }, trigger: { type: 'scheduled_opportunity' } },
+      }),
+    }).runNow({ roleId: 'miyue' });
+    assert.equal(result.delivered, true);
+    assert.equal(repo.commits[0].kind, 'life');
+    const prompt = model.calls[0].messages.map(item => item.content).join('\n');
+    assert.match(prompt, /计划类型：life/);
+    assert.match(prompt, /最多240字/);
+  });
+});
 
 test('life openings cannot bypass prepared source exclusions via regional source hints', async () => {
   const repo=new FakeRepo({candidates:[{...candidate,title:'苏州这座城市是不是过誉了',summary:'苏州城市生活里的游客体验和居民感受各有不同，这是一段关于苏州的完整资料摘要。'}]});
@@ -204,6 +245,46 @@ test('runNow bypasses schedule, recent activity, and minimum gap but uses the no
   assert.equal(repo.commits.length, 1);
 });
 
+test('an unanswered assistant message pauses automatic outreach for thirty minutes', async () => {
+  const repo = new FakeRepo({ settings: { minGapMinutes: 5, maxGapMinutes: 10 }, runtime: { nextFetchAt: '2026-09-07T12:00:00.000Z', nextContactAt: '2026-09-06T11:00:00.000Z' }, lastUnanswered: { miyue: '2026-09-06T11:45:00.000Z' } });
+  const model = new FakeModel(continuationResult);
+  const blocked = (await engine(repo, model, { roles: [roles[2]] }).tick()).contact;
+  assert.equal(blocked.delivered, false);
+  assert.equal(blocked.reason, '消息发出后先等你回应');
+  assert.equal(repo.runtime.nextContactAt, '2026-09-06T12:15:00.000Z');
+  assert.equal(model.calls.length, 0);
+  const resumed = (await engine(repo, model, { roles: [roles[2]], clock: () => new Date('2026-09-06T12:15:00.000Z') }).tick()).contact;
+  assert.equal(resumed.delivered, true);
+});
+
+test('an explicit contact request keeps its existing override of timing gaps', async () => {
+  const repo = new FakeRepo({ lastUnanswered: { miyue: '2026-09-06T11:45:00.000Z' } });
+  const result = await engine(repo, new FakeModel(continuationResult), { roles: [roles[2]] }).runNow({ roleId: 'miyue' });
+  assert.equal(result.delivered, true);
+});
+
+test('a long quiet spell offers a gentle reunion cue without splicing a fixed line into the reply', async () => {
+  const repo = new FakeRepo({ conversations: { miyue: [{ speaker: 'user', text: '晚点聊', createdAt: '2026-09-06T05:00:00.000Z' }] } });
+  const model = new FakeModel(continuationResult);
+  const result = await engine(repo, model, { roles: [roles[2]] }).runNow({ roleId: 'miyue' });
+  assert.equal(result.delivered, true);
+  assert.match(model.calls[0].messages.map(item => item.content).join('\n'), /隔了一阵才联系/);
+  assert.equal(repo.commits[0].text, '刚才那件事我还在想。你现在更在意哪一部分？');
+});
+
+test('a protected opportunity or affection boundary keeps the reunion cue out of the selected purpose', async () => {
+  const previous = [{ speaker: 'user', text: '晚点聊', createdAt: '2026-09-06T05:00:00.000Z' }];
+  for (const roleContext of [
+    { opportunity: { kind: 'followup', value: { key: 'followup:1' } }, followupId: '1' },
+    { policyPlan: { suppressInitiatedAffection: true } },
+  ]) {
+    const repo = new FakeRepo({ conversations: { miyue: previous } });
+    const model = new FakeModel(continuationResult);
+    await engine(repo, model, { roles: [roles[2]], getRoleContext: () => roleContext }).runNow({ roleId: 'miyue' });
+    assert.doesNotMatch(model.calls[0].messages.map(item => item.content).join('\n'), /隔了一阵才联系/);
+  }
+});
+
 test('reminders participate in minimum gap before and during generation', async (t) => {
   await t.test('existing reminder from runtime', async () => {
     const repo = new FakeRepo({ runtime: { nextFetchAt: '2026-09-07T12:00:00.000Z', nextContactAt: '2026-09-06T11:00:00.000Z', lastContactAt: '2026-09-06T11:30:00.000Z' }, candidates: [candidate] });
@@ -252,6 +333,15 @@ test('quiet, active window, daily cap, unanswered cap, attempt cap, and busy sta
   const busyRepo = new FakeRepo({ candidates: [candidate] }); const busyModel = new FakeModel(contentResult());
   const busy = await engine(busyRepo, busyModel, { roles: [roles[1]], isBusy: () => true }).runNow();
   assert.equal(busy.reason, '当前正在对话，稍后再联系'); assert.equal(busyModel.calls.length, 0);
+});
+
+test('unanswered news messages do not stop a responsive companion from initiating', async () => {
+  const repo = new FakeRepo({ unanswered: { wenxi: 2, miyue: 0 }, candidates: [candidate] });
+  const model = new FakeModel(continuationResult);
+  const result = await engine(repo, model, { roles: [roles[1], roles[2]], getPriorityRole: () => 'wenxi' }).runNow();
+  assert.equal(result.delivered, true);
+  assert.equal(result.message.role, 'miyue');
+  assert.equal(model.calls.length, 1);
 });
 
 test('role is chosen before private reads and consecutive role is avoided', async () => {
@@ -343,4 +433,33 @@ test('cross-midnight active window allows contact after midnight', async () => {
   const repo = new FakeRepo({ settings: { activeStart: '22:00', activeEnd: '02:00' }, candidates: [candidate] });
   const result = await engine(repo, new FakeModel(contentResult()), { roles: [roles[1]], clock: () => atOne }).runNow();
   assert.equal(result.delivered, true);
+});
+
+
+test('proactive discussion tolerates but never applies user-reaction signals without a user turn', async () => {
+  const repo = new FakeRepo();
+  const model = new FakeModel(JSON.stringify({skip:false,contentId:null,reason:'一个值得慢慢聊的问题',message:'陪伴和赞成，我越来越觉得是两码事。',extra:'',discussion:{topicId:'friendship-ethics',quote:'陪伴和赞成，我越来越觉得是两码事'},signals:{tone:'warm',closeness:'closer',evidence:'不存在的用户回复'}}));
+  const result = await engine(repo,model,{roles:[roles[2]],getRoleContext:()=>({opportunity:{kind:'discussion'},lifeTopicKey:'discussion:friendship-ethics',turnPlan:{mode:'initiate',discussion:{topicId:'friendship-ethics'},budget:{replyChars:240},trigger:{type:'scheduled_opportunity'}}})}).runNow({roleId:'miyue'});
+  assert.equal(result.delivered,true);
+  assert.equal(model.calls.length,1);
+  assert.equal(repo.commits.length,1);
+  assert.equal(repo.commits[0].signals,undefined);
+  assert.doesNotMatch(JSON.stringify(repo.commits),/不存在的用户回复/);
+});
+
+test('proactive staged narration has one shared-budget rewrite before delivery',async()=>{
+ const repo=new FakeRepo({conversations:{miyue:[{speaker:'user',text:'最近好吗'}]}});
+ const draft='你这句话一出来，我先是没接住，脸侧过去了一下。我大概会先往前挪半步，然后又退回来，反正躲不掉。';
+ const natural='今天听到一首很喜欢的歌，想跟你分享那个旋律。';
+ let n=0;const model=new FakeModel(()=>JSON.stringify({skip:false,contentId:null,reason:'想分享',message:n++?natural:draft,extra:''}));
+ const result=await engine(repo,model,{roles:[roles[2]]}).runNow({roleId:'miyue'});
+ assert.equal(result.delivered,true);assert.equal(model.calls.length,2);assert.equal(repo.commits[0].text,natural);
+ assert.match(JSON.stringify(model.calls[1].messages),/聊天口吻/);
+});
+
+test('proactive unresolved staged narration is held after one rewrite',async()=>{
+ const repo=new FakeRepo({conversations:{miyue:[{speaker:'user',text:'最近好吗'}]}});
+ const model=new FakeModel(JSON.stringify({skip:false,contentId:null,reason:'想分享',message:'我先愣了一下，把脸侧过去，随后又退回来，视线移开。',extra:''}));
+ const result=await engine(repo,model,{roles:[roles[2]]}).runNow({roleId:'miyue'});
+ assert.equal(result.delivered,false);assert.equal(model.calls.length,2);assert.equal(repo.commits.length,0);assert.match(result.reason,/表达仍不自然/);
 });

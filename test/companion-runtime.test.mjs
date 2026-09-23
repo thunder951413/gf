@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { CompanionRuntime } from '../lib/companion-runtime.mjs';
+import { CompanionRuntime, sceneFor } from '../lib/companion-runtime.mjs';
 
 class TestStore {
   constructor(filename = ':memory:') {
@@ -107,11 +107,18 @@ test('waking, meals, and rest can be selected as persisted opportunities', () =>
   view = f.runtime.advance(); assert.equal(view.current.kind, 'waking'); assert.equal(view.pending.kind, 'waking');
 });
 
-test('travel overrides idle blocks with local exploration and only uses a coast scene for coast locations', () => {
+test('travel overrides idle blocks with a usable scene for both general and coast locations', () => {
   const life = { active: { id: 'trip', type: 'travel', startedAt: '2026-09-12T00:00:00Z', endsAt: '2026-09-13T00:00:00Z', phase: { location: '南京' } } };
   const f = fixture({ time: '2026-09-12T03:30:00Z', inputs: { life } });
-  let view = f.runtime.snapshot(); assert.equal(view.current.kind, 'travel'); assert.match(view.current.title, /南京/); assert.equal(view.current.sceneId, null);
+  let view = f.runtime.snapshot(); assert.equal(view.current.kind, 'travel'); assert.match(view.current.title, /南京/); assert.equal(view.current.sceneId, 'spring-study');
   life.active.phase.location = '青岛海边'; view = f.runtime.advance(); assert.equal(view.current.sceneId, 'summer-coast');
+});
+
+test('scene routing covers walk, bar, and general travel with existing scene ids',()=>{
+  assert.equal(sceneFor('walk','苏州街巷'),'spring-study');
+  assert.equal(sceneFor('bar','苏州的小酒馆'),'autumn-cafe');
+  assert.equal(sceneFor('travel','南京'),'spring-study');
+  assert.equal(sceneFor('travel','青岛海边'),'summer-coast');
 });
 
 test('ordinary life events remain conversational background and never replace authoritative schedule state', () => {

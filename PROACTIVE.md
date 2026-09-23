@@ -39,7 +39,7 @@ repo接口：
 - getLastMessageId(role) -> string|null（检查生成期间是否有新会话）。
 - countContactsSince(iso) -> number（reminder+proactive所有主动消息，删除reminder记录不重置预算）。
 - countAttemptsSince(iso) -> number；recordAttempt(at)将一次模型生成尝试记录，用于每日最多dailyLimit*3上限。
-- unansweredCount(sinceIso) -> number（最近24h且未回复/未later/未less的主动消息；读过不算回应）。
+- unansweredCount(role, sinceIso) -> number（该角色最近24h且未回复/未later/未less的主动消息；读过不算回应）。
 - getCandidates() -> content列表，额外字段 category?,dislikedSource?:boolean,used?:boolean；最近使用同URL/规范化title会标used防不同来源重复。source元数据可信映射，正文不可信。
 - getRecentContacts(limit=10) -> [{role,kind,contentId?,createdAt,...}]。
 - getMemories(role) / getConversation(role,limit=20) -> 对应角色+shared，不得请求别人的正文。
@@ -51,7 +51,8 @@ repo接口：
 
 初次nextFetchAt=now，nextContactAt=now+随机1..5分钟，记录后重启不重新抽。enabled=false暂停采集和联系；quiet只暂停联系，采集继续。到期休眠恢复每种最多做一次，不补刷/补发。
 采集共用refreshContent()返回{added,errors,items,feeds}；源失败保留旧数据。正常下次120分钟左右±10%；失败下次至少15分钟。采集租约180秒。主代理refreshContent并发上限2、总共最多20源，可复用Promise，manual/auto不会并发抓同批。
-联系只能在活动时段（本地时间、支持跨午夜）；合计每天dailyLimit；至少minGap距最后任意主动消息；最近10分钟有用户chat、isBusy任意活跃chat/typing时暂缓；24h未回应达到2则等待用户。runNow仅豁免计划时间、最近活动、minGap（用户自己点击现在联系），其余不豁免。
+联系只能在活动时段（本地时间、支持跨午夜）；合计每天dailyLimit；至少minGap距最后任意主动消息；最近10分钟有用户chat、isBusy任意活跃chat/typing时暂缓；某角色24h未回应达到2则该角色等待用户，其他角色可继续联系。runNow仅豁免计划时间、最近活动、minGap（用户自己点击现在联系），其余不豁免。
+同一角色最后一条消息若仍未得到用户回复，之后30分钟内不再自动发起新的主动消息；与全局最短间隔取较晚的可联系时间，生成完成前和数据库提交时再次核对。用户主动聊天或点击“现在联系”仍沿用明确发起交流的路径；约定提醒和同一回复的后续分段按各自投递规则执行。弥月在双方连续6小时没有消息后重新主动联系，可在本轮话题适合且亲近边界允许时自然带一点撒娇或询问近况；已选约定、跟进、剧情等明确目的优先，不拼接固定句式，不责备用户，也不臆测去向。
 模型未配置不伪造persona消息，只更新状态，不产生频繁重试。异常15分钟退避；无值得分享内容/模型skip至少30分钟后再考虑。最多dailyLimit*3次/日本地模型尝试，包括失败和skip。关闭/改时段/用户开始回复/跨界等生成期间的变更，完成后再检查，丢弃过期生成；不是发完再撤回。
 选题：有来源候选时约65%新内容、20%最近聊过话题、15%故事；缺少history时回退有资料内容或故事邀请。避开连续同role；闻溪偏内容，知夏偏生活关系/延续，弥月只依据明确的虚构故事状态。角色选择先于读取私聊；不得把三角色的私聊混入一个planner。多个源/类别轮换，时间敏感新闻优先7天内，知识文化可30天；排未来>1天、空标题/极短摘要、已用URL/近似title；在质量候选中随机，不按刺激程度排序。
 内容可取最多12候选（标题300，summary1000）让选定角色的模型一次选题+写开场，读取本role最近20messages/6k字符、30memories/6k字符。不要中心planner读取别的role私聊。调用model.complete(messages,{maxTokens:1800})；role systemPrompt维持原设定。外部资料只能user消息明确隔离，不进入system。

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { Store } from '../lib/store.mjs';
+import { ReplyDelivery } from '../lib/chat-queue.mjs';
 import { WeixinBridge } from '../lib/weixin-bridge.mjs';
 
 const story = { start: 'start', nodes: { start: { title: '开始', body: '开始', choices: [] } } };
@@ -46,7 +48,7 @@ async function waitFor(predicate, message = 'condition was not met') {
   assert.fail(message);
 }
 
-test('Weixin bridge only accepts the bound user and submits every inbound turn to 林雨薇', () => {
+test('Weixin bridge only accepts the bound user and submits every inbound turn to 林晓薇', () => {
   const f = fixture();
   try {
     bind(f.bridge);
@@ -54,9 +56,9 @@ test('Weixin bridge only accepts the bound user and submits every inbound turn t
     assert.equal(f.store.db.prepare('SELECT count(*) AS n FROM weixin_inbox').get().n, 0);
     assert.equal(f.bridge.read().cursor, 'cursor-outsider');
 
-    f.bridge.ingest(inbound({ id: 'owner', text: '只找雨薇' }));
+    f.bridge.ingest(inbound({ id: 'owner', text: '只找晓薇' }));
     f.bridge.drainInbox();
-    assert.deepEqual(f.calls.submitted, [{ role: 'miyue', text: '只找雨薇', id: f.calls.submitted[0].id }]);
+    assert.deepEqual(f.calls.submitted, [{ role: 'miyue', text: '只找晓薇', id: f.calls.submitted[0].id }]);
     assert.equal(f.store.db.prepare("SELECT state FROM weixin_inbox WHERE id=?").get(f.calls.submitted[0].id).state, 'submitted');
   } finally { f.close(); }
 });
@@ -77,16 +79,16 @@ test('Weixin inbound replay is deduplicated, persists its cursor, and rolls both
   } finally { f.close(); }
 });
 
-test('binding starts at the current history cursor, then captures only 林雨薇 non-story replies and merges contiguous parts', () => {
+test('binding starts at the current history cursor, then captures only 林晓薇 non-story replies and merges contiguous parts', () => {
   const f = fixture();
   try {
-    f.store.addAssistantMessage('miyue', '旧回复');
+    f.store.addAssistantMessage('miyue', '旧回复', 'weixin');
     bind(f.bridge);
     f.bridge.capture();
     assert.equal(outbox(f.store).length, 0, 'existing chat history must not be sent when binding');
 
-    const first = f.store.addAssistantMessage('miyue', '第一段');
-    const second = f.store.addAssistantMessage('miyue', '第二段');
+    const first = f.store.addAssistantMessage('miyue', '第一段', 'weixin');
+    const second = f.store.addAssistantMessage('miyue', '第二段', 'weixin');
     f.store.addAssistantMessage('wenxi', '闻溪不应发送');
     f.store.db.prepare("INSERT INTO messages(id,role,speaker,text,kind,created_at) VALUES(?,?,?,?,?,?)").run('story-reply', 'miyue', 'assistant', '故事不应发送', 'story', new Date(Date.now()).toISOString());
     f.store.db.prepare('UPDATE messages SET created_at=? WHERE id=?').run('2026-01-01T08:00:00.000Z', first.id);
@@ -104,7 +106,7 @@ test('an outbound reply waits for fresh context, and an inbound message wakes it
   const f = fixture();
   try {
     bind(f.bridge);
-    f.store.addAssistantMessage('miyue', '等你先说一句。');
+    f.store.addAssistantMessage('miyue', '等你先说一句。', 'weixin');
     f.bridge.capture();
     await f.bridge.deliver();
     assert.equal(outbox(f.store)[0].state, 'waiting_context');
@@ -123,7 +125,7 @@ test('actual normalized send failures are retained as errors, and a sending row 
   try {
     bind(f.bridge);
     f.bridge.ingest(inbound());
-    f.store.addAssistantMessage('miyue', '会发送失败');
+    f.store.addAssistantMessage('miyue', '会发送失败', 'weixin');
     f.bridge.capture();
     await f.bridge.deliver();
     assert.equal(outbox(f.store)[0].state, 'failed');
@@ -140,14 +142,15 @@ test('disabling proactive cancels only proactive work; pausing or disconnecting 
   const f = fixture();
   try {
     bind(f.bridge);
-    f.store.addAssistantMessage('miyue', '主动问候');
+    f.store.setChatChannel('miyue', 'weixin');
+    f.store.addAssistantMessage('miyue', '主动问候', 'weixin');
     f.store.db.prepare("UPDATE messages SET kind='proactive' WHERE rowid=(SELECT MAX(rowid) FROM messages)").run();
     f.bridge.capture();
     assert.equal(outbox(f.store)[0].kind, 'proactive');
     f.bridge.updateSettings({ proactiveEnabled: false });
     assert.equal(outbox(f.store)[0].state, 'cancelled');
 
-    f.store.addAssistantMessage('miyue', '聊天仍在');
+    f.store.addAssistantMessage('miyue', '聊天仍在', 'weixin');
     const before = f.store.getMessages('miyue').map(row => row.text);
     f.bridge.updateSettings({ enabled: false });
     assert.equal(f.bridge.snapshot().state, 'paused');
@@ -174,7 +177,7 @@ test('start long-polls, ingests the bound peer, delivers after a tick, and stop 
     bind(f.bridge); f.bridge.start();
     await waitFor(() => f.calls.submitted.length === 1, 'polling should submit the inbound message');
     assert.deepEqual(f.calls.submitted.map(row => ({ role: row.role, text: row.text })), [{ role: 'miyue', text: '轮询来的消息' }]);
-    f.store.addAssistantMessage('miyue', '这是轮询后的回复。');
+    f.store.addAssistantMessage('miyue', '这是轮询后的回复。', 'weixin');
     await f.bridge.tick();
     assert.equal(f.calls.sent.length, 1);
     assert.equal(f.calls.sent[0].contextToken, 'polled-context');
@@ -190,7 +193,7 @@ test('a rate-limited send is retried three times at its persisted deadlines, the
   const f = fixture({ client: { async sendText() { sends += 1; const error = new Error('请稍后重试'); error.code = 'WEIXIN_RATE_LIMITED'; error.retryable = true; error.uncertain = false; throw error; } } });
   try {
     bind(f.bridge); f.bridge.ingest(inbound({ context: 'rate-context' }));
-    f.store.addAssistantMessage('miyue', '有节制地重试。'); f.bridge.capture();
+    f.store.addAssistantMessage('miyue', '有节制地重试。', 'weixin'); f.bridge.capture();
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       await f.bridge.deliver();
       const row = outbox(f.store)[0];
@@ -212,9 +215,9 @@ test('an auth-expired send suspends later queued sends until reconnect', async (
   const f = fixture({ client: { async sendText() { sends += 1; const error = new Error('登录已过期'); error.code = 'WEIXIN_SESSION_EXPIRED'; error.uncertain = false; throw error; } } });
   try {
     bind(f.bridge); f.bridge.ingest(inbound({ context: 'auth-context' }));
-    const first = f.store.addAssistantMessage('miyue', '第一条');
+    const first = f.store.addAssistantMessage('miyue', '第一条', 'weixin');
     f.store.db.prepare("INSERT INTO messages(id,role,speaker,text,kind,created_at) VALUES(?,?,?,?,?,?)").run('wx-break', 'miyue', 'user', '分隔', 'chat', new Date(f.bridge.now()).toISOString());
-    const second = f.store.addAssistantMessage('miyue', '第二条');
+    const second = f.store.addAssistantMessage('miyue', '第二条', 'weixin');
     f.store.db.prepare('UPDATE messages SET created_at=? WHERE id=?').run(new Date(f.bridge.now()).toISOString(), first.id);
     f.store.db.prepare('UPDATE messages SET created_at=? WHERE id=?').run(new Date(f.bridge.now() + 61_000).toISOString(), second.id);
     f.bridge.capture(); assert.equal(outbox(f.store).length, 2);
@@ -234,7 +237,7 @@ test('disconnecting or reconnecting during a send cannot let the old session mut
   const f = fixture({ client: { async sendText() { started(); await blocked; return { messageId: 'late' }; } } });
   try {
     bind(f.bridge); f.bridge.ingest(inbound({ context: 'old-context' }));
-    f.store.addAssistantMessage('miyue', '不能串到新会话。'); f.bridge.capture();
+    f.store.addAssistantMessage('miyue', '不能串到新会话。', 'weixin'); f.bridge.capture();
     const oldRow = outbox(f.store)[0]; const delivering = f.bridge.deliver();
     await began;
     f.bridge.disconnect();
@@ -245,4 +248,93 @@ test('disconnecting or reconnecting during a send cannot let the old session mut
     assert.equal(f.bridge.read().lastOutboundAt, null);
     assert.equal(f.bridge.snapshot().configured, true);
   } finally { f.close(); }
+});
+
+
+test('desktop replies never enter Weixin outbox, including between Weixin reply segments', async () => {
+  const f = fixture();
+  try {
+    bind(f.bridge); f.bridge.ingest(inbound());
+    f.store.addAssistantMessage('miyue', '桌面回复');
+    f.bridge.capture(); await f.bridge.deliver();
+    assert.equal(outbox(f.store).length, 0);
+    assert.equal(f.bridge.read().messageCursor, f.bridge.latestRow());
+    f.store.addAssistantMessage('miyue', '微信第一轮', 'weixin');
+    f.store.addAssistantMessage('miyue', '桌面第二轮');
+    f.store.addAssistantMessage('miyue', '微信第三轮', 'weixin');
+    f.bridge.capture(); await f.bridge.deliver(); await f.bridge.deliver();
+    assert.deepEqual(f.calls.sent.map(row => row.text), ['微信第一轮', '微信第三轮']);
+    assert.equal(f.store.getMessages('miyue').length, 4);
+  } finally { f.close(); }
+});
+
+test('delayed chunks retain their own route after restart and a channel switch', () => {
+  const f = fixture();
+  try {
+    bind(f.bridge);
+    const delivery = new ReplyDelivery(f.store);
+    delivery.enqueue('miyue', ['微信续段'], null, 'weixin');
+    delivery.enqueue('miyue', ['桌面续段']);
+    f.store.setChatChannel('miyue', 'desktop');
+    const restarted = new ReplyDelivery(f.store);
+    for (let i = 0; i < 2; i++) {
+      f.store.db.prepare('UPDATE reply_delivery SET due_at=0').run();
+      restarted.tick();
+    }
+    f.bridge.capture();
+    assert.deepEqual(outbox(f.store).map(row => row.text), ['微信续段']);
+    assert.deepEqual(f.store.getMessages('miyue').map(row => row.text), ['微信续段', '桌面续段']);
+  } finally { f.close(); }
+});
+
+test('switching to desktop suppresses new and queued proactive Weixin messages', async () => {
+  const f = fixture();
+  try {
+    bind(f.bridge); f.bridge.ingest(inbound());
+    f.store.setChatChannel('miyue', 'weixin');
+    const first = f.store.addAssistantMessage('miyue', '已排队的问候');
+    f.store.db.prepare("UPDATE messages SET kind='proactive' WHERE id=?").run(first.id);
+    f.bridge.capture();
+    assert.equal(outbox(f.store).length, 1);
+    f.store.setChatChannel('miyue', 'desktop');
+    const second = f.store.addAssistantMessage('miyue', '桌面期间的问候');
+    f.store.db.prepare("UPDATE messages SET kind='reminder' WHERE id=?").run(second.id);
+    f.bridge.capture(); await f.bridge.deliver();
+    assert.equal(outbox(f.store).length, 1);
+    assert.equal(outbox(f.store)[0].state, 'cancelled');
+    assert.equal(f.calls.sent.length, 0);
+    assert.equal(f.store.getMessages('miyue').length, 2);
+  } finally { f.close(); }
+});
+
+test('legacy queued replies without Weixin routing are cancelled before delivery', async () => {
+  const f = fixture();
+  try {
+    bind(f.bridge); f.bridge.ingest(inbound());
+    const message = f.store.addAssistantMessage('miyue', '旧版排队的桌面消息', 'weixin');
+    f.bridge.capture();
+    f.store.db.prepare("UPDATE messages SET reply_channel='desktop' WHERE id=?").run(message.id);
+    await f.bridge.deliver();
+    assert.equal(outbox(f.store)[0].state, 'cancelled');
+    assert.equal(f.calls.sent.length, 0);
+  } finally { f.close(); }
+});
+
+
+test('older databases migrate unmarked messages and pending chunks to desktop without losing history', () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'weixin-route-migration-'));
+  const old = new DatabaseSync(path.join(dataDir, 'life.sqlite'));
+  old.exec(`CREATE TABLE messages(id TEXT PRIMARY KEY,role TEXT NOT NULL,speaker TEXT NOT NULL,text TEXT NOT NULL,kind TEXT NOT NULL,content_id TEXT,created_at TEXT NOT NULL);
+    INSERT INTO messages VALUES('legacy','miyue','assistant','原来的聊天','chat',NULL,'2026-01-01T00:00:00.000Z');
+    CREATE TABLE reply_delivery(id TEXT PRIMARY KEY,role_id TEXT NOT NULL,text TEXT NOT NULL,scope TEXT,due_at INTEGER NOT NULL,state TEXT NOT NULL);
+    INSERT INTO reply_delivery VALUES('legacy-chunk','miyue','原来的续段',NULL,0,'pending');`);
+  old.close();
+  const store = new Store({dataDir, story});
+  try {
+    const delivery = new ReplyDelivery(store);
+    delivery.tick();
+    assert.deepEqual(store.getMessages('miyue').map(row => row.text), ['原来的聊天', '原来的续段']);
+    assert.deepEqual(store.db.prepare('SELECT reply_channel FROM messages').all().map(row => row.reply_channel), ['desktop', 'desktop']);
+    assert.equal(store.chatChannel('miyue'), 'desktop');
+  } finally { store.close(); fs.rmSync(dataDir, {recursive:true, force:true}); }
 });

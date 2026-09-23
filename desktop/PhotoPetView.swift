@@ -144,7 +144,7 @@ final class PhotoPetView: NSView {
                       width: CGFloat(visible.width) * asset.image.size.width,
                       height: CGFloat(visible.height) * asset.image.size.height)
     }
-    private var imageRect: NSRect {
+    var imageRect: NSRect {
         guard asset != nil else { return .zero }
         let source = sourceRect
         let imageRatio = source.width / max(1, source.height)

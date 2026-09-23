@@ -17,7 +17,7 @@ export function createCompanionshipPage({api,node,button,action,toast,onTuning})
   async function mutate(type,command){if(busy)return;busy=true;root().setAttribute('aria-busy','true');root().querySelectorAll('button').forEach(el=>el.disabled=true);try{snapshot=await api(`/api/companionship/${type}`,{method:'POST',body:{...command,revision:snapshot[type].revision}});render();toast('已经记下，从接下来的相处中生效。');}catch(error){if(error.status===409){snapshot=await api('/api/companionship');render();}throw error;}finally{busy=false;root().removeAttribute('aria-busy');render();}}
   const run=(type,command)=>action(()=>mutate(type,typeof command==='function'?command():command));
   function relation(){
-    const relation=snapshot.relationship,box=card('林雨薇和你的相处','明确的称呼和偏好会留下来；今天想安静一点，不会变成永久疏远。');
+    const relation=snapshot.relationship,box=card('林晓薇和你的相处','明确的称呼和偏好会留下来；今天想安静一点，不会变成永久疏远。');
     const status=select([['friends','朋友'],['dating','恋人'],['partners','伴侣']],relation.status.value);
     box.append(node('p','fine-print',relation.status.explicit?`已确认：${relation.status.label} · 已有 ${relation.familiarity.activeDays} 天的互动记录`:`关系身份还未明确确认 · 已有 ${relation.familiarity.activeDays} 天的互动记录`),row(field('关系身份',status),button('保存关系','small-button',run('relationship',()=>({kind:'status',value:status.value})))));
     if(relation.status.id)box.append(button('清除这项关系记录','text-button',run('relationship',{action:'remove',id:relation.status.id})));

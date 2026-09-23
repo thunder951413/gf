@@ -81,8 +81,13 @@ test('status and candidate are deterministic at threshold and respect relationsh
 
   const friends = cycleState({ affectionNeed: 20, desire: 90, relationshipStage: '知心朋友' });
   assert.equal(needCycleCandidate(friends, now).needChannel, 'physical');
-  assert.match(needCycleCandidate(friends, now).context, /温柔的拥抱/);
-  assert.doesNotMatch(needCycleCandidate(friends, now).context, /接吻/);
+  assert.match(needCycleCandidate(friends, now).context, /温柔的拥抱|轻轻摸摸/);
+  assert.match(needCycleCandidate(friends, now).context, /不擅自写成已经确认的恋人床事/);
+  assert.doesNotMatch(needCycleCandidate(friends, now).context, /按恋人亲密自然写/);
+  const physicalDue = cycleState({ affectionNeed: 20, desire: 90, relationshipStage: '恋爱中' });
+  assert.equal(needCycleCandidate(physicalDue, now).needChannel, 'physical');
+  assert.match(needCycleCandidate(physicalDue, now).context, /发烫发麻|发痒发软|腿间/);
+  assert.match(needCycleCandidate(physicalDue, now).context, /按恋人亲密自然写/);
   assert.equal(needCycleCandidate({ ...friends, intimacyBoundary: 'friendly' }, now), null);
   assert.equal(needCycleCandidate(friends, now, { flirtation: 0 }), null);
   assert.equal(needCycleCandidate(due, now, { initiative: 0 }), null);

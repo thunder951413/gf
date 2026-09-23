@@ -28,6 +28,11 @@ test('authenticated endpoints use official headers, cursor, and stable client id
   assert.equal(JSON.parse(calls[2].options.body).msg.client_id, 'fixed-id');
 });
 
+test('send accepts the documented optional ret and message_id fields', async () => {
+  const client = new WeixinClient({ fetchImpl: async () => json({}) });
+  assert.deepEqual(await client.sendText({ token: 'secret', baseUrl: WEIXIN_ILINK_BASE_URL, to: 'lin-yuwei', contextToken: 'ctx', text: '你好', clientId: 'fixed-id' }), { messageId: undefined, clientId: 'fixed-id' });
+});
+
 test('rejects untrusted login base URLs and maps safe business errors', async () => {
   const client = new WeixinClient({ fetchImpl: async () => json({ status: 'confirmed', bot_token: 'leak', ilink_bot_id: 'id', baseurl: 'https://evil.test' }) });
   await assert.rejects(client.pollLogin('qr'), (error) => error.code === 'WEIXIN_INVALID_REQUEST' && !error.message.includes('leak'));

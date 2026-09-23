@@ -697,3 +697,13 @@ test('unsent final notification expires even when no fresh activity is available
   assert.equal(reopened.pending('miyue'),null);
   f.store.close();
 });
+
+test('material exposure consumes only the selected pursuit version and stores the actual reply', () => {
+  const f = fixture(); const view = f.repo.get('miyue');
+  f.store.message('material-reply', '我先坐下来缓一会儿。');
+  assert.equal(f.repo.markDelivered(view.pendingKey, 'material-reply', view.version, { mode: 'material_exposure', key: 'wrong', expectedVersion: view.version }), false);
+  assert.equal(f.repo.markDelivered(view.pendingKey, 'material-reply', view.version, { mode: 'material_exposure', key: view.pendingKey, expectedVersion: view.version + 1 }), false);
+  assert.equal(f.repo.markDelivered(view.pendingKey, 'material-reply', view.version, { mode: 'material_exposure', key: view.pendingKey, expectedVersion: view.version }), true);
+  assert.equal(f.repo.get('miyue').history[0].actualReply, '我先坐下来缓一会儿。');
+  f.store.close();
+});

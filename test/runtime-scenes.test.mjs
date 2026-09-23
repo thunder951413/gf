@@ -96,6 +96,28 @@ test('rotation waits for the interval, consumes all candidates before repeating 
  r.at='2026-09-10T03:00:00.000Z';assert.notEqual(reopened.sync(r).itemId,seen.at(-1));
 });
 
+test('five activity-matched cutouts rotate uniquely before any repeat',()=>{
+ const items=['a','b','c','d','e'].map(id=>item({id,name:id,activities:['work'],desktopEligible:true,cutoutUrl:`/api/image-library/files/${id}.png`}));
+ const f=fixture(items),r=runtime();r.settings.imageRotationMinutes=1;const seen=[];
+ for(let minute=0;minute<5;minute++){r.at=`2026-09-10T02:0${minute}:00.000Z`;seen.push(f.scenes.sync(r).itemId);}
+ assert.equal(new Set(seen).size,5);assert.equal(f.scenes.read().fallbackUsed,false);
+});
+
+test('multi-activity tags select an exact activity before the awake fallback',()=>{
+ const specific=item({id:'reader',name:'读书的人',activities:['reading','work'],desktopEligible:true,cutoutUrl:'/api/image-library/files/reader.png'});
+ const generic=item({id:'generic',name:'人物',activities:['idle'],environment:'any',desktopEligible:true,cutoutUrl:'/api/image-library/files/generic.png'});
+ const f=fixture([specific,generic]),r=runtime('reading');
+ assert.equal(f.scenes.sync(r).itemId,'reader');assert.equal(f.scenes.read().fallbackUsed,false);
+ const walking=runtime('walk');assert.equal(f.scenes.sync(walking).itemId,'generic');assert.equal(f.scenes.read().fallbackUsed,true);
+});
+
+test('the canonical runtime kind wins over incidental title keywords',()=>{
+ const cafe=item({id:'cafe',activities:['cafe'],desktopEligible:true,cutoutUrl:'/api/image-library/files/cafe.png'});
+ const reader=item({id:'reader',activities:['reading'],desktopEligible:true,cutoutUrl:'/api/image-library/files/reader.png'});
+ const f=fixture([cafe,reader]),r=runtime('cafe');r.current.title='咖啡馆读书';
+ assert.equal(f.scenes.sync(r).itemId,'cafe');assert.equal(f.scenes.read().activityGroup,'cafe');
+});
+
 test('season and environment overrides filter photos and do not modify actual runtime state',()=>{
  const photos=[['fall-in','autumn','indoor'],['winter-out','winter','outdoor'],['winter-in','winter','indoor']].map(([id,season,environment])=>item({id,name:id,seasons:[season],environment,originalUrl:`/api/image-library/files/${id}.png`,cutoutUrl:null,desktopEligible:false}));
  const f=fixture(photos),r=runtime();r.settings.imageVariant='original';
@@ -126,4 +148,16 @@ test('automatic season uses Shanghai date boundaries and indoor travel stays ind
  assert.equal(imageEnvironment({current:{kind:'sleep',location:'海边酒店'}}),'indoor');
  assert.equal(imageEnvironment({current:{kind:'rest',location:'海边酒店的露台'}}),'outdoor');
  assert.equal(imageEnvironment({current:{kind:'work',location:'咖啡馆'}}),'indoor');
+});
+
+test('automatic selection passes the actual current location to scoped outfits',()=>{
+ const homeFigure=item({id:'private',desktopEligible:true,locationScope:'home'});
+ const generic=item({id:'generic',desktopEligible:true});
+ const f=fixture([homeFigure,generic]),r=runtime();r.current.location='咖啡馆';
+ assert.equal(f.scenes.sync(r).itemId,'generic');
+ r.current.location='家里卧室';
+ assert.equal(f.scenes.sync(r).itemId,'private');
+ const swim=fixture([item({id:'swim',desktopEligible:true,locationScope:'waterfront',environment:'outdoor'})]),outside=runtime('travel');
+ outside.current.location='城市旅行中';assert.equal(swim.scenes.sync(outside).avatarMode,'fallback');
+ outside.current.location='海边沙滩';assert.equal(swim.scenes.sync(outside).itemId,'swim');
 });

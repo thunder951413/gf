@@ -24,7 +24,7 @@ test('every dialogue purpose refreshes its provider payload without rewriting hi
   });
   const messages = [{ role: 'system', content: '固定角色设定' }, { role: 'user', content: '昨天聊的事' }, { role: 'assistant', content: '我记得。' }, { role: 'user', content: '今晚呢？' }];
   const original = structuredClone(messages);
-  for (const purpose of ['chat', 'chat-repair', 'proactive', 'life', 'emotion']) {
+  for (const purpose of ['chat', 'chat-repair', 'proactive', 'life', 'emotion', 'understanding']) {
     await model.complete(messages, { purpose });
     const sent = calls.at(-1).messages;
     assert.deepEqual(sent.slice(0, -2), messages.slice(0, -1));

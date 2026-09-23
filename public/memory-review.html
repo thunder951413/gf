@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f1eb">
+  <title>长期记忆与整理依据 · 有间</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/memory-review.css">
+  <script src="/memory-review.js" type="module"></script>
+</head>
+<body class="memory-review-page">
+  <main class="memory-review-shell">
+    <header class="memory-review-header">
+      <a class="memory-review-brand" href="/#memory" aria-label="返回有间的记忆页面"><span>间</span>有间</a>
+      <div><p class="eyebrow">林晓薇 · 原文与修订核对</p><h1>长期记忆与整理依据</h1></div>
+      <button id="refresh" class="small-button" type="button">刷新</button>
+    </header>
+    <p id="notice" class="memory-review-notice" role="status" aria-live="polite">正在读取记忆资料…</p>
+    <section class="memory-review-intro">
+      <h2>原话仍在，整理结果也可核对。</h2>
+      <p>这里展示短期保留的原始对话范围，以及从更早对话中整理出的长期记忆和依据。原始聊天记录始终保留；你可以在下方恢复单条历史修订，使后续对话重新使用原文，不会删除任何聊天。</p>
+    </section>
+    <section aria-labelledby="overview-heading">
+      <h2 id="overview-heading" class="memory-review-section-title">当前范围</h2>
+      <div id="overview" class="memory-review-overview" aria-live="polite"></div>
+    </section>
+    <section aria-labelledby="items-heading">
+      <div class="memory-review-section-heading"><div><h2 id="items-heading" class="memory-review-section-title">长期记忆</h2><p id="items-note" class="fine-print"></p></div></div>
+      <div id="items" class="memory-review-list" aria-live="polite"></div>
+    </section>
+    <section aria-labelledby="history-corrections-heading">
+      <div class="memory-review-section-heading"><div><h2 id="history-corrections-heading" class="memory-review-section-title">历史修订</h2><p class="fine-print">这里核对修订前后的历史存档；它们不是当前聊天消息。恢复原文只撤回选中的修订，不会删除聊天记录。</p></div></div>
+      <p id="history-corrections-status" class="fine-print" role="status" aria-live="polite"></p>
+      <div id="history-corrections" class="memory-review-list" aria-live="polite"></div>
+    </section>
+    <section aria-labelledby="runs-heading">
+      <div class="memory-review-section-heading"><div><h2 id="runs-heading" class="memory-review-section-title">整理记录</h2><p class="fine-print">展开后可查看本次整理保存的技术详情。</p></div></div>
+      <div id="runs" class="memory-review-list" aria-live="polite"></div>
+    </section>
+  </main>
+</body>
+</html>

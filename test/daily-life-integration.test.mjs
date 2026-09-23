@@ -35,11 +35,39 @@ test('ordinary, proactive and desktop preparation share life events without a fo
   const reply=await f.request('/api/desktop/attention',{requestId:'daily-opening-001',level:'care'});
   assert.equal(reply.status,200,JSON.stringify(reply));assert.equal(reply.messages.length,1);
   assert.match(f.requests.at(-1).messages[eventIndex(f.requests.at(-1))].content,/梅子色/);
-  assert.ok(f.requests.at(-1).messages.some(m=>m.content.includes('这些事件是素材')));
+  assert.ok(f.requests.at(-1).messages.some(m=>m.content.includes('生活参与方式')));
   assert.ok(f.app.store.getMessages('miyue').every(m=>m.speaker==='assistant'));
   const typed=await f.request('/api/chat',{role:'miyue',text:'我今天上班有点累。'});
   assert.equal(typed.status,200,JSON.stringify(typed));
-  assert.deepEqual(f.requests[0].messages.slice(0,eventIndex(f.requests[0])+1),f.requests.at(-1).messages.slice(0,eventIndex(f.requests.at(-1))+1));
+  assert.equal(eventIndex(f.requests.at(-1)),-1,'unrelated fatigue reply does not receive detailed manicure material');
+  assert.equal(f.requests[0].messages[0].content,f.requests.at(-1).messages[0].content,'persona remains stable');
+  assert.match(f.requests.at(-1).messages.map(m=>m.content).join('\n'),/地点：苏州的美甲店/,'physical state remains available');
+});
+
+test('a successfully saved direct event reply marks its context exposure, while explicit follow-up can select it',async t=>{
+  const f=await fixture(t);
+  const sent=await f.request('/api/chat',{role:'miyue',text:'你今天换梅子色指甲怎么样？'});
+  assert.equal(sent.status,200,JSON.stringify(sent));
+  const event=f.app.companionRuntime.advance().dailyLife.events[0];
+  assert.ok(event);
+  assert.deepEqual(f.app.eventMaterials.select([event]),[],'a direct saved reply must not leave the same material fresh for the next opening');
+  assert.deepEqual(f.app.eventMaterials.select([event],{explicit:true}),[event],'an explicit follow-up may ask for the same material');
+});
+
+test('a new daily material remains ahead of a pending own-life thread, while an ordinary user update receives neither',async t=>{
+  const f=await fixture(t,{startLifeThreads:true,startPursuits:false});
+  const thread=f.app.lifeThreads.get('miyue');
+  assert.ok(thread?.pendingKey);
+  const ownLife=await f.request('/api/chat',{role:'miyue',text:'你最近有件自己想讲的小事吗？'});
+  assert.equal(ownLife.status,200,JSON.stringify(ownLife));
+  const sharePrompt=f.requests.at(-1).messages.map(message=>message.content).join('\n');
+  assert.match(sharePrompt,/换梅子色指甲/);
+  assert.doesNotMatch(sharePrompt,/【本轮唯一分享材料｜虚构角色生活】/);
+  const ordinary=await f.request('/api/chat',{role:'miyue',text:'我今天开会有点累。'});
+  assert.equal(ordinary.status,200,JSON.stringify(ordinary));
+  const ordinaryPrompt=f.requests.at(-1).messages.map(message=>message.content).join('\n');
+  assert.doesNotMatch(ordinaryPrompt,/【她的日常近况/);
+  assert.doesNotMatch(ordinaryPrompt,/【本轮唯一分享材料｜虚构角色生活】/);
 });
 
 test('timer transitions into recent phase, prepares a sharing opportunity, and expiry preserves chat history',async t=>{
@@ -79,7 +107,7 @@ function addLifeSource(app) {
 test('subscription reading is frozen across polling and a delivered source remains available for followup',async t=>{
   const f=await fixture(t,{dailyLifeRandom:()=>.999});
   const item=addLifeSource(f.app);
-  const first=f.app.roleContext('miyue',{initiating:false,text:'你好'});
+  const first=f.app.roleContext('miyue',{initiating:false,text:'你今天过得怎么样'});
   assert.equal(first.runtime.dailyLife.events[0].origin,'subscription');
   assert.equal(first.runtime.dailyLife.events[0].source.contentId,item.id);
   assert.match(first.eventContext,/只读过所给摘录/);
@@ -123,7 +151,7 @@ test('a source with omitted contentId is recorded, excluded across life phases a
   f.app.proactiveRepo.saveSettings({enabled:true,activeStart:'00:00',activeEnd:'23:59',dailyLimit:10});
   f.respond(()=>({skip:false,contentId:null,reason:'分享读到的文章',message:'我刚读到“苏州这座城市是不是过誉了”这个讨论，游客和居民看城市的角度确实不同。有人提到社区主动打电话提醒办理手续，我觉得这种小事更能看出生活是否方便。',extra:''}));
   const first=await f.app.proactive.runNow({roleId:'miyue'});
-  assert.equal(first.delivered,true,JSON.stringify(first));
+  assert.equal(first.delivered,true,JSON.stringify({first,runtime:f.app.proactiveRepo.getRuntime()}));
   const saved=f.app.store.getMessages('miyue')[0];
   assert.equal(f.app.store.db.prepare('SELECT content_id FROM messages WHERE id=?').get(saved.id).content_id,item.id,'title without the publisher suffix links the source');
   assert.equal(f.app.proactiveRepo.recent()[0].sourceUrl,item.url);

@@ -1,0 +1,323 @@
+[
+  {
+    "id": "free-will", "category": "philosophy", "title": "自由意志与选择", "aliases": ["选择", "命运", "责任"],
+    "premise": "自由意志争论不只是问行动有没有原因，也在问什么样的因果仍可算作“由我决定”。相容论、自由意志论与怀疑论对控制、替代可能和道德责任给出不同标准。",
+    "angles": [
+      {"id": "habit", "detail": "从改掉一个小习惯切入：行为受过去塑造，并不自动等于当下没有自主性，关键可能是行动是否经过自己的判断。"},
+      {"id": "regret", "detail": "后悔常暗含“我本可做别的”，但它也可能只是事后获得新信息；可以分开讨论反事实想象和真实控制能力。"},
+      {"id": "responsibility", "detail": "若性格和环境都有来路，责任可以按控制程度分层，而不是在完全自由与完全无责之间二选一。"}
+    ],
+    "sources": [{"title": "Stanford Encyclopedia of Philosophy: Free Will", "url": "https://plato.stanford.edu/entries/freewill/", "note": "梳理自由意志、因果决定与道德责任的主要立场和争点。"}],
+    "limits": "不把任何立场说成已有科学定论；神经实验不能单独解决形而上学问题，也不借题否定用户的责任或能动性。"
+  },
+  {
+    "id": "personal-identity", "category": "philosophy", "title": "人怎样还是同一个人", "aliases": ["自我", "变化", "记忆"],
+    "premise": "个人同一性可以从身体连续、心理连续、记忆、关系与叙事等不同路径理解。它既是抽象问题，也会影响承诺、未来规划以及我们该如何看待过去的自己。",
+    "angles": [
+      {"id": "old-self", "detail": "翻到多年前的文字时，熟悉与陌生可以同时存在；“不像我”不必意味着过去那个自己是假的。"},
+      {"id": "promise", "detail": "今天替未来的自己做决定，默认了某种跨时间连续性；但未来偏好改变后，旧承诺应有多大约束力仍可争论。"},
+      {"id": "relation", "detail": "别人对我们的持续记忆也参与维持身份，不过外界版本可能落后，因而会与自我更新发生摩擦。"}
+    ],
+    "sources": [{"title": "Stanford Encyclopedia of Philosophy: Personal Identity and Ethics", "url": "https://plato.stanford.edu/entries/identity-ethics/", "note": "说明身份连续性与关心、承诺、责任等伦理问题的联系。"}],
+    "limits": "不把记忆当作身份的唯一标准，不把思想实验冒充临床结论，也不替用户断言“真实自我”是什么。"
+  },
+  {
+    "id": "friendship-ethics", "category": "philosophy", "title": "友谊中的偏爱与公平", "aliases": ["友谊", "偏爱", "人情"],
+    "premise": "友谊通常包含对具体之人的特殊关心、互惠与一定亲密，因此会与对陌生人的普遍公平形成张力。哲学争论关注这种偏爱何时合理、何时又越过道德边界。",
+    "angles": [
+      {"id": "priority", "detail": "时间有限时先帮助朋友似乎自然，但若代价由无辜者承担，亲疏有别就需要更充分的理由。"},
+      {"id": "utility", "detail": "一起开心、彼此有用和欣赏品格可以同时存在；把友谊分型是分析工具，不是给一段关系判等级。"},
+      {"id": "honesty", "detail": "支持朋友不总等于认同朋友；何时直说、何时先陪伴，牵涉忠诚、尊重和避免伤害的平衡。"}
+    ],
+    "sources": [{"title": "Stanford Encyclopedia of Philosophy: Friendship", "url": "https://plato.stanford.edu/entries/friendship/", "note": "讨论友谊的互相关切、亲密、偏爱及其与普遍道德的张力。"}],
+    "limits": "不套用三类友谊给用户关系定性，不把互惠理解为即时等价交换，也不鼓动为朋友违反重要边界。"
+  },
+  {
+    "id": "stoic-control", "category": "philosophy", "title": "能控制什么", "aliases": ["斯多葛", "控制", "接受"],
+    "premise": "斯多葛传统把好的生活放在理性判断和实践品格上，并区分自身判断行动与外部结果。它并非简单压抑情绪，而是重新理解何者值得依赖、如何面对不可控处境。",
+    "angles": [
+      {"id": "effort", "detail": "准备一次面试时可以认真投入，却无法保证结果；把目标分成行动质量与结果，有时能减少无效拉扯。"},
+      {"id": "emotion", "detail": "情绪本身会发生，练习更接近检查它依赖的判断，而非要求自己瞬间不难过或不愤怒。"},
+      {"id": "change", "detail": "接受现实描述不等于赞同现实；确认现状也可以是有效改变的起点，两者并不必然冲突。"}
+    ],
+    "sources": [{"title": "Stanford Encyclopedia of Philosophy: Stoicism", "url": "https://plato.stanford.edu/entries/stoicism/", "note": "呈现斯多葛伦理中幸福、理性行动、情感和自然观的完整背景。"}],
+    "limits": "不把复杂传统缩成一句口号，不用“只管可控的”淡化结构性困难、创伤或现实求助需要。"
+  },
+  {
+    "id": "memory-reconstruction", "category": "psychology", "title": "回忆为什么会变化", "aliases": ["回忆", "记忆", "怀旧"],
+    "premise": "记忆是提取与重建的过程，并非原样播放。线索、后来获得的信息和当前视角都可能影响叙述；这不表示所有回忆都不可靠，而是准确性需要与确信感分开看。",
+    "angles": [
+      {"id": "photos", "detail": "反复看同一张照片，可能让照片版本越来越熟，却不一定保留画面外的原始细节；熟悉感与证据强度并不相同。"},
+      {"id": "shared", "detail": "朋友共同回忆一件事会互相补全，也可能互相影响；差异可以成为理解视角的入口，而非立刻判定谁撒谎。"},
+      {"id": "nostalgia", "detail": "怀旧可能增强归属和意义，也可能让人停留在过去；效果依情境和使用方式而不同，不是一剂普遍良药。"}
+    ],
+    "sources": [
+      {"title": "OpenStax Psychology 2e: Problems with Memory", "url": "https://openstax.org/books/psychology-2e/pages/8-3-problems-with-memory", "note": "具体说明记忆的建构与重建、误导信息如何改变后来对原事件的回忆。"},
+      {"title": "APA: Nostalgia and well-being", "url": "https://www.apa.org/topics/mental-health/nostalgia-boosts-well-being", "note": "综述怀旧与归属、意义及过度沉溺风险，不把效果绝对化。"}
+    ],
+    "limits": "不据一次记忆差异判断欺骗或疾病，不诱导所谓被压抑记忆，也不声称大脑像录像机或所有记忆都虚假。"
+  },
+  {
+    "id": "curiosity-learning", "category": "psychology", "title": "好奇心怎样推动学习", "aliases": ["好奇", "学习", "兴趣"],
+    "premise": "好奇可以被理解为察觉知识缺口后产生的探索倾向，但强度受情境、先验知识和回报预期影响。兴趣既可能由内在吸引开始，也可能在获得一点能力后逐渐长出来。",
+    "angles": [
+      {"id": "gap", "detail": "完全陌生往往无从好奇，知道一半反而最想追下去；分享内容时留一个可理解的缺口，比堆满结论更容易继续。"},
+      {"id": "competence", "detail": "有些爱好不是一见钟情，而是在看懂第一层门道后变得有趣；初期困难和真正不喜欢需要时间区分。"},
+      {"id": "pressure", "detail": "被考核的探索容易变成任务感；同一材料在自主选择与被迫完成时，主观兴趣可能很不一样。"}
+    ],
+    "sources": [{"title": "Loewenstein: The Psychology of Curiosity", "url": "https://www.contrib.andrew.cmu.edu/~gl20/GeorgeLoewenstein/Papers_files/pdf/PsychofCuriosity.pdf", "note": "原始综述提出信息缺口理论，并讨论先验知识、缺口强度与好奇心的关系。"}],
+    "limits": "不把兴趣不足解释为人格缺陷，不许诺某个技巧必然提升学习，也不引用未经来源支持的脑区或激素故事。"
+  },
+  {
+    "id": "emotion-aging", "category": "psychology", "title": "年龄与情绪选择", "aliases": ["年龄", "情绪", "时间感"],
+    "premise": "社会情绪选择理论提出，当人更强烈意识到时间有限时，目标可能从获取新信息转向有情感意义的关系与活动。一些年龄组研究观察到对正面信息的注意或记忆偏向。",
+    "angles": [
+      {"id": "calendar", "detail": "忙碌阶段突然开始筛选聚会，未必是变冷淡，也可能是时间视野改变后更看重相处质量。"},
+      {"id": "novelty", "detail": "偏向熟悉关系不等于拒绝新鲜事；信息探索和情感意义会随场景重新排序，不应做成年龄刻板印象。"},
+      {"id": "memory", "detail": "更容易记住正面内容可能与注意和调节策略有关，但个体差异、文化与具体任务都会影响结果。"}
+    ],
+    "sources": [{"title": "APA: Emotional Fitness in Aging", "url": "https://www.apa.org/topics/aging-older-adults/emotional-fitness", "note": "介绍年龄、情绪调节、正负信息记忆与社会情绪选择理论的相关研究。"}],
+    "limits": "只谈群体层面的研究趋势，不据年龄预测个人状态；不把积极偏向等同于更幸福或更成熟。"
+  },
+  {
+    "id": "social-belonging", "category": "psychology", "title": "归属感从哪里来", "aliases": ["归属", "孤独", "陪伴"],
+    "premise": "归属感不仅取决于身边有没有人，也与关系质量、被理解感和参与共同活动有关。孤独是主观体验，不能简单用社交数量衡量，短暂孤独与长期困扰也应区分。",
+    "angles": [
+      {"id": "crowd", "detail": "在人群里仍孤独并不矛盾：接触频率、关系可回应性和是否能表达真实感受，是不同维度。"},
+      {"id": "ritual", "detail": "重复的小仪式能提供连续感，不过它是否增强归属，要看参与是否自愿、是否真的包含彼此。"},
+      {"id": "weak-ties", "detail": "熟店店员或邻居这样的弱联系也能增加日常社会感，但无法替代每个人所需的深度支持。"}
+    ],
+    "sources": [{"title": "APA: Nostalgia and well-being", "url": "https://www.apa.org/topics/mental-health/nostalgia-boosts-well-being", "note": "讨论归属、孤独、意义及共享回忆可能发挥作用的条件。"}],
+    "limits": "不诊断孤独、抑郁或依恋类型，不把多社交当统一处方；持续痛苦或安全风险应尊重专业支持需要。"
+  },
+  {
+    "id": "silk-roads-network", "category": "history", "title": "丝路其实是一张网", "aliases": ["丝绸之路", "贸易", "交流"],
+    "premise": "历史上的丝绸之路是不断变化的陆海路线网络，并非一条从起点直达终点的固定大道。货物常经多段商人转手，城市、绿洲与水利条件共同支撑人员、技术和观念流动。",
+    "angles": [
+      {"id": "relay", "detail": "一件远方商品抵达时，运输者可能从未走完全程；分段接力能把宏大交流还原成许多局部选择。"},
+      {"id": "cities", "detail": "路线上的城市不只是驿站，也是语言、宗教、技艺相遇的空间；停留往往和移动同样重要。"},
+      {"id": "water", "detail": "干旱地区的水管理决定聚落能否维持，地理基础设施比“冒险商旅”的浪漫形象更能解释路线兴衰。"}
+    ],
+    "sources": [
+      {"title": "UNESCO: About the Silk Roads", "url": "https://www.unesco.org/en/silk-roads/about-silk-roads", "note": "说明陆海路线的动态网络、分段贸易和文化交流。"},
+      {"title": "UNESCO World Heritage: Chang'an–Tianshan Corridor", "url": "https://whc.unesco.org/en/list/1442", "note": "提供路线、城市、绿洲、水管理及跨文化互动的遗产证据。"}
+    ],
+    "limits": "避免把交流讲成单向传播或单一民族成就；“丝绸之路”是后来的统称，各时期路线与影响并不相同。"
+  },
+  {
+    "id": "maps-as-arguments", "category": "history", "title": "地图也会表达立场", "aliases": ["地图史", "制图", "边界"],
+    "premise": "历史地图既记录制图者所知的空间，也通过取舍、投影、命名和边界表达时代目标。把地图当作一手材料，需要同时问它画了什么、遗漏什么、为谁制作和用于何事。",
+    "angles": [
+      {"id": "center", "detail": "地图把哪里放在中心，看似只是排版，也会改变观看者对远近和重要性的直觉，但不能只凭中心位置断定动机。"},
+      {"id": "blank", "detail": "空白处可能意味着未知、无意呈现或资料缺失；“没画”本身值得追问，却不自动等于那里无人生活。"},
+      {"id": "city-change", "detail": "对比不同年代城市地图，可以看到道路、公园和产业变化，同时也要留意制图尺度与目的是否可比。"}
+    ],
+    "sources": [{"title": "Library of Congress: Maps from the World Digital Library", "url": "https://www.loc.gov/classroom-materials/maps-from-the-world-digital-library/", "note": "指导把地图作为带有时代知识、偏向和用途的一手史料来分析。"}],
+    "limits": "不凭单张地图推断整个社会，不把旧地图的错误当作古人无知；区分制图事实、解释和推测。"
+  },
+  {
+    "id": "urban-parks-history", "category": "history", "title": "城市公园是谁的空间", "aliases": ["公园", "城市史", "公共空间"],
+    "premise": "近代城市公园与工业化、公共健康、审美和民主空间理念相连，但公园的选址、可达性、维护和使用规则也反映资源分配。公共空间的理想与真实使用并不总是一致。",
+    "angles": [
+      {"id": "rest", "detail": "在高密度城市中，一块可自由停留的绿地既是景观也是休息资源；“离家近”会直接改变谁能经常使用。"},
+      {"id": "design", "detail": "弯曲小路、草地和视线都在暗中安排活动方式；设计可以邀请某种使用，也可能排斥另一种使用。"},
+      {"id": "maintenance", "detail": "建成不等于持续公共，维护资金、安全感和社区参与会决定公园几年后的真实生命。"}
+    ],
+    "sources": [
+      {"title": "National Park Service: Urban Parks program history", "url": "https://www.nps.gov/orgs/1710/history.htm", "note": "记录城市居民对近邻休闲空间的需求及设施不平等问题。"},
+      {"title": "National Park Service: Olmsted and parks", "url": "https://www.nps.gov/frla/learn/historyculture/parks.htm", "note": "呈现近代公园设计关于开放空间、自由感与城市压力的理念。"}
+    ],
+    "limits": "美国案例不能代表所有城市史；不浪漫化设计师，也要容纳居民使用、排斥与治理的多重历史。"
+  },
+  {
+    "id": "living-heritage", "category": "history", "title": "传统为什么会一边传承一边变化", "aliases": ["非遗", "传统", "手艺"],
+    "premise": "活态文化遗产包括口述、表演、仪式、自然知识和传统技艺，其连续性来自社区实践而非冻结原样。迁移、城市生活和新材料可能改变形式，变化本身不必等于失真。",
+    "angles": [
+      {"id": "recipe", "detail": "一道家常食谱换了材料仍可能保留共同记忆；判断延续不能只数步骤是否完全相同。"},
+      {"id": "ownership", "detail": "由谁认定某项实践重要很关键，外部机构可以协助保护，却不能绕过实践社区替它决定身份。"},
+      {"id": "city", "detail": "传统进入城市后会寻找新的场地、受众与谋生方式，保护也需面对空间成本和代际参与。"}
+    ],
+    "sources": [{"title": "UNESCO: What is Intangible Cultural Heritage?", "url": "https://ich.unesco.org/en/what-is-intangible-heritage-00003", "note": "定义活态、包容、社区认可并会随环境演变的文化遗产。"}],
+    "limits": "不替任何社区认证其传统，不把文化纯正性当单一尺度；区分尊重传承、商业利用与挪用的具体情境。"
+  },
+  {
+    "id": "routes-and-terrain", "category": "geography", "title": "道路为什么从这里经过", "aliases": ["路线", "地形", "交通"],
+    "premise": "路线不是两点间抽象直线，而是地形、水源、气候、风险、技术和聚落共同作用的结果。历史路线还会因河流变化、政局和市场迁移，今天看似绕远可能曾是更可行的选择。",
+    "angles": [
+      {"id": "detour", "detail": "地图上多出的弯可能是在避开陡坡、寻找补给或连接市镇；距离最短与时间、成本最低不是一回事。"},
+      {"id": "season", "detail": "同一路线在旱季与雨季可能完全不同，静态地图很难表现季节性通行条件。"},
+      {"id": "path-dependence", "detail": "旧路带来聚落，聚落又让旧路继续有用；这种累积能解释为何新技术出现后路线也不会立刻重画。"}
+    ],
+    "sources": [{"title": "UNESCO: About the Silk Roads", "url": "https://www.unesco.org/en/silk-roads/about-silk-roads", "note": "说明路线随河流、环境和贸易条件变化，并由陆海多条路径组成。"}],
+    "limits": "不以自然环境单因解释社会选择；路线形成也涉及制度、冲突、劳动和技术，具体案例需具体资料。"
+  },
+  {
+    "id": "ocean-currents", "category": "geography", "title": "海流怎样连接远方", "aliases": ["洋流", "海洋", "气候"],
+    "premise": "海流由风、潮汐以及温度盐度造成的密度差等因素驱动，尺度和速度各不相同。它们输送热量、营养和生物，也影响航行、沿海天气与海洋生态。",
+    "angles": [
+      {"id": "drift", "detail": "漂浮物的去向像给看不见的水路做标记，但局地风浪和物体形状会让一次漂流不能代表稳定洋流。"},
+      {"id": "heat", "detail": "海洋缓慢搬运热量，使相近纬度地区也可能有不同气候；仍需结合大气、地形等因素理解。"},
+      {"id": "layers", "detail": "表层风生流与深层密度环流机制不同，把全球海流说成一条整齐传送带只是有限的教学比喻。"}
+    ],
+    "sources": [{"title": "NOAA Ocean Service: Currents", "url": "https://oceanservice.noaa.gov/education/tutorial_currents/", "note": "解释潮汐、风、温盐密度差驱动的海流及其尺度与影响。"}],
+    "limits": "不以单一洋流解释某地全部气候，也不把简化示意图当精确预测；涉及气候变化时注明系统复杂性。"
+  },
+  {
+    "id": "city-maps", "category": "geography", "title": "从地图看城市长大", "aliases": ["城市地图", "街道", "城市变化"],
+    "premise": "不同时期的城市地图能显示街道、铁路、河道、公园和功能区的改变，让空间变化与经济、交通和治理联系起来。但地图比例尺、测绘目的和缺失内容会限制比较。",
+    "angles": [
+      {"id": "street", "detail": "一条旧街为何弯曲，可能保留更早的地形、产权或村路痕迹；形状是线索，不是单独的结论。"},
+      {"id": "rail", "detail": "车站改变人流和土地价值，城市也会反过来包围曾在边缘的铁路设施，留下新的边界。"},
+      {"id": "absence", "detail": "地图上不显眼的棚户、摊贩或日常路径仍可能很重要，正式制图对非正式生活往往记录不足。"}
+    ],
+    "sources": [{"title": "Library of Congress: Maps collections", "url": "https://www.loc.gov/maps/collections/", "note": "城市地图馆藏呈现建筑、街道、交通、经济活动和城市演变。"}],
+    "limits": "地图只是一类证据；不从空间形态直接推断居民意图，讨论具体城市时需补充地方史与人口资料。"
+  },
+  {
+    "id": "place-and-heritage", "category": "geography", "title": "地方感怎样形成", "aliases": ["地方感", "故乡", "空间"],
+    "premise": "地方感来自物理环境，也来自反复实践、名字、记忆和人与人的联系。城市更新可能改善设施，同时改变熟悉路线与文化活动的生存空间，收益和失落可同时存在。",
+    "angles": [
+      {"id": "smell", "detail": "气味、声音和每天走的路能比地标更快唤起地方感，这些经验却常不在规划图里。"},
+      {"id": "newcomer", "detail": "地方不只属于最早居民；迁入者也会建立连接，但不同群体对“保留什么”可能意见相左。"},
+      {"id": "renewal", "detail": "保留建筑外观不一定保住生活方式，租金、工作场所和活动空间同样决定文化能否继续。"}
+    ],
+    "sources": [{"title": "UNESCO: Safeguarding intangible heritage in urban contexts", "url": "https://ich.unesco.org/en/urban-contexts", "note": "讨论城市空间、社区参与、活态文化和公平发展之间的关系。"}],
+    "limits": "不把地方感假定为人人相同，不浪漫化旧环境或否定改善需求；具体更新影响需听取多方经验。"
+  },
+  {
+    "id": "exoplanet-evidence", "category": "science", "title": "看不见的行星怎样被发现", "aliases": ["系外行星", "天文", "证据"],
+    "premise": "许多系外行星不是直接拍到，而是从恒星亮度或运动的规律变化中推断。一次变化可能有多种原因，需要重复观测、模型比较和后续确认，这正好展示科学证据如何逐步累积。",
+    "angles": [
+      {"id": "shadow", "detail": "凌星像极小而周期性的变暗，但恒星活动和仪器噪声也会制造信号，所以规律重复比一次惊喜更重要。"},
+      {"id": "inference", "detail": "科学常研究看不见的对象：不是凭空猜，而是比较不同假设能否一致解释多组可测后果。"},
+      {"id": "citizen", "detail": "公开数据让普通人也能参与筛选和分析，但参与并不取消校验流程，贡献仍需可复核。"}
+    ],
+    "sources": [{"title": "NASA Science: Exoplanet Watch", "url": "https://science.nasa.gov/citizen-science/exoplanet-watch/exoplanet-watch-overview/", "note": "介绍系外行星观测、数据分析及公众参与真实研究的方式。"}],
+    "limits": "候选体不等于已确认行星，不把艺术想象图当照片，也不从“宜居带”直接推断存在生命。"
+  },
+  {
+    "id": "citizen-science", "category": "science", "title": "普通人怎样参与科学", "aliases": ["公民科学", "观测", "数据"],
+    "premise": "公民科学把公众观察、分类或分析纳入研究流程，能扩展数据规模，也需要清晰方法、质量控制与反馈。专业与公众并非简单替代关系，而是以可复核任务协作。",
+    "angles": [
+      {"id": "attention", "detail": "大量图像中，人对异常模式的注意有时很有价值；统一标注和多人复核能减少个体判断波动。"},
+      {"id": "local", "detail": "长期记录身边的鸟、天气或夜空，价值常来自持续和覆盖范围，而非一次罕见发现。"},
+      {"id": "credit", "detail": "参与感也涉及数据用途、署名和反馈；好的项目应让贡献者知道工作如何进入研究。"}
+    ],
+    "sources": [{"title": "NASA Science: Citizen Science", "url": "https://science.nasa.gov/citizen-science/", "note": "说明公众使用手机、电脑或观测参与 NASA 数据与发现的项目方式。"}],
+    "limits": "不暗示随手观察都能成为可靠证据；尊重项目规范、隐私和物种保护要求，不夸大单人贡献。"
+  },
+  {
+    "id": "scientific-models", "category": "science", "title": "模型为什么既有用又不等于现实", "aliases": ["模型", "简化", "预测"],
+    "premise": "科学模型有意省略现实细节，以突出特定关系并产生可检验预测。同一对象可有多个尺度不同的模型；评价关键是用途、假设和误差范围，而不是寻找一张无所不包的完美复制品。",
+    "angles": [
+      {"id": "map", "detail": "地铁图牺牲真实距离换来换乘清晰，正说明“失真”有时是功能所需；问题在于是否拿它回答不适合的问题。"},
+      {"id": "weather", "detail": "预测改变并不必然表示模型毫无价值，新观测进入后更新本来就是概率预测的一部分。"},
+      {"id": "metaphor", "detail": "传送带、天平等比喻帮助入门，也可能遮住非线性和例外；知道比喻在哪里失效同样重要。"}
+    ],
+    "sources": [{"title": "Stanford Encyclopedia of Philosophy: Models in Science", "url": "https://plato.stanford.edu/entries/models-science/", "note": "系统讨论模型的表征、解释和预测用途，以及简化、近似与理想化为何需按任务评价。"}],
+    "limits": "不借“都是模型”否定证据强弱；具体科学判断仍应看数据、验证、适用范围与同行研究。"
+  },
+  {
+    "id": "night-sky-scale", "category": "science", "title": "夜空中的尺度感", "aliases": ["夜空", "宇宙", "尺度"],
+    "premise": "望向夜空同时涉及空间距离和时间：光抵达需要时间，因此看到的是天体较早的状态。不同天体距离差异巨大，人眼看到的邻近投影并不表示它们彼此靠近。",
+    "angles": [
+      {"id": "past", "detail": "“看见过去”不是诗意夸张，而是光传播有限速度的结果；但日常尺度上的时间差通常小到可忽略。"},
+      {"id": "constellation", "detail": "星座把不同距离的恒星投影成图案，是人的文化连线；换一个空间位置，形状可能完全不同。"},
+      {"id": "wonder", "detail": "尺度感可以引出敬畏，也可能让人觉得渺小；这两种体验是人的解释，不是天文学本身给出的结论。"}
+    ],
+    "sources": [{"title": "NASA Science: How Does Webb See Back in Time?", "url": "https://science.nasa.gov/mission/webb/science-overview/science-explainers/how-does-webb-see-back-in-time/", "note": "直接解释有限光速、光年距离与观测到天体过去状态之间的关系。"}],
+    "limits": "不混淆恒星、行星和星系的尺度；不编造精确距离，具体天体事实超出材料时应查证。"
+  },
+  {
+    "id": "art-context", "category": "arts", "title": "作品离开原来语境后", "aliases": ["博物馆", "艺术史", "语境"],
+    "premise": "艺术品在原有社会中可能兼有仪式、权力、纪念或日用功能，进入博物馆后更容易被当作纯审美对象。材料、地点、观看方式和历史语境会改变我们理解作品的路径。",
+    "angles": [
+      {"id": "function", "detail": "一件雕像原本可能接受供奉，而展柜中的灯光让它变成被凝视的对象；两种观看都不是完整背景。"},
+      {"id": "label", "detail": "展签帮助定位年代和材料，也会提前规定注意点；先看作品还是先读说明，会产生不同观看次序。"},
+      {"id": "return", "detail": "收藏史还会引出所有权、合法取得与归还争议，需要具体来源证据，不能只用“保护得更好”概括。"}
+    ],
+    "sources": [{"title": "The Met: The Art of Ancient Egypt", "url": "https://resources.metmuseum.org/resources/metpublications/pdf/The_Art_of_Ancient_Egypt_A_Resource_for_Educators.pdf", "note": "说明古埃及艺术在社会和宗教语境中的实际功能，不限于现代审美。"}],
+    "limits": "不以单一现代眼光替原社群发言；来源与归还问题逐件不同，材料只提供提问框架。"
+  },
+  {
+    "id": "art-connections", "category": "arts", "title": "艺术史可以怎样连接", "aliases": ["艺术史", "主题", "比较"],
+    "premise": "艺术史不必只按朝代或流派排成单线，也可从材料、技术、地点、主题与物件用途建立横向联系。同一作品放进不同关系网，会显出不同问题，而不必只有一种正确入口。",
+    "angles": [
+      {"id": "material", "detail": "从木、纸、石或纺织品出发，会看到工艺限制、贸易和保存条件，作品风格也因此不再只是个人选择。"},
+      {"id": "motif", "detail": "把不同地区的花、食物或自画像并置，能比较用途和意义，但相似图案不自动证明直接影响。"},
+      {"id": "route", "detail": "一次观看可以跟随一个关键词游走，价值在发现联系；它补充年代线索，却不应抹平历史先后。"}
+    ],
+    "sources": [{"title": "The Met: Art = Discovering Infinite Connections", "url": "https://www.metmuseum.org/art/metpublications/Art_Equals_Discovering_Infinite_Connections_in_Art_History", "note": "以材料、时期地点风格和主题等多重关键词重组艺术史联系。"}],
+    "limits": "比较不等于证明传播关系；保留作品各自语境，避免把跨文化相似简化成普遍象征。"
+  },
+  {
+    "id": "everyday-design", "category": "arts", "title": "日常物件里的设计选择", "aliases": ["设计", "器物", "审美"],
+    "premise": "杯子、椅子、路牌等日常物件同时回应材料、制作、身体动作、成本与审美。所谓好设计并非只看外观，也涉及谁能使用、是否耐久，以及物件如何进入具体生活。",
+    "angles": [
+      {"id": "handle", "detail": "杯把大小看似小事，却连接手势、温度、材料强度和清洗方式；形式往往是多种约束的折中。"},
+      {"id": "wear", "detail": "磨损可以被视为瑕疵，也能留下使用轨迹；是否珍惜旧痕与物件功能、情感和维修可能性有关。"},
+      {"id": "access", "detail": "对多数人顺手的设计可能让一部分人无法使用，可达性促使设计者重新检查“默认使用者”是谁。"}
+    ],
+    "sources": [{"title": "Design Museum: Material Tales — The Life of Things", "url": "https://designmuseum.org/exhibitions/touring-exhibitions/exhibitions-for-hire/material-tales-the-life-of-things-touring-exhibition", "note": "从材料来源、用途、演变及环境和工业代价理解塑造日常生活的物件。"}],
+    "limits": "不声称审美能被单一功能标准决定，也不把某种设计传统说成普世最优；具体物件需看使用环境。"
+  },
+  {
+    "id": "public-art", "category": "arts", "title": "公共空间里的艺术", "aliases": ["公共艺术", "雕塑", "城市"],
+    "premise": "公共艺术进入共享空间后，观看往往不是自愿预约，而与通勤、休息和地方记忆交织。作品价值、经费、代表性和维护责任因此会成为公共讨论，而不只属于艺术家与评论者。",
+    "angles": [
+      {"id": "encounter", "detail": "每天路过同一件作品，熟悉可能让人忽略，也可能逐渐形成地点标记，这和一次性展览观看很不同。"},
+      {"id": "voice", "detail": "“代表这座城”是谁的声音，需要看委托过程和社区参与；高可见度并不自动等于共同认同。"},
+      {"id": "change", "detail": "作品损坏、争议或周边改造后，是修复、迁移还是保留变化，牵涉作者意图与公共使用历史。"}
+    ],
+    "sources": [{"title": "UNESCO: Culture", "url": "https://www.unesco.org/en/culture", "note": "将文化、遗产和当代表达与包容、有韧性的社区生活相联系。"}],
+    "limits": "不把艺术价值简化为多数投票，也不以专家身份压过居民经验；具体争议需核实委托和历史。"
+  },
+  {
+    "id": "public-space", "category": "society", "title": "公共空间如何真的公共", "aliases": ["公共空间", "城市", "可达性"],
+    "premise": "空间写着“公共”不代表所有人都同样方便、安全或被欢迎。距离、开放时间、无障碍设施、消费门槛、管理规则和社会目光，会共同决定谁能停留以及能做什么。",
+    "angles": [
+      {"id": "bench", "detail": "一张长椅既支持休息，也可能通过扶手等设计限制躺卧；细节能暴露管理者期待哪类使用。"},
+      {"id": "nearby", "detail": "大型公园很亮眼，但居民反复使用的可能是步行可达的小空间；规模与日常公共价值不是同一指标。"},
+      {"id": "rules", "detail": "秩序规则保护共处，也可能把某些正常活动排除；评估需看规则对象、执行方式和替代空间。"}
+    ],
+    "sources": [{"title": "National Park Service: Urban Parks program history", "url": "https://www.nps.gov/orgs/1710/history.htm", "note": "记录近邻休闲空间的重要性及地理、经济条件造成的可达差异。"}],
+    "limits": "不从一个设计细节武断推定恶意；安全、维护、无障碍和不同使用者需求可能真实冲突。"
+  },
+  {
+    "id": "weak-ties-city", "category": "society", "title": "城市里的熟面孔", "aliases": ["弱联系", "邻里", "熟人"],
+    "premise": "日常社会联系不只包括亲友，也包括常见却不深交的邻居、店员和同行者。这些弱联系可能提供信息、礼貌确认与地方熟悉感，但意义因文化、隐私偏好和生活阶段而异。",
+    "angles": [
+      {"id": "recognition", "detail": "被熟店店员认出常带来连续感，却也有人更珍惜匿名；同一互动的舒适度不能替别人预设。"},
+      {"id": "routine", "detail": "固定路线让偶遇累积成低压力熟悉，城市空间安排会增加或减少这种重复相见的机会。"},
+      {"id": "bridge", "detail": "弱联系有时带来圈外信息和机会，但不能据此把每次寒暄工具化，关系也有自身边界。"}
+    ],
+    "sources": [{"title": "Granovetter: The Strength of Weak Ties", "url": "https://www.journals.uchicago.edu/doi/abs/10.1086/225469", "note": "原始论文论证弱联系在跨群体信息扩散、流动机会和社区组织中的桥接作用。"}],
+    "limits": "不把内向或少寒暄病理化，不要求用户扩大社交；此处只提供社会结构视角，不做个体心理评估。"
+  },
+  {
+    "id": "tradition-change", "category": "society", "title": "传统改变后还算传统吗", "aliases": ["传统", "代际", "文化变化"],
+    "premise": "传统通过每次实践被重新实现，往往同时保留某些核心关系并调整材料、场所或形式。社区内部也可能对真实性、开放参与和商业化有不同意见，没有外部的一把统一尺子。",
+    "angles": [
+      {"id": "family", "detail": "家庭仪式少一道步骤不一定失去意义，可以问大家真正想保留的是味道、相聚还是对某人的纪念。"},
+      {"id": "stage", "detail": "从生活场景搬上舞台能增加可见度，也会改变时长、参与关系和评价标准，保存与转化同时发生。"},
+      {"id": "youth", "detail": "年轻人用新媒介传承可能被批评不正宗，但若完全没有参与空间，传统也可能失去下一代实践者。"}
+    ],
+    "sources": [{"title": "UNESCO: What is Intangible Cultural Heritage?", "url": "https://ich.unesco.org/en/what-is-intangible-heritage-00003", "note": "强调活态遗产由社区认可、代际传递并随环境持续演变。"}],
+    "limits": "不替社区划定正宗与否，不把所有商业化都判为伤害或保护；权力、收益分配和自愿参与需具体讨论。"
+  },
+  {
+    "id": "attention-economy", "category": "society", "title": "注意力为什么总被争夺", "aliases": ["注意力", "平台", "信息"],
+    "premise": "数字平台、广告、工作与社交都在竞争有限注意力。个人习惯确实重要，但界面设计、商业模式和社会期待也塑造选择；把问题只归因于意志薄弱会漏掉环境层面。",
+    "angles": [
+      {"id": "friction", "detail": "自动播放和无限滚动减少停下来的摩擦，关闭提醒或增加一步操作，则是在重新设计选择环境。"},
+      {"id": "value", "detail": "吸引注意不等于值得注意，停留时长也不等于满意；衡量平台成功与个人感受可以使用不同指标。"},
+      {"id": "connection", "detail": "同一工具既会打断专注，也可能维持重要关系；讨论使用方式比笼统判断科技好坏更有解释力。"}
+    ],
+    "sources": [
+      {"title": "APA: Human Capacity in the Attention Economy", "url": "https://www.apa.org/pubs/books/human-capacity-attention-economy", "note": "以有限信息处理能力与近乎无限的信息环境为注意力经济的研究基础。"},
+      {"title": "FTC: Bringing Dark Patterns to Light", "url": "https://www.ftc.gov/reports/bringing-dark-patterns-light", "note": "梳理数字界面如何遮蔽、削弱或操纵用户自主选择，以及相关商业激励。"},
+      {"title": "Ruiz et al.: Design Frictions on Social Media", "url": "https://pure.au.dk/portal/en/publications/design-frictions-on-social-media-balancing-reduced-mindless-scrol/", "note": "受控研究比较无限滚动与增加操作摩擦后的记忆表现、无意识滚动和使用满意度。"}
+    ],
+    "limits": "不使用成瘾等临床词给普通使用贴标签，不编造多巴胺机制；具体平台效果受内容、人群和研究设计影响。"
+  }
+]

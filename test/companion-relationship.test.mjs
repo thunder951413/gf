@@ -48,8 +48,35 @@ test('status requires explicit proposal and delivered acceptance, never activity
   assert.equal(rel.view('miyue').status.value, 'dating');
   assert.ok(rel.view('miyue').status.id);
   assert.deepEqual(rel.view('miyue').status.source.messageIds, ['p1', 'p2']);
+  assert.match(rel.context('miyue'), /你们目前是恋人。/);
+  assert.match(rel.context('miyue'), /延续已经建立的恋人关系/);
   const clear = [row('c1', 'miyue', 'user', '以后只做普通朋友', '2026-09-21T08:00:00Z')]; save(store, clear); rel.observe('miyue', clear);
   assert.equal(rel.view('miyue').status.value, 'friends');
+  assert.match(rel.context('miyue'), /你们目前是朋友。/);
+  assert.doesNotMatch(rel.context('miyue'), /延续已经建立的恋人关系/);
+});
+
+test('configured identity is current state without inventing mutual acceptance or overriding temporary boundaries', () => {
+  const clock = clockAt('2026-09-14T12:00:00Z'), store = new TestStore(), rel = new CompanionRelationship(store, { clock });
+  assert.match(rel.context('miyue'), /目前按朋友相处，尚未约定关系身份/);
+  assert.doesNotMatch(rel.context('miyue'), /延续已经建立的恋人关系/);
+  rel.update('miyue', { kind: 'status', value: 'dating', revision: 0 });
+  rel.update('miyue', { kind: 'boundary', key: 'affection', value: '今天先别亲我', scope: 'today', revision: 1 });
+  const context = rel.context('miyue');
+  assert.match(context, /你们目前是恋人。/);
+  assert.match(context, /当前边界原话：“今天先别亲我”/);
+  assert.match(context, /当前亲近方式以有效边界为准/);
+  assert.doesNotMatch(context, /双方已经答应|双方已确认|来源：已保存原话/);
+  const before = rel.view('miyue');
+  assert.equal(before.status.value, 'dating');
+  assert.equal(before.status.source.type, 'setting');
+  assert.deepEqual(before.status.source.messageIds, []);
+  assert.equal(before.intimacyBoundary, 'friendly');
+  assert.deepEqual(rel.view('miyue'), before);
+  clock.set('2026-09-15T00:00:00Z');
+  assert.doesNotMatch(rel.context('miyue'), /当前边界原话/);
+  assert.match(rel.context('miyue'), /你们目前是恋人/);
+  store.close();
 });
 
 test('negated, quoted and hypothetical relationship phrases do not change status', () => {
@@ -163,4 +190,155 @@ test('observation participates in the caller transaction rollback', () => {
   const message = row('u1', 'miyue', 'user', '以后叫我阿舟吧', '2026-09-08T08:00:00Z');
   assert.throws(() => store.transaction(() => { save(store, [message]); rel.observe('miyue', [message], [{ kind: 'nickname', key: 'user', evidence: message.text, source: 'user', scope: 'persistent' }]); throw new Error('fail'); }));
   assert.equal(rel.view('miyue').nickname, null); assert.equal(rel.revision('miyue'), 0);
+});
+
+
+test('a validated current preference survives an omitted optional tail as a temporary sourced fact', () => {
+  const store=new TestStore(), clock=clockAt('2026-09-15T12:30:00Z'), rel=new CompanionRelationship(store,{clock});
+  const current=row('pacing-user','miyue','user','不用分析，就陪我随便说两句。',clock().toISOString());save(store,[current]);
+  const semantic={status:'model',decision:{intent:'preference',evidence:'不用分析'}};
+  rel.observe('miyue',[current],[],{semantic});
+  const fact=rel.view('miyue').preferences.find(item=>item.key==='communication');
+  assert.equal(fact.value,current.text);assert.equal(fact.scope,'turn');
+  assert.equal(fact.validUntil,'2026-09-15T14:30:00.000Z');assert.deepEqual(fact.source.messageIds,[current.id]);
+  assert.equal(rel.view('miyue').intimacyBoundary,'open');assert.equal(rel.view('miyue').status.value,'friends');
+  const revision=rel.revision('miyue');rel.observe('miyue',[current],[],{semantic});assert.equal(rel.revision('miyue'),revision);
+  assert.equal(rel.view('miyue',{suppressedSourceIds:[current.id]}).preferences.length,0);
+  clock.set('2026-09-15T14:31:00Z');assert.equal(rel.view('miyue').preferences.length,0);
+});
+
+test('semantic preference retention rejects fallback, wrong evidence, unsaved rows, and quoted speech',()=>{
+  for(const [text,semantic,stored] of [
+    ['不用分析',{status:'fallback',decision:{intent:'preference',evidence:'不用分析'}},true],
+    ['不用分析',{status:'model',decision:{intent:'preference',evidence:'别问我'}},true],
+    ['不用分析',{status:'model',decision:{intent:'respond',evidence:'不用分析'}},true],
+    ['不用分析',{status:'model',decision:{intent:'preference',evidence:'不用分析'}},false],
+    ['他说不用分析',{status:'model',decision:{intent:'preference',evidence:'不用分析'}},true],
+  ]){
+    const store=new TestStore(),clock=clockAt('2026-09-15T12:30:00Z'),rel=new CompanionRelationship(store,{clock});
+    const current=row('u','miyue','user',text,clock().toISOString());if(stored)save(store,[current]);
+    rel.observe('miyue',[current],[],{semantic});assert.equal(rel.view('miyue').preferences.length,0,text);store.close();
+  }
+});
+
+test('an explicit preference candidate retains its supplied scope without a second derived preference',()=>{
+  const store=new TestStore(),clock=clockAt('2026-09-15T12:30:00Z'),rel=new CompanionRelationship(store,{clock});
+  const current=row('u','miyue','user','以后都少讲一点吧。',clock().toISOString());save(store,[current]);
+  rel.observe('miyue',[current],[{kind:'preference',key:'conversation',source:'user',scope:'persistent',evidence:current.text}],{semantic:{status:'model',decision:{intent:'preference',evidence:'少讲一点'}}});
+  const prefs=rel.view('miyue').preferences;assert.equal(prefs.length,1);assert.equal(prefs[0].key,'conversation');assert.equal(prefs[0].scope,'persistent');
+});
+
+test('semantic boundary fallback retains a saved tonight limit without changing a dating relationship',()=>{
+  const clock=clockAt('2026-09-15T14:30:00Z'),store=new TestStore(),rel=new CompanionRelationship(store,{clock});
+  rel.update('miyue',{kind:'status',value:'dating',revision:0});
+  const current=row('boundary-user','miyue','user','今晚先不亲亲了，就这样靠着，普通聊聊天。不是不喜欢你了。',clock().toISOString());save(store,[current]);
+  rel.observe('miyue',[current],[],{semantic:{status:'model',decision:{intent:'boundary',evidence:'今晚先不亲亲了'}}});
+  const fact=rel.view('miyue').boundaries.find(item=>item.key==='stated_limit');
+  assert.equal(fact.value,current.text);assert.equal(fact.scope,'today');assert.equal(fact.validUntil,'2026-09-15T16:00:00.000Z');
+  assert.deepEqual(fact.source.messageIds,[current.id]);assert.equal(rel.view('miyue').status.value,'dating');assert.equal(rel.view('miyue').intimacyBoundary,'open');
+  assert.match(rel.context('miyue'),/今晚先不亲亲了/);
+  assert.equal(rel.view('miyue',{suppressedSourceIds:[current.id]}).boundaries.length,0);
+  clock.set('2026-09-15T16:00:00Z');assert.equal(rel.view('miyue').boundaries.length,0);assert.equal(rel.view('miyue').status.value,'dating');
+});
+
+test('a validated temporary semantic boundary canonicalizes a valid intimacy tail to one full-source stated limit',()=>{
+  const clock=clockAt('2026-09-15T14:30:00Z'),store=new TestStore(),rel=new CompanionRelationship(store,{clock});
+  rel.update('miyue',{kind:'status',value:'dating',revision:0});
+  const current=row('u','miyue','user','今晚先不亲亲了，就这样靠着，普通聊聊天。不是不喜欢你了。',clock().toISOString());save(store,[current]);
+  rel.observe('miyue',[current],[{kind:'boundary',key:'intimacy',source:'user',scope:'today',evidence:'今晚先不亲亲了，就这样靠着，普通聊聊天。'}],{semantic:{status:'model',decision:{intent:'boundary',evidence:'今晚先不亲亲了'}}});
+  const view=rel.view('miyue');assert.equal(view.boundaries.length,1);assert.equal(view.boundaries[0].key,'stated_limit');assert.equal(view.boundaries[0].value,current.text);assert.equal(view.intimacyBoundary,'open');assert.equal(view.status.value,'dating');
+});
+
+test('a validated temporary semantic boundary suppresses its same-source lexical boundary duplicate',()=>{
+  const store=new TestStore(),clock=clockAt('2026-09-15T12:00:00Z'),rel=new CompanionRelationship(store,{clock});
+  const current=row('u','miyue','user','今天别暧昧啦，我们正常聊。',clock().toISOString());save(store,[current]);
+  rel.observe('miyue',[current],[],{semantic:{status:'model',decision:{intent:'boundary',evidence:'今天别暧昧'}}});
+  const view=rel.view('miyue');assert.equal(view.boundaries.length,1);assert.equal(view.boundaries[0].key,'stated_limit');assert.equal(view.boundaries[0].value,current.text);assert.equal(view.intimacyBoundary,'open');
+});
+
+test('a persistent semantic boundary keeps its existing explicit tail category',()=>{
+  const store=new TestStore(),clock=clockAt('2026-09-15T12:00:00Z'),rel=new CompanionRelationship(store,{clock});
+  const current=row('u','miyue','user','以后不要亲密接触。',clock().toISOString());save(store,[current]);
+  rel.observe('miyue',[current],[{kind:'boundary',key:'intimacy',source:'user',scope:'persistent',evidence:current.text}],{semantic:{status:'model',decision:{intent:'boundary',evidence:'以后不要亲密接触'}}});
+  const view=rel.view('miyue');assert.equal(view.boundaries.length,1);assert.equal(view.boundaries[0].key,'intimacy');assert.equal(view.boundaries[0].scope,'persistent');assert.equal(view.intimacyBoundary,'friendly');
+});
+
+test('semantic boundary fallback never turns a long-term wording into a stated limit',()=>{
+  const store=new TestStore(),clock=clockAt('2026-09-15T12:00:00Z'),rel=new CompanionRelationship(store,{clock});
+  const current=row('u','miyue','user','以后不要这样开玩笑。',clock().toISOString());save(store,[current]);
+  rel.observe('miyue',[current],[],{semantic:{status:'model',decision:{intent:'boundary',evidence:'以后不要这样开玩笑'}}});
+  assert.equal(rel.view('miyue').boundaries.length,0);
+});
+
+test('semantic stated limits coexist by source and removing one does not hide another',()=>{
+  const clock=clockAt('2026-09-15T12:00:00Z'),store=new TestStore(),rel=new CompanionRelationship(store,{clock});
+  const first=row('u1','miyue','user','今晚先不亲亲了。',clock().toISOString()),second=row('u2','miyue','user','今晚先不说情话了。',clock().toISOString());save(store,[first,second]);
+  const semantic=text=>({semantic:{status:'model',decision:{intent:'boundary',evidence:text}}});
+  rel.observe('miyue',[first],[],semantic('今晚先不亲亲了'));rel.observe('miyue',[second],[],semantic('今晚先不说情话了'));
+  assert.deepEqual(rel.view('miyue').boundaries.map(item=>item.value),[first.text,second.text]);
+  const removed=rel.view('miyue').boundaries[0];rel.update('miyue',{id:removed.id,action:'remove',revision:rel.revision('miyue')});
+  assert.deepEqual(rel.view('miyue').boundaries.map(item=>item.value),[second.text]);
+});
+
+test('semantic boundary fallback requires an untampered saved user source and a valid model decision',()=>{
+  const cases=[
+    {text:'今晚先不亲亲了。',semantic:{status:'fallback',decision:{intent:'boundary',evidence:'今晚先不亲亲了'}},stored:true},
+    {text:'今晚先不亲亲了。',semantic:{status:'model',decision:{intent:'respond',evidence:'今晚先不亲亲了'}},stored:true},
+    {text:'他说今晚先不亲亲了。',semantic:{status:'model',decision:{intent:'boundary',evidence:'今晚先不亲亲了'}},stored:true},
+    {text:'“今晚先不亲亲了。”',semantic:{status:'model',decision:{intent:'boundary',evidence:'今晚先不亲亲了'}},stored:true},
+    {text:'今晚先不亲亲了。',semantic:{status:'model',decision:{intent:'boundary',evidence:'今晚先不亲亲了'}},stored:false},
+  ];
+  for(const [index,item] of cases.entries()){
+    const store=new TestStore(),clock=clockAt('2026-09-15T12:00:00Z'),rel=new CompanionRelationship(store,{clock});
+    const current=row(`u${index}`,'miyue','user',item.text,clock().toISOString());if(item.stored)save(store,[current]);
+    rel.observe('miyue',[current],[],{semantic:item.semantic});assert.equal(rel.view('miyue').boundaries.length,0,item.text);store.close();
+  }
+  for(const [storedRole,storedSpeaker,storedText] of [['other','user','今晚先不亲亲了。'],['miyue','assistant','今晚先不亲亲了。'],['miyue','user','已被篡改']]){
+    const store=new TestStore(),clock=clockAt('2026-09-15T12:00:00Z'),rel=new CompanionRelationship(store,{clock});
+    save(store,[row('u',storedRole,storedSpeaker,storedText,clock().toISOString())]);
+    rel.observe('miyue',[row('u','miyue','user','今晚先不亲亲了。',clock().toISOString())],[],{semantic:{status:'model',decision:{intent:'boundary',evidence:'今晚先不亲亲了'}}});
+    assert.equal(rel.view('miyue').boundaries.length,0,`${storedRole}/${storedSpeaker}/${storedText}`);store.close();
+  }
+});
+
+test('valid optional boundary wins over semantic fallback and each saved source is idempotent',()=>{
+  const store=new TestStore(),clock=clockAt('2026-09-15T12:00:00Z'),rel=new CompanionRelationship(store,{clock});
+  const current=row('u','miyue','user','今晚先不亲亲了。',clock().toISOString());save(store,[current]);
+  const semantic={status:'model',decision:{intent:'boundary',evidence:'今晚先不亲亲了'}};
+  rel.observe('miyue',[current],[{kind:'boundary',key:'stated_limit',source:'user',scope:'today',evidence:'今晚先不亲亲了'}],{semantic});
+  assert.equal(rel.view('miyue').boundaries.length,1);assert.equal(rel.view('miyue').boundaries[0].value,current.text);const revision=rel.revision('miyue');
+  rel.observe('miyue',[current],[],{semantic});assert.equal(rel.view('miyue').boundaries.length,1);assert.equal(rel.revision('miyue'),revision);
+  assert.match(promptInstruction(),/boundary 的 key .*stated_limit/);
+  rel.observe('miyue',[current],[{kind:'boundary',key:'made_up_limit',source:'user',scope:'today',evidence:current.text}]);assert.equal(rel.view('miyue').boundaries.length,1);
+  const permanent=row('later','miyue','user','以后先不亲亲了。',clock().toISOString());save(store,[permanent]);
+  rel.observe('miyue',[permanent],[{kind:'boundary',key:'stated_limit',source:'user',scope:'persistent',evidence:permanent.text}]);assert.equal(rel.view('miyue').boundaries.length,1);
+});
+
+test('an observed stated limit disappears when its saved source is deleted',()=>{
+  const store=new TestStore(),clock=clockAt('2026-09-15T12:00:00Z'),rel=new CompanionRelationship(store,{clock});
+  const current=row('u','miyue','user','今晚先不亲亲了。',clock().toISOString());save(store,[current]);
+  rel.observe('miyue',[current],[],{semantic:{status:'model',decision:{intent:'boundary',evidence:'今晚先不亲亲了'}}});
+  store.db.prepare('DELETE FROM messages WHERE id=?').run(current.id);assert.equal(rel.view('miyue').boundaries.length,0);
+});
+
+test('a stated limit loses authority if its saved wording is later tampered',()=>{
+  const store=new TestStore(),clock=clockAt('2026-09-15T12:00:00Z'),rel=new CompanionRelationship(store,{clock});
+  const current=row('u','miyue','user','今晚先不亲亲了。',clock().toISOString());save(store,[current]);
+  rel.observe('miyue',[current],[],{semantic:{status:'model',decision:{intent:'boundary',evidence:'今晚先不亲亲了'}}});
+  store.db.prepare('UPDATE messages SET text=? WHERE id=?').run('今晚先不亲亲了，不过现在可以了。',current.id);assert.equal(rel.view('miyue').boundaries.length,0);
+});
+
+test('context keeps every active boundary after extensive optional background',()=>{
+  const store=new TestStore(),clock=clockAt('2026-09-15T12:00:00Z'),rel=new CompanionRelationship(store,{clock});
+  for(let index=0;index<8;index++){
+    const background=row(`p${index}`,'miyue','user',`偏好背景${index}${'很长'.repeat(45)}`,clock().toISOString());save(store,[background]);
+    rel.observe('miyue',[background],[{kind:'preference',key:'communication',source:'user',scope:'persistent',evidence:background.text}]);
+  }
+  const limits=[];
+  for(let index=0;index<6;index++){
+    const limit=row(`b${index}`,'miyue','user',`今晚先不亲亲${index}。`,clock().toISOString());limits.push(limit);save(store,[limit]);
+    rel.observe('miyue',[limit],[],{semantic:{status:'model',decision:{intent:'boundary',evidence:`今晚先不亲亲${index}`}}});
+  }
+  const context=rel.context('miyue');assert.equal(rel.view('miyue').boundaries.length,6);
+  for(const limit of limits)assert.ok(context.includes(limit.text));
 });

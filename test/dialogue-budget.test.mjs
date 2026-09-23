@@ -12,7 +12,7 @@ const role = roles.find(item => item.id === 'miyue');
 
 test('Miyue dialogue ceilings support longer context while staying bounded', () => {
   assert.deepEqual(dialogueLimits('miyue'), {
-    history: { count: 32, chars: 18_000 },
+    history: { count: 800, chars: 90_000 },
     memories: { count: 12, chars: 5_000 },
     maxOutputTokens: 4_096,
     replyChars: 6_000,
@@ -22,7 +22,7 @@ test('Miyue dialogue ceilings support longer context while staying bounded', () 
 });
 
 test('explicit current user text is retained verbatim outside the history budget', () => {
-  const history = Array.from({ length: 40 }, (_, index) => ({
+  const history = Array.from({ length: 850 }, (_, index) => ({
     speaker: index % 2 ? 'assistant' : 'user',
     text: `history-${index}-${'x'.repeat(700)}`,
     createdAt: new Date(Date.parse('2026-09-01T00:00:00Z') + index * 60_000).toISOString(),
@@ -33,8 +33,8 @@ test('explicit current user text is retained verbatim outside the history budget
     characterContext: '当前状态', story: null,
   });
   const transcript = messages.filter(message => message.content.includes('history-'));
-  assert.ok(transcript.length <= 32);
-  assert.ok(transcript.reduce((sum, message) => sum + message.content.length, 0) <= 18_000);
+  assert.ok(transcript.length <= 800);
+  assert.ok(transcript.reduce((sum, message) => sum + message.content.length, 0) <= 90_000);
   assert.equal(messages.at(-1).content, current);
 });
 
@@ -50,8 +50,8 @@ test('null current turn keeps the latest historical user row in proactive contex
   });
   const historyIndex = messages.findIndex(message => message.content === latest);
   const backgroundIndex = messages.findIndex(message => message.content.includes('【本轮背景开始】'));
-  assert.ok(historyIndex > 0 && historyIndex < backgroundIndex);
-  assert.equal(messages.at(-1).content.includes('【本轮背景开始】'), true);
+  assert.ok(historyIndex > backgroundIndex && backgroundIndex > 0);
+  assert.equal(messages.at(-1).content, latest);
 });
 
 test('exact time stays in the volatile tail and never changes the reusable prefix', () => {
@@ -99,4 +99,44 @@ test('cross-day history carries Beijing send time while the current turn remains
   assert.equal(messages.find(message => message.content.includes('好，今天聊')).content, '【历史消息·2026-09-08 19:16】\n好，今天聊晚饭。');
   assert.equal(messages.at(-1).content, '现在是第二天了，昨天聊了什么？');
   assert.doesNotMatch(messages.at(-1).content, /历史消息/);
+});
+
+test('ordinary turn intents share the same working history and leave raw rows intact', () => {
+  const conversation = Array.from({ length: 9 }, (_, index) => ([
+    { speaker: 'user', text: `用户回合-${index + 1}` },
+    { speaker: 'assistant', text: `助手回复-${index + 1}` },
+  ])).flat();
+  conversation.push({ speaker: 'assistant', text: '最近末尾助手补充' });
+  const before = structuredClone(conversation);
+  const common = { role, memories: [], story: null, characterContext: '当前状态', currentUserText: '当前输入', conversation };
+  const contents = input => buildChatMessages(input).map(message => message.content).join('\n');
+
+  const legacy = contents(common);
+  assert.match(legacy, /用户回合-1/);
+
+  const daily = contents({ ...common, turnPlan: { mode: 'respond' } });
+  assert.match(daily, /用户回合-1/);
+  assert.match(daily, /用户回合-4/);
+  assert.match(daily, /用户回合-9/);
+  assert.match(daily, /最近末尾助手补充/);
+
+  const continued = contents({ ...common, turnPlan: { mode: 'continue' } });
+  assert.match(continued, /用户回合-1/);
+  assert.match(continued, /用户回合-8/);
+  assert.match(continued, /用户回合-9/);
+  assert.match(continued, /最近末尾助手补充/);
+
+  const recalled = contents({ ...common, turnPlan: { mode: 'recall' }, recallContext: '【已检索原话】明天对应星期日。' });
+  assert.match(recalled, /用户回合-1/);
+  assert.match(recalled, /已检索原话/);
+  assert.deepEqual(conversation, before);
+});
+
+test('user-fact recall separates original evidence from old assistant guesses and resolves relative dates',()=>{
+ const conversation=[{speaker:'user',text:'明天中午去汕头',createdAt:'2026-09-12T05:00:00Z'},{speaker:'assistant',text:'你订了九点的车。'},{speaker:'user',text:'聊聊别的'},{speaker:'assistant',text:'好。'}];
+ const before=structuredClone(conversation);
+ const messages=buildChatMessages({role:{id:'miyue',name:'林晓薇'},conversation,memories:[],currentUserText:'我周六坐哪班车来着',turnPlan:{mode:'recall',recallSubject:'user'}});
+ const text=JSON.stringify(messages);
+ assert.match(text,/明天中午去汕头/);assert.match(text,/2026-09-13（星期日）/);assert.doesNotMatch(text,/你订了九点的车/);
+ assert.deepEqual(conversation,before);
 });

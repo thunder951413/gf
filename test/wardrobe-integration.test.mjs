@@ -32,7 +32,7 @@ test('wardrobe selection is shared by the API, life snapshot and actual model re
   const result=await f.request('/api/chat',{role:'miyue',text:'你今天穿了什么衣服？'});
   assert.equal(result.status,200,JSON.stringify(result));
   const sent=f.calls.at(-1).messages.map(m=>m.content).join('\n');
-  assert.match(sent,/林雨薇当前衣着：温柔针织/);
+  assert.match(sent,/林晓薇当前衣着：温柔针织/);
   assert.match(sent,/灰蓝色中长裙/);
   assert.doesNotMatch(sent,/当前衣着：日常格纹|当前衣着：舒适居家/);
 });

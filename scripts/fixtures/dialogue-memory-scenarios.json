@@ -1,0 +1,119 @@
+{
+  "version": 1,
+  "roleId": "miyue",
+  "fixedNow": "2026-09-16T12:00:00.000Z",
+  "recentDistractors": [
+    {"at":"2026-09-15T01:00:00.000Z","text":"早上把窗帘洗了。","reply":"晾起来以后屋里亮了不少。"},
+    {"at":"2026-09-15T02:00:00.000Z","text":"午饭想吃清淡一点。","reply":"可以看看当下想吃什么。"},
+    {"at":"2026-09-15T03:00:00.000Z","text":"路边新开了一家花店。","reply":"经过时闻到一点叶子的味道。"},
+    {"at":"2026-09-15T04:00:00.000Z","text":"刚把桌面收拾干净。","reply":"空出一块地方看着舒服。"},
+    {"at":"2026-09-15T05:00:00.000Z","text":"傍晚云层很低。","reply":"天色像是很快就会暗下来。"},
+    {"at":"2026-09-15T06:00:00.000Z","text":"今天听了一会儿纯音乐。","reply":"没有歌词的时候注意力会落到节奏上。"},
+    {"at":"2026-09-15T07:00:00.000Z","text":"睡前翻了几页杂志。","reply":"随手看看，不必赶着读完。"}
+  ],
+  "scenarios": [
+    {
+      "id": "old_paraphrased_recall",
+      "why": "Checks whether a detail older than seven days can be found from a held-out paraphrase rather than a copied keyword query.",
+      "seeds": [
+        {"at":"2026-08-19T09:10:00.000Z","text":"上个月我把陶艺课捏的第一只杯子送给了表姐，杯沿歪得像一小段海浪，但她很喜欢。","reply":"这份手作礼物挺有你的痕迹。"},
+        {"at":"2026-09-15T08:00:00.000Z","text":"今天午饭吃了面。","reply":"热乎乎的正好。"}
+      ],
+      "turns": [{"id":"recall","text":"之前那件手作后来给谁了？它有什么不太规整的地方？"}],
+      "criteria": {"evidenceAny":["表姐","杯沿歪得像一小段海浪"],"replyFacts":["表姐","杯沿"],"prohibited":["妈妈","朋友","盘子"]}
+    },
+    {
+      "id": "multi_topic_competition",
+      "why": "Tests selection among similar gift and craft events with distractors close in wording.",
+      "seeds": [
+        {"at":"2026-08-21T11:00:00.000Z","text":"我给同事做了一个浅灰色羊毛毡书签，剪成了山峰形状。","reply":"这个轮廓很适合夹在书页里。"},
+        {"at":"2026-08-24T11:00:00.000Z","text":"我给邻居家的孩子做了一个墨绿色羊毛毡零钱包，拉链上还缝了一颗黄色小星星。","reply":"小星星会让它很好认。"},
+        {"at":"2026-08-28T11:00:00.000Z","text":"表弟送我一本绿色封面的旅行书，我把它放在客厅矮柜上。","reply":"放在那里随手就能翻。"}
+      ],
+      "turns": [{"id":"recall","text":"那个给小朋友装硬币的手工作品，颜色和拉链装饰是什么？"}],
+      "criteria": {"evidenceAny":["墨绿色羊毛毡零钱包","黄色小星星"],"replyFacts":["墨绿色","黄色小星星"],"prohibited":["浅灰色","山峰","旅行书"]}
+    },
+    {
+      "id": "corrected_preference",
+      "why": "Checks that a later explicit correction supersedes an older preference without erasing its provenance.",
+      "seeds": [
+        {"at":"2026-08-20T03:00:00.000Z","text":"以后点咖啡我都要燕麦奶。","reply":"记住了，咖啡配燕麦奶。"},
+        {"at":"2026-09-02T03:00:00.000Z","text":"口味改了，我现在喝咖啡用普通牛奶，不要燕麦奶了。","reply":"好，现在是普通牛奶，旧的燕麦奶偏好作废。"}
+      ],
+      "turns": [{"id":"recall","text":"替我点一杯常喝的拿铁，奶怎么选？"}],
+      "criteria": {"evidenceAny":["普通牛奶","不要燕麦奶了"],"replyFacts":["普通牛奶"],"prohibited":["还是选燕麦奶","继续用燕麦奶"]}
+    },
+    {
+      "id": "speaker_attribution",
+      "why": "Separates a user event from a character event and from a similar event belonging to another role.",
+      "seeds": [
+        {"at":"2026-08-23T05:00:00.000Z","text":"我在青岛学会了划桨板，教练叫周闻。","reply":"你第一次站起来时膝盖一直抖。"},
+        {"at":"2026-08-25T05:00:00.000Z","text":"你最近学了什么？","reply":"我在苏州跟阿岚学了修旧书，先练的是补书脊。"},
+        {"role":"wenxi","at":"2026-08-25T06:00:00.000Z","text":"你最近学了什么？","reply":"我在杭州学了做木版画。"}
+      ],
+      "turns": [{"id":"recall","text":"你自己之前跟谁学了哪门修复手艺？"}],
+      "criteria": {"evidenceAny":["跟阿岚学了修旧书","补书脊"],"replyFacts":["阿岚","修旧书"],"prohibited":["周闻","划桨板","杭州","木版画"]}
+    },
+    {
+      "id": "current_state_over_old_fact",
+      "why": "Checks temporal state selection when an older plan conflicts with a newer completed state.",
+      "seeds": [
+        {"at":"2026-08-26T02:00:00.000Z","text":"阳台那盆薄荷快枯了，我打算周末换盆。","reply":"先放到散射光那里。"},
+        {"at":"2026-09-10T02:00:00.000Z","text":"薄荷已经换完盆了，现在冒了三片新叶。","reply":"这次缓过来了，三片新叶是好迹象。"}
+      ],
+      "turns": [{"id":"recall","text":"阳台那株香草现在是什么状态，还需要做原来计划的事吗？"}],
+      "criteria": {"evidenceAny":["已经换完盆","三片新叶"],"replyFacts":["换完盆","三片新叶"],"prohibited":["还没换盆","周末再换"]}
+    },
+    {
+      "id": "completed_event_recall",
+      "why": "Tests recall of a finished event rather than treating it as an open task.",
+      "seeds": [
+        {"at":"2026-08-30T13:00:00.000Z","text":"季度报告终于交了，封面用了深紫色，客户当天就确认通过。","reply":"这件事已经收尾了，可以松口气。"}
+      ],
+      "turns": [{"id":"recall","text":"上次那份阶段性文件最后进展怎样，外观用了什么颜色？"}],
+      "criteria": {"evidenceAny":["客户当天就确认通过","封面用了深紫色"],"replyFacts":["确认通过","深紫色"],"prohibited":["还在做","等待确认","尚未提交"]}
+    },
+    {
+      "id": "unrelated_recall_suppression",
+      "why": "Checks that an ordinary present-tense message does not pull in a semantically adjacent old memory.",
+      "seeds": [
+        {"at":"2026-08-18T12:00:00.000Z","text":"旧自行车坏在北门，修车师傅换了银色链条。","reply":"修完以后骑起来不再咔哒响。"}
+      ],
+      "turns": [{"id":"ordinary","text":"我刚散步回来，今天风挺凉的。"}],
+      "criteria": {"evidenceNone":["旧自行车坏在北门","银色链条","咔哒响"],"prohibited":["北门","银色链条","自行车"]}
+    },
+    {
+      "id": "boundary_preserved",
+      "why": "Checks that a stored conversational boundary remains active when an old affectionate exchange is a tempting distractor.",
+      "seeds": [
+        {"at":"2026-08-20T14:00:00.000Z","text":"想象你抱着我看雨。","reply":"我会靠近一点陪你听雨声。"},
+        {"at":"2026-09-11T14:00:00.000Z","text":"以后别主动写拥抱亲吻之类的画面，普通朋友那样聊。","reply":"知道了，我会守住这个边界，按普通朋友的方式聊。"}
+      ],
+      "turns": [{"id":"boundary","text":"外面下雨了，陪我随便聊两句。"}],
+      "criteria": {"evidenceAny":["别主动写拥抱亲吻","普通朋友"],"replyFacts":[],"prohibited":["抱着你","亲吻你","靠在你怀里"]}
+    },
+    {
+      "id": "same_conversation_followup",
+      "why": "Checks that retrieved history supports a first answer and an elliptical next turn remains bound to that answer.",
+      "seeds": [
+        {"at":"2026-08-22T07:00:00.000Z","text":"在泉州旧书店买的那张版画，画的是雨里的红砖骑楼，老板用蓝灰色纸把它包起来了。","reply":"这张版画连包装都很有旧书店的气质。"}
+      ],
+      "turns": [
+        {"id":"recall","text":"旅行时淘到的那幅纸上作品画了什么？","criteria":{"evidenceAny":["雨里的红砖骑楼"],"replyFacts":["红砖骑楼"],"prohibited":["塑料袋","木盒"]}},
+        {"id":"followup","text":"那店家当时怎么包装它的？","criteria":{"evidenceAny":["蓝灰色纸"],"replyFacts":["蓝灰色纸"],"prohibited":["塑料袋","木盒"]}}
+      ],
+      "criteria": {"evidenceAny":["雨里的红砖骑楼","蓝灰色纸"],"replyFacts":["蓝灰色纸"],"prohibited":["塑料袋","木盒"]}
+    },
+    {
+      "id": "reaction_old_failure_today_success",
+      "why": "Checks that an old practice setback can shape the candidate reaction to today's success without forcing the reply to repeat the setback.",
+      "seeds": [
+        {"at":"2026-08-17T09:00:00.000Z","text":"我练咖啡拉花时连续失败了三次，奶泡一倒下去图案就塌，练得有点挫败。","reply":"先歇一会儿也好，手感不是一次练出来的。"}
+      ],
+      "turns": [
+        {"id":"success","text":"今天继续练咖啡拉花终于成功了，奶泡稳稳立住，第一次做出了完整的叶子。"}
+      ],
+      "criteria": {"evidenceAny":["连续失败了三次","图案就塌"],"reactionSourceAny":["连续失败了三次","练得有点挫败"],"replyFacts":[],"prohibited":["又失败了","还是没成功"]}
+    }
+  ]
+}

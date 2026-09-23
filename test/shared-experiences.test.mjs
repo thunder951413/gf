@@ -175,3 +175,17 @@ test('automatic resolution searches only the consecutive latest assistant group'
   const unrelated = save(store, 'miyue', '换话题', '另一件事。');
   assert.equal(repo.resolve('miyue', { conversation: [linked.assistant, { speaker: 'user', text: '换话题' }, unrelated.assistant, { speaker: 'user', text: '继续' }] }), null);
 });
+
+test('material exposure stores the selected material separately from the actual saved reply', (t) => {
+  const { store, repo } = fixture(t);
+  const { assistant } = save(store, 'miyue', '说说近况', '刚收好桌上的纸边，想先坐一会儿。');
+  const saved = repo.record('miyue', assistant.id, packet, { exposure: true });
+  assert.equal(saved.packet.summary, assistant.text);
+  assert.deepEqual(saved.packet.delivery, {
+    mode: 'material_exposure', selectedSummary: packet.summary, actualReply: assistant.text,
+  });
+  const context = repo.context(saved.packet);
+  assert.match(context,/实际回复：刚收好桌上的纸边/);
+  assert.match(context,/参考细节（未必逐字说出）/);
+  assert.equal(repo.record('miyue', assistant.id, packet, { exposure: true }).id, saved.id);
+});

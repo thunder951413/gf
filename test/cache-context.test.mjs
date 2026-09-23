@@ -13,25 +13,29 @@ const transcript=[{speaker:'user',text:'我喜欢清淡一点的茶。'},{speake
 const common={role,memories:[{text:'用户不喜欢被催回复'}],recallContext:'累计回忆：下次想聊江南饮食',conversation:[...transcript,{speaker:'user',text:'继续聊聊'}]};
 const indexOf=(messages,text)=>messages.findIndex(m=>m.content.includes(text));
 
-test('changing time, place, mood and sources leaves persona, memory and transcript prefix identical',()=>{
+test('changing time, place, mood and sources leaves the stable prefix intact while raw history follows the current background',()=>{
  const first=requestEmotionEnvelope(buildChatMessages({...common,characterContext:'现在在苏州，上午，心情轻松',content:{title:'茶叶',summary:'绿茶相关材料'}}));
  const second=requestEmotionEnvelope(buildChatMessages({...common,characterContext:'现在在丽江，晚上，有点累；保持朋友距离',content:{title:'食物',summary:'另一份资料'}}));
  const boundary=indexOf(first,'【本轮背景开始】');
  assert.deepEqual(first.slice(0,boundary),second.slice(0,boundary));
- assert.ok(indexOf(first,'我喜欢清淡一点的茶')<boundary);
+ assert.ok(indexOf(first,'我喜欢清淡一点的茶')>boundary);
+ assert.ok(indexOf(first,'绿茶相关材料')>boundary);
+ assert.ok(indexOf(second,'另一份资料')>boundary);
  assert.match(second[boundary].content,/丽江.*有点累.*朋友距离/);
  assert.doesNotMatch(second[0].content,/现在在丽江|现在在苏州/);
  assert.equal(second.at(-1).content,'继续聊聊');
  assert.deepEqual(JSON.parse(second[indexOf(second,'下次聊茶')].content).reply,transcript[1].text);
 });
-test('new user input and new conversation extend the available history without mutating old rows',()=>{
+test('new user input leaves the static prefix stable, keeps prior turns after state, and puts the current text last',()=>{
  const before=structuredClone(common);
  const first=buildChatMessages({...common,characterContext:'旧状态'});
  const conversation=[...common.conversation,{speaker:'assistant',text:'可以，先聊茶。'},{speaker:'user',text:'那么你爱喝什么？'}];
  const second=buildChatMessages({...common,conversation,characterContext:'新状态'});
  const boundary=indexOf(first,'【本轮背景开始】');
  assert.deepEqual(first.slice(0,boundary),second.slice(0,boundary));
- assert.equal(second[boundary].content,'继续聊聊');
+ assert.deepEqual(first.slice(boundary+1,-1).filter(m=>!m.content.startsWith('【对话范围说明】')).map(message=>message.content),transcript.map(message=>message.text));
+ assert.deepEqual(second.slice(boundary+1,-1).filter(m=>!m.content.startsWith('【对话范围说明】')).map(message=>message.content),['我喜欢清淡一点的茶。','那就记着这个口味，下次聊茶可以接着说。','继续聊聊','可以，先聊茶。']);
+ assert.equal(first.at(-1).content,'继续聊聊');
  assert.equal(second.at(-1).content,'那么你爱喝什么？');
  assert.deepEqual(common,before);
 });
@@ -50,7 +54,7 @@ test('proactive plan and environment changes do not rewrite the fixed system or 
  assert.match(second[boundary].content,/丽江旅行/);
  assert.ok(second.some(m=>m.content==='计划类型：conversation。'));
 });
-test('user and proactive triggers share the exact persona, memory, recall and historical prefix',()=>{
+test('user and proactive triggers share the stable prefix while their native history follows current state',()=>{
  const base={role,memories:common.memories,recallContext:common.recallContext,conversation:transcript,story:null,characterContext:'同一份当前状态'};
  const user=requestEmotionEnvelope(buildChatMessages({...base,currentUserText:'继续聊聊'}));
  const proactive=buildProactiveMessages({...base,currentUserText:null,topics:'日常',candidates:[],kind:'life'});
@@ -58,8 +62,14 @@ test('user and proactive triggers share the exact persona, memory, recall and hi
  const proactiveBoundary=indexOf(proactive,'【本轮背景开始】');
  assert.ok(userBoundary>0&&proactiveBoundary>0);
  assert.deepEqual(user.slice(0,userBoundary),proactive.slice(0,proactiveBoundary));
- assert.deepEqual(user.slice(0,userBoundary).map(message=>message.role),['system','user','user','user','assistant']);
+ assert.deepEqual(user.slice(0,userBoundary).map(message=>message.role),['system','user','user']);
  assert.doesNotMatch(user.slice(0,userBoundary).map(message=>message.content).join('\n'),/【本轮触发方式|现在在苏州|苏州做饭/);
+ assert.deepEqual(user.slice(userBoundary+2,-2).map(message=>message.role),['user','assistant']);
+ assert.equal(user[userBoundary+2].content,transcript[0].text);
+ assert.equal(JSON.parse(user[userBoundary+3].content).reply,transcript[1].text);
+ const proactiveHistoryEnd=proactive.findIndex(message=>message.content.startsWith('计划类型：'));
+ const proactiveHistoryStart=proactiveHistoryEnd+4;
+ assert.deepEqual(proactive.slice(proactiveHistoryStart,-1).map(message=>({role:message.role,content:message.role==='assistant'?JSON.parse(message.content).reply:message.content})),[{role:'user',content:transcript[0].text},{role:'assistant',content:transcript[1].text}]);
 });
 test('state serialization omits counters and timestamps while reflecting meaningful state and boundary changes',t=>{
  const dataDir=fs.mkdtempSync(path.join(os.tmpdir(),'cache-state-'));

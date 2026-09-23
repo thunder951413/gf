@@ -31,7 +31,7 @@ test('meter effects preserve bounds, fractional clock progress, and deterministi
 });
 
 test('unchanged event context is identical before changing history/time across all opening modes',()=>{
-  const role={id:'miyue',name:'林雨薇',interaction:{mode:'companion'}};
+  const role={id:'miyue',name:'林晓薇',interaction:{mode:'companion'}};
   const base={role,memories:[],conversation:[],eventContext:'【近期事件】美甲：梅子色；保留至 9 月 17 日。',characterContext:'此刻 9 月 10 日 21:00'};
   const typed=requestEmotionEnvelope(buildChatMessages({...base,currentUserText:'今天怎么样？'}));
   const gesture=requestEmotionEnvelope(buildChatMessages({...base,currentUserText:null,conversation:[{speaker:'assistant',text:'我在呢。'}],characterContext:'此刻 9 月 10 日 21:10，准备开场'}));
@@ -41,4 +41,41 @@ test('unchanged event context is identical before changing history/time across a
   assert.equal(typed[1].content,base.eventContext);
   const changed=buildChatMessages({...base,eventContext:'【近期事件】新事件'});
   assert.notEqual(changed[1].content,typed[1].content);
+});
+
+test('volatile event material follows the stable archive without changing its prefix',()=>{
+  const role={id:'miyue',name:'林晓薇',interaction:{mode:'companion'}};
+  const conversation=[
+    {speaker:'user',text:'旧问题一',createdAt:'2026-09-01T00:00:00Z'},
+    {speaker:'assistant',text:'旧回答一',createdAt:'2026-09-01T00:01:00Z'},
+    {speaker:'user',text:'旧问题二',createdAt:'2026-09-01T00:02:00Z'},
+    {speaker:'assistant',text:'旧回答二',createdAt:'2026-09-01T00:03:00Z'},
+    {speaker:'user',text:'最近的历史消息',createdAt:'2026-09-01T00:04:00Z'},
+  ];
+  const common={role,memories:[{text:'明确保存的偏好'}],conversation,characterContext:'本轮状态',currentUserText:'真正的本轮输入'};
+  const first=buildChatMessages({...common,eventContext:'【近期事件】旧阶段'});
+  const second=buildChatMessages({...common,eventContext:'【近期事件】新阶段'});
+  const eventIndex=first.findIndex(message=>message.content==='【近期事件】旧阶段');
+  assert.ok(eventIndex>1);
+  assert.deepEqual(first.slice(0,eventIndex),second.slice(0,eventIndex));
+  assert.equal(first.at(-1).content,'真正的本轮输入');
+});
+
+test('proactive compilation shares the chat archive and uses one supplied reply budget',()=>{
+  const role={id:'miyue',name:'林晓薇',interaction:{mode:'companion'}};
+  const common={role,memories:[{text:'明确保存的偏好'}],conversation:[
+    {speaker:'user',text:'旧问题一'}, {speaker:'assistant',text:'旧回答一'},
+    {speaker:'user',text:'旧问题二'}, {speaker:'assistant',text:'旧回答二'},
+    {speaker:'user',text:'最近的历史消息'},
+  ],characterContext:'本轮状态',eventContext:'【近期事件】进行中'};
+  const chat=requestEmotionEnvelope(buildChatMessages({...common,currentUserText:'真正的本轮输入'}));
+  const proactive=buildProactiveMessages({...common,kind:'life',topics:'日常',candidates:[],policyPlan:{maxChars:320}});
+  const archive=chat.find(message=>message.content.includes('【历史资料｜不是当前用户发言或回复范例】'));
+  assert.deepEqual(proactive.find(message=>message.content===archive.content),archive);
+  const budget=proactive.find(message=>message.content.includes('message 最多'))?.content;
+  assert.match(budget,/最多320字/);
+  assert.doesNotMatch(budget,/6000/);
+  const planned=buildProactiveMessages({...common,kind:'life',topics:'日常',candidates:[],turnPlan:{budget:{replyChars:240}}});
+  assert.match(planned.find(message=>message.content.includes('message 最多'))?.content,/最多240字/);
+  assert.match(proactive.at(-1).content,/本轮触发方式：主动联系/);
 });

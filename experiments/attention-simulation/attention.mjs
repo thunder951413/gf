@@ -73,10 +73,10 @@ export function select(items, { day, mode = 'reply', relevance = {}, activeTopic
 
 export const fixtures = [
   { id: 'dive', topic: 'sea', born: 0, base: 12, text: '用户说这周五打算去南澳岛，描述潜水像在天上飞、俯瞰海洋。没有记录当地天气、水温或他的潜水资质。', mentions: [{ at: 0, who: 'user', turn: 'u1' }, { at: 1, who: 'user', turn: 'u2' }, { at: 2, who: 'user', turn: 'u3' }] },
-  { id: 'work', topic: 'design', born: 0, base: 14, text: '林雨薇的虚构生活：包装设计改到第三稿，客户一直说想要江南感，却没有给具体方向。她烦恼的是不知道该改什么，不是担心用户不理她。', mentions: [] },
-  { id: 'book', topic: 'reading', born: 0, base: 10, text: '林雨薇的虚构生活：最近读一本散文集，关注到作者写晾衣服、洗衣机这些普通日常。她觉得生活不必一直好看，也没有那么多感悟。作品名称未设定。', mentions: [] },
-  { id: 'tea', topic: 'tea', born: 0, base: 18, text: '林雨薇的虚构生活：前几天泡过桂花乌龙，已经主动讲了两次茶香和窗外的光。', mentions: [{ at: 0, who: 'assistant', turn: 'a1' }, { at: 1, who: 'assistant', turn: 'a2' }], exposures: [0, 1] },
-  { id: 'movie', topic: 'sea', born: 0, base: 7, text: '林雨薇的虚构生活：看过一段海洋纪录片，被鱼群从镜头前游过的画面吸引；没有亲自潜水的已知经历。', mentions: [] },
-  { id: 'walk', topic: 'walk', born: 0, base: 9, text: '林雨薇的虚构生活：散步时留意过街边招牌的配色，想过有些店的字比装修更有意思。', mentions: [] },
-  { id: 'new-book', topic: 'new-reading', born: 7, base: 15, text: '林雨薇的虚构生活：今天看了一篇谈旧衣服的随笔，其中有人一直留着穿旧的外套，因为口袋的位置用习惯了。她发现自己也舍不得扔一件起球的开衫，主要是穿着舒服。文章无已核实标题与链接。', mentions: [] },
+  { id: 'work', topic: 'design', born: 0, base: 14, text: '林晓薇的虚构生活：包装设计改到第三稿，客户一直说想要江南感，却没有给具体方向。她烦恼的是不知道该改什么，不是担心用户不理她。', mentions: [] },
+  { id: 'book', topic: 'reading', born: 0, base: 10, text: '林晓薇的虚构生活：最近读一本散文集，关注到作者写晾衣服、洗衣机这些普通日常。她觉得生活不必一直好看，也没有那么多感悟。作品名称未设定。', mentions: [] },
+  { id: 'tea', topic: 'tea', born: 0, base: 18, text: '林晓薇的虚构生活：前几天泡过桂花乌龙，已经主动讲了两次茶香和窗外的光。', mentions: [{ at: 0, who: 'assistant', turn: 'a1' }, { at: 1, who: 'assistant', turn: 'a2' }], exposures: [0, 1] },
+  { id: 'movie', topic: 'sea', born: 0, base: 7, text: '林晓薇的虚构生活：看过一段海洋纪录片，被鱼群从镜头前游过的画面吸引；没有亲自潜水的已知经历。', mentions: [] },
+  { id: 'walk', topic: 'walk', born: 0, base: 9, text: '林晓薇的虚构生活：散步时留意过街边招牌的配色，想过有些店的字比装修更有意思。', mentions: [] },
+  { id: 'new-book', topic: 'new-reading', born: 7, base: 15, text: '林晓薇的虚构生活：今天看了一篇谈旧衣服的随笔，其中有人一直留着穿旧的外套，因为口袋的位置用习惯了。她发现自己也舍不得扔一件起球的开衫，主要是穿着舒服。文章无已核实标题与链接。', mentions: [] },
 ];

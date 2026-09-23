@@ -137,13 +137,13 @@ test('long sources stay bounded with an explicit clipping marker and conversatio
 
 test('force compacts below the automatic threshold while keeping a useful ten-message tail', async (t) => {
   const { store, repo } = fixture(t);
-  insert(store, 'miyue', 14);
+  insert(store, 'zhixia', 14);
   const model = new FakeModel();
   const engine = new RecallEngine({ repo, model, roles });
-  assert.equal((await engine.run('miyue')).reason, 'threshold');
-  const forced = await engine.run('miyue', { force: true });
+  assert.equal((await engine.run('zhixia')).reason, 'threshold');
+  const forced = await engine.run('zhixia', { force: true });
   assert.equal(forced.summarizedCount, 4);
-  assert.equal(repo.get('miyue').pendingCount, 10);
+  assert.equal(repo.get('zhixia').pendingCount, 10);
 });
 
 test('direct and scheduled work coalesces, stop drains it, and stopped engines refuse new runs', async (t) => {

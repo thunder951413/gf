@@ -52,7 +52,7 @@ test('real timer collects and delivers without any chat or run request, inbox th
   assert.equal((await request('/api/conversations/wenxi')).body.messages[0].kind, 'proactive');
   assert.equal((await request('/api/inbox')).body.unreadByRole.wenxi, 1, 'GET does not mark read');
   assert.equal((await request('/api/chat', { role: 'wenxi', text: '这个时间感还挺有意思' })).status, 200);
-  assert.match(JSON.stringify(calls[1]), /城市里的时间/); assert.equal(app.proactiveRepo.unansweredCount(localDayStart(at)), 0);
+  assert.match(JSON.stringify(calls[1]), /城市里的时间/); assert.equal(app.proactiveRepo.unansweredCount('wenxi',localDayStart(at)), 0);
 });
 
 test('missing model still collects, persists the plan across restart, and stores no fake opener', async t => {
@@ -86,7 +86,7 @@ test('reminders share durable daily budget and gap, deletion does not restore bu
 });
 
 test('SQLite commit enforces unanswered limit, canonical article dedup and feedback source preference', async t => {
-  const { app, request } = await setup(t); await app.refreshContent(); const content = app.store.listContent()[0];
+  const { app, request } = await setup(t); app.proactiveRepo.saveSettings({dailyLimit:8}); await app.refreshContent(); const content = app.store.listContent()[0];
   const a = insert(app, { kind: 'content', contentId: content.id }); assert.ok(a);
   await request('/api/proactive/feedback', { messageId: a.id, value: 'less' });
   assert.equal(app.proactiveRepo.getCandidates()[0].dislikedSource, true); assert.equal(app.proactiveRepo.getCandidates()[0].used, true);
@@ -94,8 +94,33 @@ test('SQLite commit enforces unanswered limit, canonical article dedup and feedb
   app.store.addContent(otherFeed, [{ ...article, title: '另一个标题', url: article.url + '?utm_source=test' }], '另一来源');
   const duplicate = app.store.listContent().find(c => c.feedId === otherFeed.id);
   assert.equal(insert(app, { role: 'wenxi', kind: 'content', contentId: duplicate.id }), null);
-  assert.ok(insert(app)); assert.ok(insert(app, { role: 'wenxi' })); assert.equal(insert(app, { role: 'miyue', kind: 'story' }), null);
+  assert.ok(insert(app)); assert.ok(insert(app, { role: 'wenxi' })); assert.ok(insert(app, { role: 'wenxi' }));
+  assert.ok(insert(app, { role: 'miyue', kind: 'story' }), 'other roles are not blocked by unread news');
+  assert.equal(insert(app, { role: 'wenxi' }), null, 'two unread news messages pause only Wenxi');
   assert.equal((await request('/api/proactive/feedback', { messageId: a.id, value: 'bad-value' })).status, 400);
+});
+
+test('SQLite delivery blocks a second unanswered message during the first thirty minutes', async t => {
+  const { app } = await setup(t);
+  const firstAt = new Date(at.valueOf() - 15 * 60_000).toISOString();
+  const first = app.proactiveRepo.commitDelivery({ role: 'miyue', kind: 'story', text: '刚想到你。', reason: '联系', topicKey: 'cooldown:first', createdAt: firstAt, nextContactAt: at.toISOString(), expectedLastMessageId: null });
+  assert.ok(first);
+  assert.equal(app.proactiveRepo.getLastUnansweredAssistantAt('miyue'), firstAt);
+  const second = app.proactiveRepo.commitDelivery({ role: 'miyue', kind: 'story', text: '又想到你。', reason: '联系', topicKey: 'cooldown:second', createdAt: at.toISOString(), nextContactAt: at.toISOString(), expectedLastMessageId: first.id, unansweredCooldownMinutes: 30 });
+  assert.equal(second, null);
+  assert.equal(app.store.getMessages('miyue').length, 1);
+});
+
+test('single companion mode hides retired roles and does not deliver their pending reminders', async t => {
+  const { app, request } = await setup(t, {activeRoleIds:['miyue']});
+  const oldMessage=insert(app,{role:'wenxi'});
+  assert.ok(oldMessage);
+  app.store.addReminder('zhixia','旧角色提醒',at.toISOString());
+  assert.deepEqual((await request('/api/bootstrap')).body.roles.map(role=>role.id),['miyue']);
+  assert.deepEqual((await request('/api/inbox')).body.items,[]);
+  assert.deepEqual((await request('/api/reminders')).body.reminders,[]);
+  assert.deepEqual(app.store.deliverDueReminders(at,new Set(['miyue'])),[]);
+  assert.equal((await request('/api/chat',{role:'wenxi',text:'你好'})).status,400);
 });
 
 test('quiet change during real model await discards generated message before SQLite commit', async t => {

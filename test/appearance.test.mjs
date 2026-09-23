@@ -14,7 +14,7 @@ const asset=(id,hairstyleId,outfitId,poseId,expressionId,paletteId='original')=>
 
 function catalogFixture(){
   return structuredClone({
-    version:1,identity:{id:'lin-yuwei-v1',name:'林雨薇',age:27},
+    version:1,identity:{id:'lin-yuwei-v1',name:'林晓薇',age:27},
     hairstyles:[choice('long','长发'),choice('bob','波波头')],
     outfits:[choice('everyday','日常格纹','ready',{description:'格纹外套与牛仔裤。'}),choice('soft-knit','温柔针织','ready',{description:'燕麦针织与灰蓝长裙。'}),choice('lingerie','私密内搭','ready',{access:'private',description:'完整不透明内搭。'})],
     scenes:[choice('study','书房','ready',{season:'all',compatibleOutfitIds:['everyday','soft-knit']}),choice('autumn-cafe','秋日咖啡馆','ready',{season:'autumn',compatibleOutfitIds:['everyday','soft-knit']}),choice('bedroom','卧室','ready',{season:'all',compatibleOutfitIds:['lingerie']})],

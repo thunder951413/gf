@@ -33,19 +33,31 @@ test('explicit request for coyness selects a required act, delivered receipt is 
 test('unplanned extra is omitted rather than making every reply coy',async t=>{
  const {chat}=await setup(t,[JSON.stringify({reply:'这句话是在解释刚才的提议。',extra:'快来抱抱我嘛。'})]);const result=await chat('你刚才是什么意思？');assert.equal(result.status,200);assert.doesNotMatch(result.messages.at(-1).text,/抱抱/);
 });
-test('each expressive slider changes its programmed opportunity and cooldown prevents consecutive requests',()=>{
- for(const [field,kind]of [['playfulness','playful'],['coyness','tender'],['optimism','hopeful'],['independence','perspective'],['flirtation','affection']]){
-  function count(value){let turn=4;let history=[];let count=0;const store={db:{prepare:sql=>sql.startsWith('SELECT payload')?{all:()=>history.map(behavior=>({payload:JSON.stringify({behavior})}))}:{get:()=>({n:turn})}}};const values={...Object.fromEntries(Object.keys(TUNING_DEFAULTS).map(k=>[k,0])),[field]:value};const planner=new CompanionBehavior(store,{get:()=>({values})});for(;turn<404;turn++){const p=planner.plan({scope:'miyue',intent:'respond'},'刚看完一本书，有个小想法。',{inner:{affectionAllowed:true,intimacyBoundary:'open'}});if(p.behavior.extra===kind){count++;if(['tender','affection'].includes(kind))assert.ok(!history.slice(0,3).some(p=>p.extra===kind));}history=[p.behavior,...history].slice(0,12);}return count;}
-  assert.equal(count(0),0,field);assert.ok(count(100)>20,field);
- }
+test('expressive sliders are descriptive preferences and do not schedule an extra sentence',()=>{
+ const values=Object.fromEntries(Object.keys(TUNING_DEFAULTS).map(key=>[key,0]));
+ const planner=new CompanionBehavior({db:{prepare:()=>({get:()=>({n:4})})}},{get:()=>({values})});
+ const low=planner.plan({scope:'miyue',intent:'respond'},'刚看完一本书，有个小想法。');
+ const highValues={...values,playfulness:100,coyness:100,optimism:100,independence:100,flirtation:100};
+ const high=new CompanionBehavior({db:{prepare:()=>({get:()=>({n:4})})}},{get:()=>({values:highValues})}).plan({scope:'miyue',intent:'respond'},'刚看完一本书，有个小想法。');
+ assert.deepEqual(low.behavior.expressivePreferences,{playfulness:0,coyness:0,optimism:0,independence:0,flirtation:0});
+ assert.deepEqual(high.behavior.expressivePreferences,{playfulness:100,coyness:100,optimism:100,independence:100,flirtation:100});
+ assert.equal(low.behavior.extra,null);assert.equal(high.behavior.extra,null);
 });
-test('warmth changes delivery guard, pleasing changes comfort load, and unrelated life project stays out of prompt',async t=>{
+test('a validated semantic accepted offer is not treated as a short acknowledgement',()=>{
+ const store={db:{prepare:()=>({get:()=>({n:4})})}},planner=new CompanionBehavior(store,{get:()=>({values:TUNING_DEFAULTS})});
+ const semantic={intent:'acknowledge',acceptsOffer:true,advice:false,imagined:false,correction:false,emotionalDetail:false};
+ const accepted=planner.plan({maxChars:300,questionBudget:1},'好，你继续。',{semantic});
+ assert.equal(accepted.behavior.acceptedOffer,true);assert.equal(accepted.behavior.acknowledgement,false);assert.equal(accepted.maxChars,300);
+ const ordinary=planner.plan({maxChars:300,questionBudget:1},'好的。',{semantic:{...semantic,acceptsOffer:false}});
+ assert.equal(ordinary.behavior.acceptedOffer,false);assert.equal(ordinary.behavior.acknowledgement,true);assert.equal(ordinary.maxChars,60);
+});
+test('ordinary conversation avoids commands at either warmth setting and unrelated life project stays out of prompt',async t=>{
  const {app,chat,calls}=await setup(t,[JSON.stringify({reply:'你必须听我的。我把话说慢一点。',extra:''})]);app.companionTuning.set({warmth:100,pleasing:100},0);let result=await chat('我今天有点累，不想做决定。');assert.doesNotMatch(result.messages.at(-1).text,/必须/);assert.doesNotMatch(JSON.stringify(calls[0]),/当前个人项目|色卡|预算说明|讨好倾向 100/);assert.match(JSON.stringify(calls[0]),/偏爱迁就小偏好/);assert.ok(calls[0].messages[0].content.length<3000);
- app.companionTuning.set({warmth:0,pleasing:0},1);result=await chat('说说看');assert.match(result.messages.at(-1).text,/必须/);
+ app.companionTuning.set({warmth:0,pleasing:0},1);result=await chat('说说看');assert.doesNotMatch(result.messages.at(-1).text,/必须/);assert.match(JSON.stringify(calls.at(-1)),/清爽直接/);
 });
 
-test('required extra cannot silently disappear during final question filtering',async t=>{
- const {app,chat,calls}=await setup(t,[JSON.stringify({reply:'那我软一点说。',extra:'能分一点点注意力给我吗？'}),JSON.stringify({reply:'那我软一点说。',extra:'分一点点注意力给我呀。'})]);app.interactionPolicy.set('miyue',{noQuestions:true});const r=await chat('想听你撒一点娇，别太腻');assert.equal(r.status,200);assert.equal(calls.length,2);assert.match(r.messages.at(-1).text,/分一点点注意力给我呀/);assert.equal(app.interactionPolicy.receipt(r.messages.at(-1).id).behavior.extra,'tender');
+test('required extra is delivered intact without a punctuation-only repair',async t=>{
+ const {app,chat,calls}=await setup(t,[JSON.stringify({reply:'那我软一点说。',extra:'能分一点点注意力给我吗？'}),JSON.stringify({reply:'那我软一点说。',extra:'分一点点注意力给我呀。'})]);app.interactionPolicy.set('miyue',{noQuestions:true});const r=await chat('想听你撒一点娇，别太腻');assert.equal(r.status,200);assert.equal(calls.length,1);assert.match(r.messages.at(-1).text,/能分一点点注意力给我吗？/);assert.equal(app.interactionPolicy.receipt(r.messages.at(-1).id).behavior.extra,'tender');
 });
 test('explicit recall finds uncategorized original preferences and honors removal, correction and role scope',async t=>{
  const {app}=await setup(t);const{lookupUserEvidence}=await import('../lib/memory-lookup.mjs');
@@ -58,7 +70,7 @@ test('explicit recall finds uncategorized original preferences and honors remova
 
 test('unsourced reading and unsupported just-now recollections do not reach delivery',async t=>{const {app}=await setup(t);const p=app.interactionPolicy.plan('miyue','普通聊就好');p.noArticleClaim=true;const result=app.interactionPolicy.enforce('我翻了几篇关于苏州书店的文章。你刚说最近提不起劲。那就轻松点聊。',p);assert.equal(result.reply,'那就轻松点聊。');assert.ok(result.repairs.includes('removed_unsourced_reading'));assert.ok(result.repairs.includes('removed_unsupported_recall'));});
 
-test('explicit coyness has an authored, history-free fallback after the one repair budget',async t=>{const {app,chat,calls}=await setup(t,[JSON.stringify({reply:'那我轻轻说。',extra:''})]);const r=await chat('想听你撒一点娇');assert.equal(r.status,200);assert.equal(calls.length,2);assert.match(r.messages.at(-1).text,/多叫我一声雨薇/);assert.equal(app.interactionPolicy.receipt(r.messages.at(-1).id).behavior.authoredFallback,true);});
+test('explicit coyness has an authored, history-free fallback after the one repair budget',async t=>{const {app,chat,calls}=await setup(t,[JSON.stringify({reply:'那我轻轻说。',extra:''})]);const r=await chat('想听你撒一点娇');assert.equal(r.status,200);assert.equal(calls.length,2);assert.match(r.messages.at(-1).text,/多叫我一声晓薇/);assert.equal(app.interactionPolicy.receipt(r.messages.at(-1).id).behavior.authoredFallback,true);});
 
 test('ordinary companion talk does not attach an old article',async t=>{const{app,chat,calls}=await setup(t);const feed=app.store.addFeed('https://source.test/rss','旧资料');app.store.addContent(feed,[{title:'旧文章独有标记',url:'https://source.test/a',summary:'这是旧文章独有标记正文，只在继续讨论它时才应发送。'}]);const content=app.store.listContent()[0];app.store.saveChatTurn({role:'miyue',text:'聊聊这篇',reply:'这篇资料有自己的背景。',contentId:content.id});await chat('今天有点累，陪我待一会儿');assert.doesNotMatch(JSON.stringify(calls[0]),/旧文章独有标记/);await chat('这篇文章的出处是什么？');assert.match(JSON.stringify(calls[1]),/旧文章独有标记/);});
 
@@ -66,27 +78,24 @@ test('background sources require current topic relevance and explicit affection 
  const {selectLifeContent}=await import('../lib/life-content.mjs');const items=[{title:'苏州旅游资料独有标记',summary:'苏州美食与旅行见闻。'.repeat(900),url:'https://source.test/travel'}],topic={sourceHints:['苏州','美食'],publicQuery:'苏州 美食',travel:true};
  assert.equal(selectLifeContent(items,topic,{text:'软软地撒一点娇吧',requireCurrentTopic:true}).length,0);
  assert.equal(selectLifeContent(items,topic,{text:'当地有哪些美食？',requireCurrentTopic:true,limit:1}).length,1);
- const{app,chat,calls}=await setup(t,[JSON.stringify({reply:'我就软一点说。',extra:'多叫我一声雨薇嘛。'})]);const rows=app.store.saveChatTurn({role:'miyue',text:'我喜欢软软的桂花糕',reply:'糕点旧话题独有标记。'});app.episodes.remember('miyue',rows.map(m=>m.id));await chat('软软地撒一点娇吧');const result=calls[0].messages.find(m=>m.content.startsWith('【本轮背景开始】'));assert.doesNotMatch(result.content,/糕点旧话题独有标记|共同经历证据/);assert.match(JSON.stringify(calls[0]),/我喜欢软软的桂花糕/);
+ const{app,chat,calls}=await setup(t,[JSON.stringify({reply:'我就软一点说。',extra:'多叫我一声晓薇嘛。'})]);const rows=app.store.saveChatTurn({role:'miyue',text:'我喜欢软软的桂花糕',reply:'糕点旧话题独有标记。'});app.episodes.remember('miyue',rows.map(m=>m.id));await chat('软软地撒一点娇吧');const result=calls[0].messages.find(m=>m.content.startsWith('【本轮背景开始】'));assert.doesNotMatch(result.content,/糕点旧话题独有标记|共同经历证据/);assert.match(JSON.stringify(calls[0]),/我喜欢软软的桂花糕/);
 });
 
-test('recall answer bundled with a question is repaired before filtering can drop the answer',async t=>{const{chat,calls}=await setup(t,[JSON.stringify({reply:'你在北京。咖啡是意式加奶，没记错吧？'}),JSON.stringify({reply:'你在北京，喝咖啡是意式加奶。'})]);const r=await chat('你还记得我在哪个城市，怎么喝咖啡吗？');assert.equal(r.status,200);assert.equal(calls.length,2);assert.match(r.messages.at(-1).text,/北京.*意式加奶/);});
+test('recall answer bundled with uncertainty is preserved without a punctuation-only repair',async t=>{const{chat,calls}=await setup(t,[JSON.stringify({reply:'你在北京。咖啡是意式加奶，没记错吧？'}),JSON.stringify({reply:'你在北京，喝咖啡是意式加奶。'})]);const r=await chat('你还记得我在哪个城市，怎么喝咖啡吗？');assert.equal(r.status,200);assert.equal(calls.length,1);assert.match(r.messages.at(-1).text,/北京。[\s\S]*意式加奶，没记错吧？/);});
 
 test('implicit affection never requires a literal romantic keyword to deliver the ordinary response',async t=>{const{app}=await setup(t);const plan=app.interactionPolicy.plan('miyue','今天我调了一杯柠檬薄荷水');plan.behavior={extra:'affection',explicit:false};const reply='薄荷水加鲜柠檬，白白的汁水看着就清凉。';for(const extra of ['隔着屏幕，倒也有点想尝一口你调的这杯夏天了。','秋天要是有你一起慢慢喝口热汤，应该会很温柔。']){assert.deepEqual(app.companionBehavior.assess(reply,extra,plan),[]);assert.ok(app.interactionPolicy.enforce(app.companionBehavior.compose(reply,extra,plan),plan).reply.includes(extra));}assert.ok(app.companionBehavior.assess(reply,'',plan).includes('missing_or_long_extra'));});
 
-test('editable liking and mood constrain autonomous expressive beats while explicit affection remains available',async t=>{
- const {app}=await setup(t);for(let i=0;i<3;i++)app.store.saveChatTurn({role:'miyue',text:'普通近况'+i,reply:'我听着呢。'});
- app.companionTuning.set({coyness:100,flirtation:100,playfulness:100,optimism:0,independence:0},0);
- const base={intent:'respond',questionBudget:1};let highCount=0;
- for(let i=0;i<80;i++){
-  const text='今天路上看见一只猫'+i;
-  const low=app.companionBehavior.plan(base,text,{inner:{affection:10,mood:20,affectionAllowed:true}});
-  assert.equal(low.behavior.extra,null);
-  const high=app.companionBehavior.plan(base,text,{inner:{affection:90,mood:90,affectionAllowed:true}});
-  if(high.behavior.extra)highCount++;
+test('ordinary turns never require extra while explicit coyness remains available at every preference level',()=>{
+ const store={db:{prepare:()=>({get:()=>({n:4})})}},base={scope:'miyue',intent:'respond',questionBudget:1};
+ for(const values of [
+  {...TUNING_DEFAULTS,coyness:0,flirtation:0,playfulness:0},
+  {...TUNING_DEFAULTS,coyness:100,flirtation:100,playfulness:100},
+ ]){
+  const planner=new CompanionBehavior(store,{get:()=>({values})});
+  assert.equal(planner.plan(base,'今天路上看见一只猫。',{inner:{affectionAllowed:true}}).behavior.extra,null);
+  const invited=planner.plan(base,'撒个娇给我听',{inner:{affectionAllowed:false}});
+  assert.equal(invited.behavior.extra,'tender');assert.equal(invited.suppressInitiatedAffection,false);
  }
- assert.ok(highCount>0);
- const invited=app.companionBehavior.plan(base,'撒个娇给我听',{inner:{affection:10,mood:20,affectionAllowed:false}});
- assert.equal(invited.behavior.extra,'tender');assert.equal(invited.suppressInitiatedAffection,false);
 });
 
 test('affection stays warm without inventing physical arrival at her location',async t=>{

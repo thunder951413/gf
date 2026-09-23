@@ -272,6 +272,9 @@ test('travel notebook binds to the public event destination and pauses on destin
   const hangzhou = { active: { id: 'trip-1', type: 'travel', destination: '杭州', phase: { id: 'away' } } };
   const first = repo.get('miyue', hangzhou);
   assert.equal(first.templateId, 'travel-notebook');
+  assert.equal(first.kind, 'travel');
+  assert.equal(first.travelBound, true);
+  assert.equal(first.userDirected, false);
   assert.match(first.title, /杭州/);
   assert.doesNotMatch(JSON.stringify(first), /天气|营业/);
   addAssistantFor(repo, 'travel-delivery', first.beat.text);
@@ -322,5 +325,18 @@ test('completed arc waits 48 hours and the next tick avoids immediate template r
   const next = repo.tick('miyue');
   assert.notEqual(next.id, view.id);
   assert.notEqual(next.templateId, firstTemplate);
+  store.close();
+});
+
+test('material exposure accepts a saved reply without the selected beat only at its selected version', () => {
+  const store = new TestStore(); const repo = new LifeThreadRepository(store, { clock: clockAt('2026-09-07T00:00:00Z'), random: () => 0 });
+  const view = repo.get('miyue');
+  addMessage(store, 'material-reply', '我刚收好桌上的纸边，想先坐一会儿。');
+  assert.equal(repo.markDelivered(view.pendingKey, 'material-reply', { mode: 'material_exposure', key: 'wrong-key', expectedVersion: view.version }), false);
+  assert.equal(repo.markDelivered(view.pendingKey, 'material-reply', { mode: 'material_exposure', key: view.pendingKey, expectedVersion: view.version + 1 }), false);
+  assert.equal(repo.markDelivered(view.pendingKey, 'material-reply', { mode: 'material_exposure', key: view.pendingKey, expectedVersion: view.version }), true);
+  const receipt = repo.get('miyue').history[0];
+  assert.equal(receipt.actualReply, '我刚收好桌上的纸边，想先坐一会儿。');
+  assert.equal(receipt.selectedText, view.beat.text);
   store.close();
 });

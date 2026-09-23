@@ -70,15 +70,19 @@ test('proactive generation also uses saved state and cannot deliver after a manu
  await pending;assert.equal(f.app.store.getMessages('miyue').filter(m=>m.speaker==='assistant').length,0);assert.ok(f.app.companionAgenda.pending('miyue'),'unserved invitation still available');
 });
 
-test('text-only need edits reach the actual chat request, stay out of numeric fields and support clearing',async t=>{
+test('text-only needs stay available and reach relevant exchanges without becoming every casual reply agenda',async t=>{
  const f=await fixture(t),before=await f.request('/api/companionship');
  const needs={emotional:'希望你回应她刚才的分享',physical:'渴望被拥抱、被轻轻抚摸，也想与你接吻'};
  const saved=await f.request('/api/companionship/inner',{revision:before.inner.revision,needs});assert.equal(saved.status,200);assert.deepEqual(saved.inner.needs,needs);assert.deepEqual(saved.inner.values,before.inner.values);
  const profile=await f.request('/api/characters/miyue');assert.deepEqual(profile.state.inner.needs,needs);
  const response=await f.request('/api/chat',{role:'miyue',text:'我们随便聊两句。'});assert.equal(response.status,200);
- const context=f.requests[0].messages.map(m=>m.content).join('\n');assert.ok(context.includes(needs.emotional));assert.ok(context.includes(needs.physical));assert.doesNotMatch(context,/欲望\d|亲近需求\d|亲需\d|亲愿\d/);
+ const casual=f.requests[0].messages.map(m=>m.content).join('\n');assert.ok(!casual.includes(needs.emotional));assert.ok(!casual.includes(needs.physical));
+ f.setTransport(async()=>({reply:'我也想你了，这样聊着就觉得离你近一点。',extra:''}));
+ const close=await f.request('/api/chat',{role:'miyue',text:'想你了，抱抱你。'});assert.equal(close.status,200,JSON.stringify(close));
+ const context=f.requests.at(-1).messages.map(m=>m.content).join('\n');assert.ok(context.includes(needs.emotional));assert.ok(context.includes(needs.physical));assert.doesNotMatch(context,/欲望\d|亲近需求\d|亲需\d|亲愿\d/);
  assert.equal((await f.request('/api/companionship/inner',{revision:before.inner.revision,needs:{physical:''}})).status,409);
- const cleared=await f.request('/api/companionship/inner',{revision:saved.inner.revision,needs:{physical:''}});assert.equal(cleared.status,200);assert.equal(cleared.inner.needs.physical,'');assert.equal(cleared.inner.needs.emotional,needs.emotional);
+ const latest=await f.request('/api/companionship');
+ const cleared=await f.request('/api/companionship/inner',{revision:latest.inner.revision,needs:{physical:''}});assert.equal(cleared.status,200);assert.equal(cleared.inner.needs.physical,'');assert.equal(cleared.inner.needs.emotional,needs.emotional);
 });
 
 test('a written emotional need is included verbatim in a real proactive request',async t=>{
@@ -120,20 +124,20 @@ test('cycle settings validation and stale generation preserve the pending need w
  const result=await pending;assert.equal(result.delivered,false);assert.equal(f.app.store.getMessages('miyue').length,0);assert.equal(f.app.inner.get().awaitingNeed,null);
 });
 
-test('desktop attention uses source-linked closeness history and callback cooldown survives new requests',async t=>{
+test('requested closeness recall uses sources without forcing subsequent desktop invitations to reminisce',async t=>{
  const f=await fixture(t);
  f.setTransport(async()=>({reply:'隔着聊天给你一个抱抱，这会儿觉得很安心。',extra:''}));
  const first=await f.request('/api/chat',{role:'miyue',text:'抱抱你。'});assert.equal(first.status,200,JSON.stringify(first));
  const memory=f.app.store.db.prepare('SELECT * FROM closeness_moments').get();assert.ok(memory);assert.match(memory.summary,/拥抱.*安心/);
  f.advance(3600000);
  f.setTransport(async()=>({reply:'记得上次聊起拥抱时的安心，今天也想听你说说话。',extra:''}));
- const second=await f.request('/api/desktop/attention',{requestId:'memory-gesture-01',level:'care'});assert.equal(second.status,200,JSON.stringify(second));
+ const second=await f.request('/api/chat',{role:'miyue',text:'还记得上次拥抱时的感受吗？'});assert.equal(second.status,200,JSON.stringify(second));
  assert.ok(f.requests.at(-1).messages.some(m=>m.content.includes('一条可延续的亲近回忆')&&m.content.includes(memory.message_id)));
- const requests=f.requests.length;await f.request('/api/desktop/attention',{requestId:'memory-gesture-01',level:'care'});assert.equal(f.requests.length,requests,'retry has no model call or extra memory');
  assert.ok(f.app.store.db.prepare('SELECT recalled_at FROM closeness_moments WHERE message_id=?').get(memory.message_id).recalled_at);
  f.setTransport(async()=>({reply:'今天也惦记着你，想陪你说会儿话。',extra:''}));
  const third=await f.request('/api/desktop/attention',{requestId:'memory-gesture-02',level:'care'});assert.equal(third.status,200,JSON.stringify(third));
  assert.ok(f.requests.at(-1).messages.every(m=>!m.content.includes('一条可延续的亲近回忆')));
+ const requests=f.requests.length;await f.request('/api/desktop/attention',{requestId:'memory-gesture-02',level:'care'});assert.equal(f.requests.length,requests,'retry has no model call or extra memory');
 });
 
 test('a short yes only fulfills the immediately preceding need invitation, not a later unrelated topic',async t=>{
@@ -146,4 +150,24 @@ test('a short yes only fulfills the immediately preceding need invitation, not a
  f.setTransport(async()=>({reply:'第二部分谈到了一点新的看法。',extra:''}));
  const reply=await f.request('/api/chat',{role:'miyue',text:'好'});assert.equal(reply.status,200,JSON.stringify(reply));
  assert.equal(f.app.inner.get().affectionNeed,90);assert.equal(f.app.inner.get().lastNeedRelief,null);
+});
+
+test('explicit closeness recall carries source detail and future wish through actual chat planning',async t=>{
+ const f=await fixture(t);
+ f.setTransport(async()=>({reply:'抱着你，听你说不用急着讲话，我心里很踏实。下次想靠着你听完一首歌。',extra:''}));
+ const first=await f.request('/api/chat',{role:'miyue',text:'抱抱你，靠着我歇一会儿。'});assert.equal(first.status,200,JSON.stringify(first));
+ f.advance(3600000);
+ f.setTransport(async()=>({reply:'记得上次抱抱时你让我靠着歇一会儿，我喜欢那种不用急着说话的安心。下次想选首你喜欢的歌，一起慢慢听。',extra:''}));
+ const recalled=await f.request('/api/chat',{role:'miyue',text:'记得上次抱抱吗？还想怎样和我待着？'});assert.equal(recalled.status,200,JSON.stringify({recalled,repair:f.requests.at(-1).messages.at(-1)}));
+ const input=f.requests.at(-1).messages.map(m=>m.content).join('\n');
+ assert.match(input,/用户当时说.*靠着我歇一会儿/);assert.match(input,/尚未确认实现的期待.*听完一首歌/);
+ assert.doesNotMatch(input,/本轮用一句自己的感受/);
+ const receipt=f.app.interactionPolicy.receipt(recalled.messages.at(-1).id);
+ assert.equal(receipt.behavior.turnPlan.focus.kind,'closeness');
+ assert.equal(receipt.behavior.turnPlan.focus.id,first.messages.at(-1).id);
+ assert.equal(f.app.store.db.prepare('SELECT COUNT(*) n FROM closeness_moments').get().n,1,'recalling an embrace is not a newly experienced embrace');
+ f.setTransport(async()=>({reply:'下次想选首舒缓的歌，想象靠着你听完，把没说完的话慢慢告诉你。',extra:''}));
+ const next=await f.request('/api/chat',{role:'miyue',text:'那下次想怎样待着？'});assert.equal(next.status,200,JSON.stringify(next));
+ assert.match(f.requests.at(-1).messages.map(m=>m.content).join('\n'),/直接谈想怎样延续这段亲近/);
+ assert.equal(f.app.interactionPolicy.receipt(next.messages.at(-1).id).behavior.turnPlan.focus.kind,'closeness');
 });

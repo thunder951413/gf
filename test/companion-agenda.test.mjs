@@ -341,3 +341,75 @@ test('a negated completion or invented replacement id cannot mutate an existing 
 test('forgotten active activities do not block fresh recommendations or affect selection',()=>{const f=fixture();const first=f.row('forgotten','user','推荐你看看《旧书》');f.repo.observe('miyue',[first]);f.advance(40);f.repo.tick('miyue');assert.equal(f.repo.view('miyue').plans[0].status,'active');const next=f.row('new','user','推荐你看看《新书》');f.repo.observe('miyue',[next]);f.repo.getSuppressedSourceIds=()=>['forgotten'];f.advance(40);f.repo.tick('miyue');const view=f.repo.view('miyue');assert.equal(view.plans.length,1);assert.equal(view.plans[0].title,'新书');assert.equal(view.plans[0].status,'active');f.close();});
 test('actual model prose updates her reading progress and completion even without optional metadata',()=>{const f=fixture();f.repo.observe('miyue',[f.row('rec','user','推荐你看看《城南旧事》')]);f.advance(40);f.repo.tick('miyue');let view=f.repo.observe('miyue',[f.row('progress','assistant','现在就剩最后一章，打算今晚泡杯茶慢慢读完。')]);assert.notEqual(view.plans[0].status,'completed');view=f.repo.observe('miyue',[f.row('progress-now','assistant','我现在读到最后一章了。')]);assert.match(view.plans[0].progress,/最后一章/);view=f.repo.observe('miyue',[f.row('finished','assistant','记得的，《城南旧事》嘛。那本旧书我读完最后一章了，合上时还舍不得。')]);assert.equal(view.plans[0].status,'completed');assert.equal(view.plans[0].completedBy,'character');f.close();});
 test('an unanswered recurring invitation skips missed weeks and resumes without claiming completion',()=>{const f=fixture();f.repo.update('miyue',{revision:0,action:'create',kind:'ritual',title:'周五分享一件小事',owner:'joint',recurrence:{frequency:'weekly',weekday:5,time:'20:00'}});f.set('2026-09-11T12:00:00Z');f.repo.tick('miyue');const first=f.repo.pending('miyue');assert.ok(first);f.set('2026-10-02T12:00:00Z');f.repo.tick('miyue');const current=f.repo.pending('miyue');assert.ok(current);assert.notEqual(current.key,first.key);const plan=f.repo.view('miyue').plans[0];assert.equal(plan.status,'awaiting_confirmation');assert.equal(plan.completedAt,undefined);assert.equal(f.repo.pending('miyue').key,current.key);f.close();});
+
+test('material exposure consumes a selected agenda opportunity without treating its anchor as actual prose', () => {
+  const f = fixture();
+  let view = f.repo.update('miyue',{revision:0,action:'create',kind:'reading',title:'城南旧事',owner:'character',dueAt:'2026-09-08T03:00:00Z'});
+  f.advance(2); f.repo.tick('miyue'); const pending = f.repo.pending('miyue');
+  f.row('material-reply','assistant','我刚腾出一点时间，想慢慢开始。');
+  assert.equal(f.repo.markDelivered('miyue',pending.key,'material-reply',pending.version,{mode:'material_exposure',key:'wrong',expectedVersion:pending.version}),false);
+  assert.equal(f.repo.markDelivered('miyue',pending.key,'material-reply',pending.version,{mode:'material_exposure',key:pending.key,expectedVersion:pending.version+1}),false);
+  assert.equal(f.repo.markDelivered('miyue',pending.key,'material-reply',pending.version,{mode:'material_exposure',key:pending.key,expectedVersion:pending.version}),true);
+  const delivery=f.store.db.prepare('SELECT * FROM companion_agenda_deliveries WHERE message_id=?').get('material-reply');assert.equal(delivery.actual_reply,'我刚腾出一点时间，想慢慢开始。');
+  f.close();
+});
+
+test('assistant-only arrange records a confirmed personal appointment without asking the user to accept', () => {
+  const f = fixture();
+  const row = f.row('alan-arrangement', 'assistant', '阿澜约我明天晚上七点在苏州美术馆看《夏日风景》展，我已经答应了，大概待九十分钟。');
+  let view = f.repo.observe('miyue', [row], [{
+    action: 'arrange', id: 'alan-exhibit', source: 'assistant', owner: 'character', kind: 'outing',
+    title: '看《夏日风景》展', evidence: '阿澜约我明天晚上七点在苏州美术馆看《夏日风景》展，我已经答应了，大概待九十分钟。',
+    location: '苏州美术馆', dueAt: '2026-09-09T11:00:00.000Z', durationMinutes: 90,
+  }]);
+  const plan = view.plans[0];
+  assert.equal(plan.status, 'planned');
+  assert.equal(plan.owner, 'character');
+  assert.equal(plan.location, '苏州美术馆');
+  assert.equal(plan.durationMinutes, 90);
+  assert.equal(f.repo.pending('miyue'), null, 'arrange creates no user-confirmation followup');
+  f.set('2026-09-09T11:00:00.000Z'); view = f.repo.tick('miyue');
+  assert.equal(view.plans[0].status, 'active');
+  assert.equal(f.repo.pending('miyue').type, 'opening');
+  f.advance(2); view = f.repo.tick('miyue');
+  assert.equal(view.plans[0].status, 'awaiting_confirmation');
+  assert.notEqual(view.plans[0].status, 'completed');
+  f.close();
+});
+
+test('arrange rejects user control, joint participation, invented fields, and invisible sources', () => {
+  let visible = true;
+  const f = fixture();
+  f.repo = new CompanionAgenda(f.store, { clock: () => new Date('2026-09-08T02:00:00.000Z'), projectSource: row => visible ? row : { ...row, text: '修订后不保留原话。' } });
+  const user = f.row('user-arrange', 'user', '你明天去苏州美术馆和我看展。');
+  let view = f.repo.observe('miyue', [user], [{ action: 'arrange', source: 'user', owner: 'character', kind: 'outing', title: '看展', evidence: user.text, location: '苏州美术馆', dueAt: '2026-09-09T11:00:00.000Z', durationMinutes: 60 }]);
+  assert.equal(view.plans.length, 0);
+  const assistant = f.row('bad-arrange', 'assistant', '阿澜约我明天在苏州美术馆看展。');
+  view = f.repo.observe('miyue', [assistant], [
+    { action: 'arrange', source: 'assistant', owner: 'joint', kind: 'outing', title: '看展', evidence: assistant.text, location: '苏州美术馆', dueAt: '2026-09-09T11:00:00.000Z', durationMinutes: 60 },
+    { action: 'arrange', source: 'assistant', owner: 'character', kind: 'outing', title: '不存在的标题', evidence: assistant.text, location: '苏州美术馆', dueAt: '2026-09-09T11:00:00.000Z', durationMinutes: 60 },
+    { action: 'arrange', source: 'assistant', owner: 'character', kind: 'outing', title: '看展', evidence: assistant.text, location: '不存在的地点', dueAt: '2026-09-09T11:00:00.000Z', durationMinutes: 60 },
+  ]);
+  assert.equal(view.plans.length, 0);
+  const hidden = f.row('hidden-arrange', 'assistant', '阿澜约我明天在苏州美术馆看展。');
+  visible = false;
+  view = f.repo.observe('miyue', [hidden], [{ action: 'arrange', source: 'assistant', owner: 'character', kind: 'outing', title: '看展', evidence: hidden.text, location: '苏州美术馆', dueAt: '2026-09-09T11:00:00.000Z', durationMinutes: 60 }]);
+  assert.equal(view.plans.length, 0, 'a projected source without the original quote cannot create a plan');
+  f.close();
+});
+
+test('history projection hides an arranged plan from view and prevents later ticks from executing it', () => {
+  let visible = true;
+  let now = new Date('2026-09-08T02:00:00.000Z');
+  const store = new TestStore();
+  const repo = new CompanionAgenda(store, { clock: () => new Date(now), projectSource: row => visible ? row : null });
+  const row = store.message('projected-arrange', 'miyue', 'assistant', '妈妈约我明天在苏州博物馆聊天，我已经答应，大概六十分钟。', now.toISOString());
+  let view = repo.observe('miyue', [row], [{ action: 'arrange', source: 'assistant', owner: 'character', kind: 'chat', title: '在苏州博物馆聊天', evidence: row.text, location: '苏州博物馆', dueAt: '2026-09-09T11:00:00.000Z', durationMinutes: 60 }]);
+  assert.equal(view.plans.length, 1);
+  visible = false; now = new Date('2026-09-10T12:00:00.000Z');
+  view = repo.tick('miyue');
+  assert.equal(view.plans.length, 0);
+  const raw = JSON.parse(store.db.prepare('SELECT state_json FROM companion_agenda_state WHERE role_id=?').get('miyue').state_json);
+  assert.equal(raw.plans[0].status, 'planned', 'a hidden source is not advanced in the persisted agenda');
+  store.close();
+});

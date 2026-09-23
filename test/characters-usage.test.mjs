@@ -75,26 +75,34 @@ test('model records actual usage once even when output validation fails, never l
   assert.equal(events.length, 1); assert.equal(events[0].status, 'failed'); assert.equal(events[0].usage.completion_tokens, 20);
   assert.doesNotMatch(JSON.stringify(events), /sensitive-test-key|hidden-reasoning|hello/);
 });
-test('profiles, scoped recall, clear watermark and usage integrate with the real HTTP chat route', async t => {
+test('profiles, scoped manual summaries, preserved short-term raw and usage integrate with the real HTTP chat route', async t => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'life-character-api-')); const calls = [];
-  const app = await createApp({ replySleep: async () => {},  dataDir, env: { LIFE_MODEL_BASE_URL: 'https://model.test/v1', LIFE_MODEL_NAME: 'test' }, initialFeeds: [], startProactive: false, startRecall: false, fetchImpl: async (_url, options) => { calls.push(JSON.parse(options.body)); return new Response(JSON.stringify({ usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 }, choices: [{ message: { content: '我想听你继续说。' } }] })); } });
+  const app = await createApp({ replySleep: async () => {},  dataDir, disableStory: true, env: { LIFE_MODEL_BASE_URL: 'https://model.test/v1', LIFE_MODEL_NAME: 'test' }, initialFeeds: [], startProactive: false, startRecall: false, fetchImpl: async (_url, options) => { calls.push(JSON.parse(options.body)); return new Response(JSON.stringify({ usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 }, choices: [{ message: { content: '我想听你继续说。' } }] })); } });
   const address = await app.listen(0); const base = `http://127.0.0.1:${address.port}`;
   t.after(async () => { await app.close(); fs.rmSync(dataDir, { recursive: true, force: true }); });
   const req = async (url, body, method = 'POST') => { const response = await fetch(base + url, body === undefined ? {} : { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: response.status, data: await response.json() }; };
   const bootstrap = (await req('/api/bootstrap')).data;
-  assert.equal(bootstrap.roles.find(role => role.id === 'zhixia').name, '阮绵');
-  assert.equal(bootstrap.roles.find(role => role.id === 'miyue').name, '林雨薇');
+  assert.deepEqual(bootstrap.roles.map(role => role.id), ['miyue']);
+  assert.equal(bootstrap.story, null);
+  assert.equal((await req('/api/story')).status, 404);
+  assert.equal((await req('/api/conversations/zhixia')).status, 400);
+  assert.equal(bootstrap.roles.find(role => role.id === 'miyue').name, '林晓薇');
   assert.deepEqual(bootstrap.roles.find(role => role.id === 'miyue').profile.sharedPast, []);
+  const profile = (await req('/api/characters/miyue')).data.profile;
+  assert.equal(profile.heightCm, 165); assert.equal(profile.weightKg, 50); assert.equal(profile.braCup, 'B+');
   app.store.saveChatTurn({ role: 'miyue', text: '不想再记的旧事', reply: '旧回答' });
   await req('/api/recall/miyue', { summary: '用户明确偏好：更喜欢先讲自己的看法。' }, 'PATCH');
-  await req('/api/recall/wenxi', { summary: '闻溪专属私密测试内容' }, 'PATCH');
+  assert.equal((await req('/api/recall/wenxi', { summary: '旧角色内容' }, 'PATCH')).status, 400);
   assert.equal((await req('/api/chat', { role: 'miyue', text: '你来起头吧' })).status, 200);
   const prompt = JSON.stringify(calls.at(-1).messages);
+  assert.match(calls.at(-1).messages[0].content, /身高165厘米，体重50公斤，罩杯B\+/);
   assert.match(prompt, /江苏苏州/); assert.match(prompt, /本轮结构化事实/); assert.match(prompt, /更喜欢先讲自己的看法/);
-  assert.doesNotMatch(prompt, /闻溪专属私密测试内容|不想再记的旧事/);
+  assert.doesNotMatch(prompt, /旧角色内容/);
+  assert.match(prompt, /不想再记的旧事/); // Editing the summary does not erase short-term raw messages.
   await req('/api/recall/miyue', { summary: '' }, 'PATCH');
   await req('/api/chat', { role: 'miyue', text: '重新聊点别的' });
-  assert.doesNotMatch(JSON.stringify(calls.at(-1)), /更喜欢先讲自己的看法|你来起头吧/);
+  assert.doesNotMatch(JSON.stringify(calls.at(-1)), /更喜欢先讲自己的看法/);
+  assert.match(JSON.stringify(calls.at(-1)), /你来起头吧/);
   assert.equal((await req('/api/conversations/miyue')).data.messages.length, 6);
   const usage = (await req('/api/usage')).data; assert.equal(usage.allTime.totalTokens, 40); assert.equal(usage.byRole[0].roleId, 'miyue');
   assert.equal((await req('/api/characters/nope')).status, 400);

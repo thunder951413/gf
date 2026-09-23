@@ -2,7 +2,23 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { conversationThread, CONVERSATION_THREAD_LIMITS } from '../lib/conversation-thread.mjs';
 
+test('short entity and detail questions stay with the most recent personal story',()=>{
+  const history=[{id:'older',speaker:'assistant',text:'刚才聊过游戏。'},{id:'latest',speaker:'assistant',text:'朋友把橘猫年糕寄养在我家，它最爱钻纸箱。'}];
+  for(const text of ['它叫什么？你觉得它哪里最有意思？','哪一点让你印象最深？','你为什么对那一点有共鸣？'])assert.equal(conversationThread(text,history).holdsTopic,true,text);
+});
+
 const message = (speaker, text, id, kind = 'chat') => ({ speaker, text, id, kind });
+
+test('full-transcript callers retain continuation decisions without duplicating the old assistant wording',()=>{
+  const history=[message('user','你想说什么？','u'),message('assistant','我想跟你说说今天路上遇见的一件小事。','a')];
+  const full=conversationThread('好，你说吧',history);
+  const compact=conversationThread('好，你说吧',history,{historyAlreadyIncluded:true});
+  assert.equal(compact.acceptsOffer,full.acceptsOffer);
+  assert.equal(compact.holdsTopic,full.holdsTopic);
+  assert.deepEqual(compact.sourceMessageIds,full.sourceMessageIds);
+  assert.match(compact.context,/实际兑现/);
+  assert.doesNotMatch(compact.context,/今天路上遇见|助手历史原话/);
+});
 
 test('accepted assistant offer remains the active agenda and asks for real fulfillment', () => {
   const result = conversationThread('好，你说吧', [
@@ -128,4 +144,13 @@ test('a very long current message is clipped as a quoted hint while preserving t
   assert.equal(result.context.endsWith('议程提示：以当前用户消息为先；不要因为更早的对话强行拉回旧话题。'), true);
   const currentQuote = result.context.match(/用户当前原话：(.*)\n议程提示/u)[1];
   assert.doesNotThrow(() => JSON.parse(currentQuote));
+});
+
+
+test('conversation preference references do not force the old topic to continue', () => {
+  const thread=conversationThread('说一两句就行，你讲太多我插不上嘴',[{speaker:'assistant',id:'last',text:'那盆植物后来搬到了南窗。'}],{semantic:{intent:'preference',continuity:'continue',focusMessageId:'last'}});
+  assert.equal(thread.holdsTopic,false);
+  assert.equal(thread.acceptsOffer,false);
+  assert.doesNotMatch(thread.context,/继续这条谈话/);
+  assert.match(thread.context,/那盆植物/);
 });

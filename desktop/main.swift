@@ -36,7 +36,7 @@ final class PetView: SCNView {
 }
 
 final class BubbleView: NSView {
-    let heading = NSTextField(labelWithString: "林雨薇")
+    let heading = NSTextField(labelWithString: "林晓薇")
     let body = NSTextField(wrappingLabelWithString: "")
     var clicked: (() -> Void)?
     var shouldSuppress: (() -> Bool)?
@@ -90,6 +90,12 @@ private struct DesktopAttentionError: LocalizedError {
 }
 private enum DesktopAttentionCancelled: Error { case modelCancelled }
 
+private struct DesktopRuntimeSnapshot: Decodable {
+    struct Settings: Decodable { let automaticScenes: Bool }
+    let revision: Int
+    let settings: Settings
+}
+
 final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, NSWindowDelegate {
     var chatCheckFinished = false
     let baseURL: URL
@@ -104,6 +110,10 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     let bubble = BubbleView(frame: NSRect(x: 15, y: 340, width: 270, height: 130))
     var panel: PetPanel!
     var status: NSStatusItem!
+    var imagePickerWindow: NSWindow?
+    var imagePickerWebView: WKWebView?
+    private var runtimeAppearance: DesktopRuntimeSnapshot?
+    private var pinningFigure = false
     var chatWindow: NSWindow?
     var web: WKWebView?
     var tracker: MessageTracker
@@ -161,7 +171,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         NSApp.setActivationPolicy(.accessory)
         installMainMenu()
         panel = PetPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 478), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.title = "林雨薇 · 桌面陪伴"
+        panel.title = "林晓薇 · 桌面陪伴"
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = false
         panel.level = .floating; panel.hidesOnDeactivate = false; panel.isFloatingPanel = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
@@ -172,13 +182,13 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         pet.backgroundColor = .clear; pet.antialiasingMode = .multisampling4X
         pet.preferredFramesPerSecond = 24; pet.isPlaying = true; pet.rendersContinuously = false
         pet.setAccessibilityElement(true); pet.setAccessibilityRole(.button)
-        pet.setAccessibilityLabel("林雨薇 3D 备用角色，单击聊天，双击关心她，再次双击表达亲昵，拖动调整位置，右键打开菜单")
+        pet.setAccessibilityLabel("林晓薇 3D 备用角色，单击聊天，双击关心她，再次双击表达亲昵，拖动调整位置，右键打开菜单")
         pet.clicked = { [weak self] in self?.openChat() }
         pet.attention = { [weak self] in self?.requestDesktopAttention() }
         pet.moved = { [weak self] in self?.clampPosition(); self?.savePosition() }
         pet.showMenu = { [weak self] event in guard let self else { return }; NSMenu.popUpContextMenu(self.makeMenu(), with: event, for: self.pet) }
         photoPet.setAccessibilityElement(true); photoPet.setAccessibilityRole(.button)
-        photoPet.setAccessibilityLabel("林雨薇照片角色，单击聊天，双击关心她，再次双击表达亲昵，拖动调整位置，右键打开菜单")
+        photoPet.setAccessibilityLabel("林晓薇照片角色，单击聊天，双击关心她，再次双击表达亲昵，拖动调整位置，右键打开菜单")
         photoPet.clicked = { [weak self] in self?.openChat() }
         photoPet.attention = { [weak self] in self?.requestDesktopAttention() }
         photoPet.moved = { [weak self] in self?.clampPosition(); self?.savePosition() }
@@ -188,21 +198,24 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         sceneCanvas.uploadedView.moved = { [weak self] in self?.clampPosition();self?.savePosition() }
         sceneCanvas.uploadedView.showMenu = { [weak self] event in guard let self else{return};NSMenu.popUpContextMenu(self.makeMenu(),with:event,for:self.sceneCanvas.uploadedView) }
         sceneCanvas.uploadedView.setAccessibilityElement(true);sceneCanvas.uploadedView.setAccessibilityRole(.button)
-        sceneCanvas.uploadedView.setAccessibilityLabel("林雨薇场景图片，单击聊天，双击关心她，再次双击表达亲昵，拖动调整位置，右键切换场景图片")
+        sceneCanvas.uploadedView.setAccessibilityLabel("林晓薇场景图片，单击聊天，双击关心她，再次双击表达亲昵，拖动调整位置，右键切换场景图片")
         bubble.clicked = { [weak self] in self?.openChat() }
         content.addSubview(pet); content.addSubview(sceneCanvas); content.addSubview(bubble)
         bubble.shouldSuppress = { [weak self] in self?.isChatWindowVisible ?? false }
-        bubble.show("点击我就能聊天。拖动换个位置，右键可以试试不同姿态。", title: "林雨薇 · 桌面陪伴", message: false)
+        bubble.show("点击我就能聊天。拖动换个位置，右键可以试试不同姿态。", title: "林晓薇 · 桌面陪伴", message: false)
         previewUntil = Date().addingTimeInterval(12)
         resize(scale)
         if defaults.object(forKey: "x") != nil {
             panel.setFrameOrigin(NSPoint(x: defaults.double(forKey: "x"), y: defaults.double(forKey: "y")))
         } else if let screen = NSScreen.main {
-            panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.maxX - panel.frame.width - 24, y: screen.visibleFrame.minY + 12))
+            panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.maxX - panel.frame.width - 2, y: screen.visibleFrame.minY + 2))
         }
         clampPosition(); panel.orderFrontRegardless()
-        status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        status.button?.image = NSImage(systemSymbolName: "heart.bubble", accessibilityDescription: "有间桌面")
+        status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        status.button?.image = MenuBarIcon.makeImage()
+        status.button?.imagePosition = .imageOnly
+        status.button?.toolTip = "有间 · 桌面陪伴"
+        status.button?.setAccessibilityLabel("有间桌面菜单")
         updateMenu()
         mouseTimer = Timer.scheduledTimer(withTimeInterval: 0.10, repeats: true) { [weak self] _ in self?.updateMousePassThrough() }
         NotificationCenter.default.addObserver(self, selector: #selector(screenChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
@@ -274,25 +287,34 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         Task { @MainActor in
             defer { polling = false }
             do {
+                async let runtime: DesktopRuntimeSnapshot? = readIfAvailable("api/companion-runtime", as: DesktopRuntimeSnapshot.self)
                 async let conversation = read("api/conversations/miyue", as: ConversationSnapshot.self)
-                async let inbox = read("api/inbox", as: InboxSnapshot.self)
                 async let canonicalWardrobe: WardrobeSnapshot? = readIfAvailable("api/wardrobe", as: WardrobeSnapshot.self)
                 async let canonicalAppearance: AppearanceSnapshot? = readIfAvailable("api/appearance", as: AppearanceSnapshot.self)
-                let (snapshot, unread, wardrobeSnapshot, appearanceSnapshot) = try await (conversation, inbox, canonicalWardrobe, canonicalAppearance)
+                let snapshot = try await conversation
+                let hasBaseline = tracker.canIngestWithoutUnread(snapshot.messages)
+                let unread: InboxSnapshot? = hasBaseline ? nil : await readIfAvailable("api/inbox", as: InboxSnapshot.self)
                 let wasOffline = !connected; connected = true
+                // Message presentation must not wait for the appearance endpoints.
+                // On first launch without a known cursor, wait for unread data so
+                // old history cannot be mistaken for newly arrived messages.
+                if unread != nil || hasBaseline {
+                    if let message = tracker.ingest(snapshot.messages, unreadIDs: Set(unread?.items.filter { $0.role == "miyue" }.map(\.messageId) ?? [])) {
+                        lastMessage = message
+                        showMessage(message)
+                        // The photo renderer is intentionally static. The legacy renderer may still greet.
+                        if !usingPhotoRenderer && character.pose != .sleeping { character.greet() }
+                    } else if wasOffline && !bubble.isMessage && Date() > previewUntil { bubble.isHidden = true }
+                    persistCursor()
+                }
+                runtimeAppearance = await runtime
+                let (wardrobeSnapshot, appearanceSnapshot) = await (canonicalWardrobe, canonicalAppearance)
                 let wardrobeWasOnline = wardrobeOnline
                 wardrobeOnline = wardrobeSnapshot != nil
                 if let wardrobeSnapshot { acceptWardrobe(wardrobeSnapshot) }
                 appearanceOnline = appearanceSnapshot != nil
                 if let appearanceSnapshot { acceptAppearance(appearanceSnapshot) }
                 if wardrobeWasOnline != wardrobeOnline { refreshWardrobeWindow() }
-                if let message = tracker.ingest(snapshot.messages, unreadIDs: Set(unread.items.filter { $0.role == "miyue" }.map(\.messageId))) {
-                    lastMessage = message
-                    showMessage(message)
-                    // The photo renderer is intentionally static. The legacy renderer may still greet.
-                    if !usingPhotoRenderer && character.pose != .sleeping { character.greet() }
-                } else if wasOffline && !bubble.isMessage && Date() > previewUntil { bubble.isHidden = true }
-                persistCursor()
                 if Date().timeIntervalSince(lastLifeCheck) >= 60 {
                     if let life = try? await read("api/life", as: LifeSnapshot.self) {
                         world = life; lastLifeCheck = Date()
@@ -323,7 +345,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     }
     func showMessage(_ message: DesktopMessage) {
         let count = tracker.pendingCount > 1 ? " · \(tracker.pendingCount) 条新消息" : " · 有新消息"
-        bubble.show(bubbleExcerpt(message.text, privatePreview: privatePreview), title: "林雨薇\(count)", message: true)
+        bubble.show(bubbleExcerpt(message.text, privatePreview: privatePreview), title: "林晓薇\(count)", message: true)
     }
     func requestDesktopAttention() {
         let now = Date()
@@ -367,7 +389,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
             } catch DesktopAttentionCancelled.modelCancelled {
                 self.attentionCoordinator.cancel()
                 self.previewUntil = Date().addingTimeInterval(10)
-                self.bubble.show("已接着你的聊天回复。", title: "林雨薇", message: false)
+                self.bubble.show("已接着你的聊天回复。", title: "林晓薇", message: false)
                 self.poll()
             } catch {
                 self.previewUntil = Date().addingTimeInterval(10)
@@ -435,7 +457,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
             browser.allowsBackForwardNavigationGestures = false
             container.addSubview(browser)
             let window = NSWindow(contentRect: NSRect(origin: .zero, size: contentSize), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            window.title = demo ? "有间 · 桌面预览（演示）" : "有间 · 和林雨薇聊聊"
+            window.title = demo ? "有间 · 桌面预览（演示）" : "有间 · 和林晓薇聊聊"
             window.minSize = NSSize(width: 600, height: 500); window.isReleasedWhenClosed = false
             window.contentView = container; window.setContentSize(contentSize); window.delegate = self; window.center()
             web = browser; chatWindow = window
@@ -604,6 +626,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         sceneCanvas.setMotionRequested(panel?.isVisible == true)
         photoPet.setAccessibilityHidden(uploaded || asset == nil)
         pet.setAccessibilityHidden(uploaded || asset != nil)
+        clampPosition()
         positionBubbleAboveHead()
     }
     func postAppearance(selection: VisualSelection, settings: AppearanceSnapshot.Settings) {
@@ -725,7 +748,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     @objc func openWardrobeReview() {
         if wardrobeWindow == nil {
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 720), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
-            window.title = "林雨薇 · 穿搭样稿"
+            window.title = "林晓薇 · 穿搭样稿"
             window.appearance = NSAppearance(named: .aqua)
             window.isReleasedWhenClosed = false
             window.center()
@@ -850,7 +873,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
             let i = NSMenuItem(title: title, action: selector, keyEquivalent: ""); i.target = self; i.representedObject = value; menu.addItem(i); return i
         }
         let richMode = appearance != nil && prefersPhotoRenderer
-        _ = item("林雨薇 · \(demo ? "演示模式" : connected ? "已连接有间" : "正在重连")", nil)
+        _ = item("林晓薇 · \(demo ? "演示模式" : connected ? "已连接有间" : "正在重连")", nil)
         if sceneCanvas.uploadedSceneEnabled {
             _ = item("场景图片 · \(sceneImageStudio.snapshot?.active?.name ?? "已上传")",nil)
         } else if richMode, let appearance {
@@ -861,6 +884,10 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         _ = item(tracker.pendingCount > 0 ? "打开聊天（\(tracker.pendingCount) 条新消息）" : "打开聊天", #selector(openChat))
         let switchFigure = item(switchingFigure ? "正在切换形象…" : "切换角色形象", #selector(switchCharacterFigure))
         switchFigure.isEnabled = connected && !demo && !switchingFigure
+        _ = item("选择角色图…", #selector(chooseCharacterImage))
+        let pin = item(pinningFigure ? "正在更新固定状态…" : "固定角色图", #selector(toggleCharacterImagePin))
+        pin.state = runtimeAppearance?.settings.automaticScenes == false ? .on : .off
+        pin.isEnabled = connected && !demo && !pinningFigure && runtimeAppearance != nil
         _ = item("场景图片 · 上传与切换…", #selector(openVisualStudio))
         _ = item("图片素材库 · 批量上传与分类…", #selector(openImageLibrary))
         _ = item("持续生活 · 状态与安排…", #selector(openRuntimeSettings))
@@ -914,13 +941,58 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     func updateMenu() {
         status.menu = makeMenu()
         let appearanceStatus = appearance.flatMap { richAppearanceLines($0).dropFirst().first }
-        status.button?.toolTip = tracker.pendingCount > 0 ? "林雨薇有新消息" : "有间桌面 · \(appearanceStatus ?? poseStatus)"
+        status.button?.toolTip = tracker.pendingCount > 0 ? "林晓薇有新消息" : "有间桌面 · \(appearanceStatus ?? poseStatus)"
     }
     @objc func chooseRenderer(_ sender: NSMenuItem) {
         guard let renderer = sender.representedObject as? String, renderer == "photo" || renderer == "old3d" else { return }
         defaults.set(renderer, forKey: "pet.renderer")
         refreshPetAppearance()
         updateMenu()
+    }
+    @objc func chooseCharacterImage() {
+        var pickerURL = URLComponents(url: baseURL.appendingPathComponent("image-library.html"), resolvingAgainstBaseURL: false)!
+        pickerURL.queryItems = [URLQueryItem(name: "pick", value: "desktop")]
+        let url = pickerURL.url!
+        if imagePickerWindow == nil {
+            let contentSize = NSSize(width: 980, height: 740)
+            let container = NSView(frame: NSRect(origin: .zero, size: contentSize))
+            container.autoresizingMask = [.width, .height]
+            let browser = WKWebView(frame: container.bounds)
+            browser.autoresizingMask = [.width, .height]
+            container.addSubview(browser)
+            let window = NSWindow(contentRect: NSRect(origin: .zero, size: contentSize), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+            window.title = "选择角色图"; window.minSize = NSSize(width: 700, height: 520)
+            window.isReleasedWhenClosed = false
+            window.contentView = container; window.setContentSize(contentSize); window.center()
+            imagePickerWebView = browser; imagePickerWindow = window
+        }
+        if imagePickerWebView?.url != url { imagePickerWebView?.load(URLRequest(url: url)) }
+        NSApp.activate(ignoringOtherApps: true); imagePickerWindow?.makeKeyAndOrderFront(nil)
+    }
+    @objc func toggleCharacterImagePin() {
+        guard !pinningFigure, let known = runtimeAppearance else { return }
+        let automatic = !known.settings.automaticScenes
+        pinningFigure = true; updateMenu()
+        Task { @MainActor in
+            defer { pinningFigure = false; updateMenu() }
+            do {
+                // Read the current revision; unrelated life changes must not silently overwrite settings.
+                let latest = try await read("api/companion-runtime", as: DesktopRuntimeSnapshot.self)
+                var request = URLRequest(url: endpoint("api/companion-runtime/settings"))
+                request.httpMethod = "POST"; request.timeoutInterval = 15
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONSerialization.data(withJSONObject: ["revision": latest.revision, "settings": ["automaticScenes": automatic]])
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                    let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                    throw NSError(domain: "YoujianFigure", code: 1, userInfo: [NSLocalizedDescriptionKey: body?["error"] as? String ?? "固定状态未保存，请重试。"])
+                }
+                runtimeAppearance = try JSONDecoder().decode(DesktopRuntimeSnapshot.self, from: data)
+                sceneImageStudio.refresh()
+            } catch {
+                let alert = NSAlert(); alert.messageText = "无法修改固定状态"; alert.informativeText = error.localizedDescription; alert.runModal()
+            }
+        }
     }
     @objc func openImageLibrary() {
         NSWorkspace.shared.open(baseURL.appendingPathComponent("image-library.html"))
@@ -988,7 +1060,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         updateMenu()
     }
     @objc func resetPosition() {
-        if let frame = NSScreen.main?.visibleFrame { panel.setFrameOrigin(NSPoint(x: frame.maxX - panel.frame.width - 20, y: frame.minY + 12)) }
+        if let frame = NSScreen.main?.visibleFrame { panel.setFrameOrigin(NSPoint(x: frame.maxX - artworkInPanel.maxX - 2, y: frame.minY - artworkInPanel.minY + 2)); clampPosition() }
         panel.orderFrontRegardless(); pet.isPlaying = !pet.isHidden; sceneCanvas.setMotionRequested(true); savePosition(); updateMenu()
     }
     @objc func reconnect() { lastLifeCheck = .distantPast; if !demo { poll(); web?.load(URLRequest(url: baseURL)) } }
@@ -1019,13 +1091,24 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     }
     @objc func woke() { lastLifeCheck = .distantPast; if !demo { poll() } }
     @objc func screenChanged() { clampPosition(); savePosition() }
+    var artworkInPanel: NSRect {
+        guard let content = panel?.contentView else { return NSRect(x: 0, y: 0, width: 300, height: 350) }
+        content.layoutSubtreeIfNeeded()
+        let local: NSRect
+        if sceneCanvas.uploadedSceneEnabled {
+            local = content.convert(sceneCanvas.uploadedView.visibleArtworkRect, from: sceneCanvas.uploadedView)
+        } else if usingPhotoRenderer {
+            local = content.convert(photoPet.imageRect, from: photoPet)
+        } else { local = content.convert(pet.bounds, from: pet) }
+        let factor = panel.frame.width / content.bounds.width
+        return NSRect(x: local.minX * factor, y: local.minY * factor, width: local.width * factor, height: local.height * factor)
+    }
     func clampPosition() {
-        guard let screen = NSScreen.screens.max(by: { a,b in
+        guard panel != nil, let screen = NSScreen.screens.max(by: { a,b in
             let x = a.visibleFrame.intersection(panel.frame), y = b.visibleFrame.intersection(panel.frame)
             return (x.isNull ? 0 : x.width*x.height) < (y.isNull ? 0 : y.width*y.height)
         }) else { return }
-        let f = screen.visibleFrame, p = panel.frame
-        panel.setFrameOrigin(NSPoint(x: max(f.minX, min(p.minX, f.maxX-p.width)), y: max(f.minY, min(p.minY, f.maxY-p.height))))
+        panel.setFrameOrigin(characterPanelOrigin(proposed: panel.frame.origin, visible: artworkInPanel, screen: screen.visibleFrame))
     }
     func savePosition() { defaults.set(panel.frame.minX, forKey: "x"); defaults.set(panel.frame.minY, forKey: "y") }
     func updateMousePassThrough() {
@@ -1044,6 +1127,17 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     }
     func positionBubbleAboveHead() {
         guard !bubble.isHidden else { return }
+        defer {
+            if let screen = panel.screen, let content = panel.contentView {
+                let visible = content.convert(panel.convertFromScreen(screen.visibleFrame), from: nil).intersection(content.bounds)
+                if !visible.isNull {
+                    let width = min(270, visible.width - 8)
+                    bubble.setFrameSize(NSSize(width: width, height: 130))
+                    bubble.setFrameOrigin(NSPoint(x: max(visible.minX + 4, min(bubble.frame.minX, visible.maxX - width - 4)), y: max(visible.minY, min(bubble.frame.minY, visible.maxY - 130))))
+                    bubble.tailAnchor = max(26, min(width - 26, bubble.tailAnchor))
+                }
+            }
+        }
         if sceneCanvas.uploadedSceneEnabled {
             let rect=sceneCanvas.uploadedView.displayedRect
             let anchor=panel.contentView?.convert(NSPoint(x:rect.midX,y:rect.maxY),from:sceneCanvas.uploadedView) ?? .zero

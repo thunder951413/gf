@@ -45,7 +45,7 @@ final class VisualStudioController: NSObject, NSWindowDelegate {
             let created = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1120, height: 760),
                                    styleMask: [.titled, .closable, .miniaturizable, .resizable],
                                    backing: .buffered, defer: false)
-            created.title = "林雨薇 · 形象工坊"
+            created.title = "林晓薇 · 形象工坊"
             created.minSize = NSSize(width: 1120, height: 760)
             created.isReleasedWhenClosed = false
             created.appearance = NSAppearance(named: .aqua)

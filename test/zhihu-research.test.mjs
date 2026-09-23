@@ -135,7 +135,7 @@ test('regional research uses only public destination keywords within the existin
   await f.request('/api/zhihu/refresh', {});
   const search = f.calls.find(call => call.pathname.endsWith('/global_search'));
   assert.ok(search); assert.match(decodeURIComponent(search.query), /扬州/);
-  assert.doesNotMatch(JSON.stringify(f.calls), /秘密地点|林雨薇|用户私聊/);
+  assert.doesNotMatch(JSON.stringify(f.calls), /秘密地点|林晓薇|用户私聊/);
   assert.equal(f.calls.filter(call => call.pathname.endsWith('/global_search')).length, 1);
 });
 
