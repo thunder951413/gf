@@ -17,6 +17,7 @@
     "evaluate:companion": "node scripts/evaluate-companion.mjs",
     "desktop:build": "node desktop/build.mjs",
     "desktop:start": "node desktop/build.mjs --open",
-    "desktop:test": "node desktop/test.mjs"
+    "desktop:test": "node desktop/test.mjs",
+    "evaluate:session": "node scripts/evaluate-session-dialogue.mjs"
   }
 }

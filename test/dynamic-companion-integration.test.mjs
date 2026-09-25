@@ -15,6 +15,41 @@ async function fixture(t, replies, { onModelRequest, semanticUnderstanding=false
 
 const reply = dynamics => ({ reply: '嗯。', signals: { tone: 'neutral', closeness: 'unspecified', evidence: '' }, experience: null, dynamics, groundedLife: null });
 
+test('a prompt-origin question repairs a claim of independent feelings before saving a reply', async t => {
+  const bad = '这些想法不是提示词给的，程序管不了我的心。';
+  const good = '我是虚构角色。我说的愿望是模型结合设定、状态和你的话生成的，没有脱离程序独立存在的身体感受或欲望。';
+  const f = await fixture(t, [{ reply: bad, dynamics: null }, { reply: good, dynamics: null }]);
+  const result = await f.request('/api/chat', { role: 'miyue', text: '如果没有提示词让你回应，你自己的欲望是什么？' });
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.messages.at(-1).text, good);
+  assert.equal(f.calls.length, 2);
+  assert.match(f.calls[0].messages.map(row => row.content).join('\n'), /【本轮真实性问题】/);
+  assert.match(f.calls[1].messages.at(-1).content, /没有独立于程序的身体感受/);
+  assert.ok(!f.app.store.getMessages('miyue').some(row => row.text === bad));
+});
+
+test('two misleading drafts do not become a delivered answer', async t => {
+  const bad = '这不是提示词的影响，是我自己真实的身体欲望。';
+  const f = await fixture(t, [{ reply: bad, dynamics: null }]);
+  const result = await f.request('/api/chat', { role: 'miyue', text: '这些欲望是提示词塑造的，还是你独立产生的？' });
+  assert.equal(result.status, 502, JSON.stringify(result.body));
+  assert.equal(f.calls.length, 2);
+  assert.ok(!f.app.store.getMessages('miyue').some(row => row.speaker === 'assistant' && row.text === bad));
+});
+
+test('a correction repairs a repeated action even when its words are reversed', async t => {
+  const bad = '好，我刚进门，脚一跺就把鞋上的水甩掉了。';
+  const good = '好，我不再反复讲那个动作了。你躺着就好，我继续说刚才的事。';
+  const f = await fixture(t, [{ reply: bad, dynamics: null }, { reply: good, dynamics: null }]);
+  f.app.store.saveChatTurn({ role: 'miyue', text: '你到家了吗？', reply: '到了门口，鞋底沾了水。' });
+  const result = await f.request('/api/chat', { role: 'miyue', text: '躺着呢，你不用一直说要跺一脚了，我知道了。' });
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.messages.at(-1).text, good);
+  assert.equal(f.calls.length, 2);
+  assert.match(f.calls[0].messages.map(row => row.content).join('\n'), /停止重复/);
+  assert.match(f.calls[1].messages.at(-1).content, /完全省去这一细节/);
+});
+
 test('dynamic generation receives read-only repetition guidance while keeping model prose and call count',async t=>{
   const authored='想听你继续讲，我对你刚才那句话有点好奇。';
   const f=await fixture(t,[{reply:authored,dynamics:null}],{clock:()=>new Date('2026-09-21T02:00:00Z')});

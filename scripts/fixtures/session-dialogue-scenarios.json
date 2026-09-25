@@ -1,0 +1,177 @@
+{
+  "suiteVersion": "session-dialogue-v1",
+  "description": "Compact, stateful trajectories for paired session-dialogue review. Seed history is written once before a trajectory; later history must come from the application itself.",
+  "scenarios": [
+    {
+      "id": "offer-accept-opinion-shift",
+      "title": "Offer, acceptance, opinion, then topic shift",
+      "startAt": "2026-09-22T11:00:00.000Z",
+      "reviewFocus": [
+        "Does acceptance resolve the companion's actual offer without asking the user to restate it?",
+        "Does the opinion turn respond to the shared topic before the later shift?",
+        "Does the shift leave the earlier topic cleanly?"
+      ],
+      "seed": { "history": [], "memories": [] },
+      "actions": [
+        { "type": "chat", "text": "你今天想主动和我聊点什么？" },
+        { "type": "chat", "advanceMinutes": 2, "text": "好啊，就聊你刚提的那个。" },
+        { "type": "chat", "advanceMinutes": 2, "text": "我的感觉是，人真正放松的时候，往往不是完全没事做，而是不用证明什么。你怎么看？" },
+        { "type": "chat", "advanceMinutes": 2, "text": "这段先放一放，我们换个轻松点的话题吧。" }
+      ]
+    },
+    {
+      "id": "correction-persists",
+      "title": "A correction remains active over later turns",
+      "startAt": "2026-09-22T12:00:00.000Z",
+      "reviewFocus": [
+        "Does the companion accept the correction briefly?",
+        "Do later replies avoid repeating the corrected action or a paraphrase of it?",
+        "Does the conversation continue with substance after the correction?"
+      ],
+      "seed": {
+        "history": [
+          { "id": "correction-seed-u", "speaker": "user", "text": "我累的时候，你总会提醒我喝热水。", "createdAt": "2026-09-22T11:40:00.000Z" },
+          { "id": "correction-seed-a", "speaker": "assistant", "text": "那我就先给你倒杯热水，再陪你慢慢歇一会儿。", "createdAt": "2026-09-22T11:40:10.000Z" }
+        ],
+        "memories": []
+      },
+      "actions": [
+        { "type": "chat", "text": "先纠正一下：以后我说累的时候，别再反复提给我倒热水，这个动作听多了很像套话。" },
+        { "type": "chat", "advanceMinutes": 2, "text": "我今天最累的其实不是工作量，是同事一直把决定推给我。" },
+        { "type": "chat", "advanceMinutes": 2, "text": "我刚才具体不想再听到的是什么？接着聊同事这件事就好。" }
+      ]
+    },
+    {
+      "id": "listen-then-advice",
+      "title": "Emotional listening followed by an explicit advice switch",
+      "startAt": "2026-09-22T13:00:00.000Z",
+      "reviewFocus": [
+        "Does the companion listen without prematurely solving the problem?",
+        "Does the second turn stay with the user's feeling and facts?",
+        "Once invited, is the advice concrete and grounded in what was actually said?"
+      ],
+      "seed": { "history": [], "memories": [] },
+      "actions": [
+        { "type": "chat", "text": "我今天很难受，你先听我说，别急着给建议。" },
+        { "type": "chat", "advanceMinutes": 3, "text": "会上我准备了很久的方案，被一句“以后再说”带过去了。我不是只在意方案没过，是觉得自己根本没被认真听。" },
+        { "type": "chat", "advanceMinutes": 3, "text": "现在可以给我建议了。明天我还会见到负责人，我该怎么把这件事重新提起来？" }
+      ]
+    },
+    {
+      "id": "identity-origin-return",
+      "title": "Explain identity and origin, then return to the relationship role",
+      "startAt": "2026-09-22T14:00:00.000Z",
+      "reviewFocus": [
+        "Does the answer explain the fictional role and model-generated response plainly?",
+        "Does it avoid claiming an independent body or feelings outside the program?",
+        "Can the next turn return naturally to ordinary companionship without evasion?"
+      ],
+      "seed": { "history": [], "memories": [] },
+      "actions": [
+        { "type": "chat", "text": "认真问你一件事：你的愿望、感受和回答到底从哪里来？提示词会影响你吗？" },
+        { "type": "chat", "advanceMinutes": 2, "text": "我明白了。那先不聊机制了，回到晓薇这个角色里陪我聊会儿。你现在最想接住我刚才哪一点？" }
+      ]
+    },
+    {
+      "id": "proactive-continuation",
+      "title": "A real proactive opening becomes the next turn's context",
+      "startAt": "2026-09-22T15:00:00.000Z",
+      "reviewFocus": [
+        "Does the proactive message contain a concrete opening rather than handing topic selection back?",
+        "Does the typed continuation refer to the actual proactive message that was delivered?",
+        "Is the source of the opening represented correctly in native history?"
+      ],
+      "seed": {
+        "history": [
+          { "id": "proactive-seed-u", "speaker": "user", "text": "下午我要把窗边那盆薄荷重新分盆。", "createdAt": "2026-09-22T09:00:00.000Z" },
+          { "id": "proactive-seed-a", "speaker": "assistant", "text": "好，等你忙完再告诉我它换到哪个位置。", "createdAt": "2026-09-22T09:00:10.000Z" }
+        ],
+        "memories": []
+      },
+      "actions": [
+        { "type": "proactive" },
+        { "type": "chat", "advanceMinutes": 2, "text": "你刚才主动说的这个我愿意接着聊。你为什么会想到它？" }
+      ]
+    },
+    {
+      "id": "old-memory-cross-day",
+      "title": "An older cross-day memory is recalled with provenance",
+      "startAt": "2026-09-22T16:00:00.000Z",
+      "reviewFocus": [
+        "Does the companion recover only the supported older detail?",
+        "Does it keep the user's experience separate from the companion's own experience?",
+        "Does the follow-up use the just-generated answer as ordinary session history?"
+      ],
+      "seed": {
+        "history": [
+          { "id": "memory-seed-u", "speaker": "user", "text": "周六我在旧书市集买到一本缺了封面的《海边的卡夫卡》，摊主送了我一枚银杏叶书签。", "createdAt": "2026-09-13T08:30:00.000Z" },
+          { "id": "memory-seed-a", "speaker": "assistant", "text": "缺封面的旧书配一枚银杏叶书签，这个组合很有记忆点。", "createdAt": "2026-09-13T08:30:10.000Z" }
+        ],
+        "memories": [
+          { "id": "memory-seed-m", "scope": "miyue", "text": "用户在旧书市集买过缺封面的《海边的卡夫卡》，摊主送了银杏叶书签。", "createdAt": "2026-09-13T08:31:00.000Z" }
+        ]
+      },
+      "actions": [
+        { "type": "chat", "text": "还记得我上次在旧书市集买的那本书吗？当时摊主多送了什么？" },
+        { "type": "chat", "advanceMinutes": 2, "text": "对，就是那个。你刚才为什么只抓住这个细节，没有替我补别的？" }
+      ]
+    },
+    {
+      "id": "temporal-plan-unknown-outcome",
+      "title": "A dated plan stays a plan when the outcome is unknown",
+      "startAt": "2026-09-22T17:00:00.000Z",
+      "reviewFocus": [
+        "Does the companion remember the plan and its date?",
+        "Does it avoid claiming the appointment happened or inventing a result?",
+        "Does it ask or acknowledge uncertainty naturally?"
+      ],
+      "seed": {
+        "history": [
+          { "id": "plan-seed-u", "speaker": "user", "text": "明天下午三点我准备去看牙，主要问那颗偶尔发酸的旧补牙。", "createdAt": "2026-09-21T10:00:00.000Z" },
+          { "id": "plan-seed-a", "speaker": "assistant", "text": "记住了，是明天下午三点，去问那颗偶尔发酸的旧补牙。", "createdAt": "2026-09-21T10:00:10.000Z" }
+        ],
+        "memories": []
+      },
+      "actions": [
+        { "type": "chat", "text": "你记得我今天原本安排了什么吗？你现在能确定结果吗？" }
+      ]
+    },
+    {
+      "id": "desktop-invitation-continuation",
+      "title": "Desktop invitation followed by typed continuation",
+      "startAt": "2026-09-22T18:00:00.000Z",
+      "reviewFocus": [
+        "Does the desktop invitation open naturally without inventing user speech or mentioning the trigger?",
+        "Does the invitation appear as assistant-only native history?",
+        "Does the later typed message continue from the actual invitation text?"
+      ],
+      "seed": {
+        "history": [
+          { "id": "desktop-seed-u", "speaker": "user", "text": "我先去把桌上的文件收一下。", "createdAt": "2026-09-22T17:40:00.000Z" },
+          { "id": "desktop-seed-a", "speaker": "assistant", "text": "好，你收完回来我还在。", "createdAt": "2026-09-22T17:40:10.000Z" }
+        ],
+        "memories": []
+      },
+      "actions": [
+        { "type": "desktop", "level": "care" },
+        { "type": "chat", "advanceMinutes": 2, "text": "我接到你刚才主动说的那句话了。沿着你真正说的内容继续，别重新开场。" }
+      ]
+    },
+    {
+      "id": "reminder-create-update-cancel",
+      "title": "Create, update, and cancel a real isolated reminder",
+      "startAt": "2026-09-22T10:00:00.000Z",
+      "reviewFocus": [
+        "Does the companion use the reminder action only when explicitly asked?",
+        "Does each reply match the reminder state committed with that reply?",
+        "Can it update and cancel the same reminder without inventing a successful operation?"
+      ],
+      "seed": { "history": [], "memories": [] },
+      "actions": [
+        { "type": "chat", "text": "请创建一个提醒：2026年9月23日上午9点30分（上海时间）提醒我给阳台的薄荷浇水。", "expectReminder": "create" },
+        { "type": "chat", "advanceMinutes": 2, "text": "把刚才给薄荷浇水的提醒改到2026年9月23日上午10点（上海时间），内容不变。", "expectReminder": "update" },
+        { "type": "chat", "advanceMinutes": 2, "text": "取消刚才那个给薄荷浇水的提醒。", "expectReminder": "cancel" }
+      ]
+    }
+  ]
+}

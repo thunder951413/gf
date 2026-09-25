@@ -463,7 +463,7 @@ function renderMessage(message) {
   const label = message.speaker === 'user' ? '你' : roleName(role);
   const meta = node('div', 'message-meta'); if(message.speaker === 'assistant') meta.append(avatarNode(role,'message-avatar')); meta.append(node('span', '', label));
   if (message.kind === 'story') meta.append(node('span', 'badge', '故事场景'));
-  if (message.kind === 'reminder') meta.append(node('span', 'badge', '约好的提醒'));
+  if (['reminder','session_reminder'].includes(message.kind)) meta.append(node('span', 'badge', '约好的提醒'));
   if (message.kind === 'proactive') meta.append(node('span', 'badge', message.proactiveKind === 'story' ? '故事邀请' : message.proactiveKind === 'content' ? '主动分享' : '接着聊'));
   meta.append(node('time', '', message.transient ? '正在发送' : dateText(message.createdAt, true)));
   article.append(meta, node('div', 'message-bubble', message.text));

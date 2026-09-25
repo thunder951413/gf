@@ -81,6 +81,7 @@ function render(data) {
     makeFact('服务状态', stateLabel(data.state, data.connected)),
     makeFact('待投递', `${Number(data.pendingCount || 0)} 条`),
     makeFact('投递失败', `${Number(data.failedCount || 0)} 条`),
+    makeFact('历史发送结果不确定', `${Number(data.uncertainCount || 0)} 条 · 未自动重发，避免重复发送`),
     makeFact('最近收到', time(data.lastInboundAt)),
     makeFact('最近微信已受理', time(data.lastOutboundAt)),
     makeFact('角色', data.roleName || '林晓薇')

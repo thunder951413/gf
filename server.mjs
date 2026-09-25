@@ -74,6 +74,7 @@ import { CompanionRuntime } from './lib/companion-runtime.mjs';
 import { RuntimeScenes } from './lib/runtime-scenes.mjs';
 import { runtimeContext } from './lib/runtime-context.mjs';
 import { replyNoveltyPlan, replyNoveltyIssues } from './lib/reply-novelty.mjs';
+import { realityQuestion, realityAnswerIssues } from './lib/companion-answer-guard.mjs';
 import { dialogueLimits } from './lib/dialogue-budget.mjs';
 import { HistoryEdits } from './lib/history-edits.mjs';
 import { EventMaterials } from './lib/event-materials.mjs';
@@ -86,6 +87,9 @@ import { CompanionDynamics, dynamicsProtocol } from './lib/companion-dynamics.mj
 import { CompanionSocial, socialProtocol } from './lib/companion-social.mjs';
 import { GroundedLife, groundedLifeChatProtocol } from './lib/grounded-life.mjs';
 import { buildDynamicChatMessages, dynamicAnnotations, cleanDynamicReply } from './lib/dynamic-dialogue.mjs';
+import { buildSessionMessages, runSessionDialogue } from './lib/session-dialogue.mjs';
+import { createSessionReadTools } from './lib/session-tools.mjs';
+import { sessionReminderActions } from './lib/session-reminders.mjs';
 import { RecallRepository, RecallEngine } from './lib/recall.mjs';
 import { UsageRepository } from './lib/usage.mjs';
 import { ContentDossierRepository } from './lib/content-dossier.mjs';
@@ -246,6 +250,7 @@ export async function createApp(options = {}) {
   const companionDynamics = new CompanionDynamics(store,{clock:options.clock,projectSource:row=>projectCompanionSource(row)});
   const companionSocial = new CompanionSocial(store,{clock:options.clock,projectSource:row=>projectCompanionSource(row),people:roleMap.get('miyue')?.profile?.socialCircle||[],groups:roleMap.get('miyue')?.profile?.socialGroups||[]});
   const dynamicEnabled=()=>options.dynamicCompanion===true&&companionDynamics.settings().enabled;
+  const sessionEnabled=()=>dynamicEnabled()&&options.sessionDialogue===true;
   const closenessMemory=new ClosenessMemory(store,{clock:options.clock,projectSource:row=>historyEdits.project('miyue',[row])[0]||null});
   const eventMaterials = new EventMaterials(store, { clock: options.clock });
   const scenarioRole = storyEnabled ? roles.find(role => role.interaction?.mode === 'scenario') : null;
@@ -489,12 +494,76 @@ export async function createApp(options = {}) {
     companionSocial.commit({social:annotations?.social},{rows,expectedRevision:context.socialRevision});
     groundedLife.commit(annotations?.groundedLife,{rows,expectedRevision:context.groundedLifeRevision,currentCity:groundedLife.location().city,busy:groundedLife.location().travelling||!['rest','home','hobby','travel','cafe','bar','music','reading','sketching'].includes(context.runtime?.current?.kind)});
   }
+  function sessionState(roleId='miyue') {
+    const runtime=companionRuntime.advance(),suppressedSourceIds=episodes.suppressedSourceIds(roleId);
+    return {at:runtime.at,current:runtime.current,life:runtime.dailyLife,
+      relationship:companionRelationship.view(roleId,{suppressedSourceIds}),
+      agenda:companionAgenda.view(roleId,{suppressedSourceIds}),
+      reminders:store.listReminders().filter(item=>item.role===roleId&&item.status==='pending'),
+      social:companionSocial.get(),interests:pursuits?.get(roleId)||null,
+      recordingProtocol:companionshipInstruction(),
+      note:'这些是当前记录。普通对话无需更新感受字段；只有确有变化时才可按可选记录协议返回 companionship。'};
+  }
+  function sessionContext(roleId,{text='',initiating=false,opening=false,trigger:givenTrigger=null}={}) {
+    const now=(options.clock||(()=>new Date()))();
+    const trigger=givenTrigger||conversationTrigger({type:opening?'desktop_invitation':initiating?'scheduled_opportunity':'user_message',userText:initiating||opening?null:text,at:now});
+    const history=recallRepo.dialogueWindow(roleId,{now});
+    const runtime=companionRuntime.prepare({trigger:trigger.type,text:trigger.userText||''});
+    const suppressedSourceIds=episodes.suppressedSourceIds(roleId);
+    const relationship=companionRelationship.context(roleId,{text,suppressedSourceIds});
+    const settings=companionDynamics.settings();
+    const agendaOpportunity=initiating?companionAgenda.pending(roleId,{suppressedSourceIds}):null;
+    const followup=initiating&&!agendaOpportunity?dueFollowup(roleId):null;
+    const material=initiating||opening?eventMaterials.select(runtime.dailyLife?.events||[])[0]||null:null;
+    const context={scope:roleId,trigger,conversation:history.rows,dialogueHistory:history,runtime,
+      entries:[],episodeRevision:episodes.revision(roleId),historyEditsRevision:historyEdits.revision(roleId),
+      relationshipRevision:companionRelationship.revision(roleId),agendaRevision:companionAgenda.revision(roleId),
+      sessionSettingsRevision:settings.revision,sessionMemoryRevision:recallRepo.get(roleId).revision,
+      sessionRuntimeRevision:runtime.revision,sessionTuningRevision:companionTuning.get().revision,
+      sessionPolicyRevision:interactionPolicy.get(roleId).revision,
+      agendaOpportunity,followupId:followup?.id||null,
+      opportunity:agendaOpportunity?{kind:'agenda',value:agendaOpportunity}:followup?{kind:'followup',value:followup}:{kind:'session'},
+      lifeTopicKey:agendaOpportunity?.key||`session:${roleId}:${trigger.at}`,
+      policyPlan:{tuningRevision:companionTuning.get().revision,anchor:'',behavior:{session:true}},
+    };
+    const pendingReminders=store.listReminders().filter(item=>item.role===roleId&&item.status==='pending');
+    const sourceId=store.db.prepare('SELECT content_id FROM messages WHERE id=?');
+    const sourceReceipts=history.rows.filter(row=>row.speaker==='assistant').slice(-40).map(row=>({...row,contentId:sourceId.get(row.id)?.content_id})).filter(row=>row.contentId).slice(-4).map(row=>{
+      const source=store.getContent(row.contentId);
+      return source?{messageId:row.id,at:row.createdAt,contentId:source.id,title:source.title,url:source.url,
+        scope:'订阅缓存摘录，不能据此声称读过全文',excerpt:String(source.summary||'').slice(0,1200)}:null;
+    }).filter(Boolean);
+    context.sessionOptions={history,trigger,preferences:{expression:settings.expressionPreferences,characterStyle:companionTuning.get().values,interaction:interactionPolicy.get(roleId).preferences},
+      facts:{at:trigger.at,location:runtime.world?.location,activity:runtime.current?.title||routineLabel(runtime.current),
+        ...(pendingReminders.length?{reminders:pendingReminders.slice(-12).map(({id,text,dueAt,status})=>({id,text,dueAt,status})),reminderCount:pendingReminders.length}:{}),
+        ...(sourceReceipts.length?{sourceReceipts}:{})},
+      backgroundContext:[relationship,sceneImages.context()||appearance.context()].filter(Boolean).join('\n'),
+      recallContext:recallRepo.longTermContext(roleId,history.rows,{omitLegacy:episodes.hasOverrides(roleId),characterQuery:text,includeCharacter:true}),
+      opportunity:initiating||opening?{agenda:agendaOpportunity,followup,life:material}:null};
+    return context;
+  }
+  function assertSessionContext(context) {
+    if(context.historyEditsRevision!==historyEdits.revision(context.scope)||context.episodeRevision!==episodes.revision(context.scope))throw fail(409,'对话依据已更正，正在重新准备','STALE_HISTORY_EDITS');
+    if(context.sessionSettingsRevision!==companionDynamics.settings().revision||context.sessionMemoryRevision!==recallRepo.get(context.scope).revision||context.relationshipRevision!==companionRelationship.revision(context.scope)||context.agendaRevision!==companionAgenda.revision(context.scope))throw fail(409,'相处记录已更新，正在重新准备','STALE_SESSION_CONTEXT');
+    if(context.sessionTuningRevision!==companionTuning.get().revision)throw fail(409,'相处参数已变化，请重新生成','STALE_COMPANION_TUNING');
+    if(context.sessionPolicyRevision!==interactionPolicy.get(context.scope).revision)throw fail(409,'相处偏好已变化，请重新回复','STALE_DIALOGUE_POLICY');
+    if(context.sessionRuntimeRevision!==companionRuntime.advance().revision)throw fail(409,'当前生活安排已变化，正在重新准备','STALE_COMPANION_RUNTIME');
+  }
+  function recordSessionTurn(roleId,rows,context,raw) {
+    const updates=parseCompanionshipUpdates(raw);
+    episodes.observe(roleId,rows);
+    recordCompanionship(roleId,rows,updates,context);
+    recordSharedTurn(roleId,rows,context,null);
+    const user=rows.findLast(row=>row.speaker==='user');
+    if(user)followups.observe(roleId,user.text,user.id);
+  }
   const threadEligibleForTurn = (thread, text = '') => {
     if (!thread || options.naturalMaterialDelivery !== true) return Boolean(thread);
     if (thread.travelBound || thread.userDirected) return true;
     return Boolean(thread.title && String(text).includes(thread.title));
   };
-  const roleContext = (roleId, { initiating = true, text='', usePursuits=true, preferContent=false, opening=false, trigger:givenTrigger=null, semantic=null } = {}) => {
+  const roleContext = (roleId, { initiating = true, text='', usePursuits=true, preferContent=false, opening=false, trigger:givenTrigger=null, semantic=null,sessionMode=true } = {}) => {
+    if(roleId==='miyue'&&sessionEnabled()&&sessionMode)return sessionContext(roleId,{initiating,text,opening,trigger:givenTrigger});
     const trigger=givenTrigger||conversationTrigger({type:opening?'desktop_invitation':initiating?'scheduled_opportunity':'user_message',userText:initiating||opening?null:text,at:(options.clock||(()=>new Date()))()});
     const runtime=roleId==='miyue'?companionRuntime.prepare({trigger:trigger.type,text:trigger.userText||''}):null;
     if (roleId === 'miyue') {pursuits?.tick(roleId);companionAgenda.tick(roleId);}
@@ -685,17 +754,18 @@ export async function createApp(options = {}) {
       const lastAssistantAt=result.continuityConversation.findLast(row=>row.speaker==='assistant')?.created_at;
       result.qualityPlan=conversationQualityPlan({trigger,userText:text,semantic,conversation:result.continuityConversation,initiating:initiating||opening,lifeParticipation:result.lifeParticipation,sameActivity:Boolean(lastAssistantAt&&Date.parse(runtime.current?.startedAt)<=Date.parse(lastAssistantAt))});
       result.qualityPlan.novelty=replyNoveltyPlan({userText:text,conversation:result.continuityConversation,initiating:initiating||opening,now:(options.clock||(()=>new Date()))()});
+      result.qualityPlan.reality=realityQuestion(text);
       // The legacy validator exempts continuations from duplicate rejection.
       // That exemption must not tell dynamic generation that every affectionate
       // or ordinary continuation asks to repeat an earlier answer.
-      result.dynamicNoveltyContext=result.qualityPlan.novelty.context;
+      result.dynamicNoveltyContext=[result.qualityPlan.novelty.context,result.qualityPlan.reality?.context].filter(Boolean).join('\n');
       if(semantic?.continuity==='continue'&&semantic.intent!=='preference'||shared||result.pursuitRoute?.detailed||currentIntent.declined||currentIntent.recall||/详细|展开/.test(text)){
         result.qualityPlan.novelty.reviewing=true;
-        result.qualityPlan.novelty.context='【本轮内容使用】用户正在追问、回顾或明确表达边界，必要的已知内容可以重提，先完整回应当前要求；不重复无关生活背景。';
+        result.qualityPlan.novelty.context='【本轮内容使用】用户正在追问、回顾或明确表达边界，必要的已知内容可以重提，先完整回应当前要求；不重复无关生活背景。'+(result.qualityPlan.novelty.correction?'用户已要求停止重复'+JSON.stringify(result.qualityPlan.novelty.correction)+'，本轮不得换序复述。':'');
       }
       result.expressionHistory=expressionHistory(historyEdits.project(roleId,result.conversation));
       result.selfContinuity=selfContinuityPlan({conversation:historyEdits.project(roleId,result.continuityConversation),userText:text,now:(options.clock||(()=>new Date()))()});
-      result.characterContext+='\n'+result.qualityPlan.context+'\n'+(result.lifeParticipation.detailedState?result.selfContinuity.context:'')+'\n'+result.qualityPlan.novelty.context;
+      result.characterContext+='\n'+result.qualityPlan.context+'\n'+(result.lifeParticipation.detailedState?result.selfContinuity.context:'')+'\n'+result.qualityPlan.novelty.context+'\n'+(result.qualityPlan.reality?.context||'');
     }
     if(semantic&&semantic.intent!=='preference'){
       const focus=evidence.conversation.find(row=>row.id===semantic.focusMessageId&&row.speaker==='assistant');
@@ -708,7 +778,15 @@ export async function createApp(options = {}) {
     if(roleId==='miyue')prepareDynamicContext(result);
     return result;
   };
-  const contextVersion = roleId => { const runtimeVersion=roleId==='miyue'?companionRuntime.advance().revision:0; return [runtimeVersion,roleId==='miyue'?`${companionDynamics.settings().revision}:${companionDynamics.get().revision}:${groundedLife.status().revision}:${companionSocial.get().revision}:${historyEdits.revision('miyue')}`:'',roleId==='miyue'?JSON.stringify(preferences.getHistoryWindow()):'',roleId==='miyue'?`${companionRelationship.revision(roleId)}:${companionAgenda.revision(roleId)}:${inner.revision(roleId)}`:'',roleId==='miyue'?pursuits?.get('miyue')?.version||0:0,roleId==='miyue'?companionTuning.get().revision:0,memoryRole(roleId),episodes.revision(memoryRole(roleId)),interactionPolicy.get(memoryRole(roleId)).revision,lifeThreads.get(roleId)?.version||0,roleId===scenarioRole?.id?`${scenarios.get().version}:${scenarios.get().state.pendingKey}:${recallRepo.get(memoryRole(roleId)).revision}`:`${JSON.stringify(dueFollowup(roleId)||null)}:${JSON.stringify(topicTracking.list().map(t=>[t.id,t.updatedAt]))}:${recallRepo.get(roleId).revision}:${inner.initiative(roleId,life.get(roleId)?.active)?.key||currentLifeTopic(roleId).topicKey||''}`].join('|'); };
+  const contextVersion = roleId => {
+    if(roleId==='miyue'&&sessionEnabled())return JSON.stringify({
+      runtime:companionRuntime.advance().revision,history:historyEdits.revision(roleId),
+      episodes:episodes.revision(roleId),memory:recallRepo.get(roleId).revision,
+      settings:companionDynamics.settings().revision,tuning:companionTuning.get().revision,
+      relationship:companionRelationship.revision(roleId),agenda:companionAgenda.revision(roleId),
+      policy:interactionPolicy.get(roleId).revision,window:preferences.getHistoryWindow(),
+    });
+    const runtimeVersion=roleId==='miyue'?companionRuntime.advance().revision:0; return [runtimeVersion,roleId==='miyue'?`${companionDynamics.settings().revision}:${companionDynamics.get().revision}:${groundedLife.status().revision}:${companionSocial.get().revision}:${historyEdits.revision('miyue')}`:'',roleId==='miyue'?JSON.stringify(preferences.getHistoryWindow()):'',roleId==='miyue'?`${companionRelationship.revision(roleId)}:${companionAgenda.revision(roleId)}:${inner.revision(roleId)}`:'',roleId==='miyue'?pursuits?.get('miyue')?.version||0:0,roleId==='miyue'?companionTuning.get().revision:0,memoryRole(roleId),episodes.revision(memoryRole(roleId)),interactionPolicy.get(memoryRole(roleId)).revision,lifeThreads.get(roleId)?.version||0,roleId===scenarioRole?.id?`${scenarios.get().version}:${scenarios.get().state.pendingKey}:${recallRepo.get(memoryRole(roleId)).revision}`:`${JSON.stringify(dueFollowup(roleId)||null)}:${JSON.stringify(topicTracking.list().map(t=>[t.id,t.updatedAt]))}:${recallRepo.get(roleId).revision}:${inner.initiative(roleId,life.get(roleId)?.active)?.key||currentLifeTopic(roleId).topicKey||''}`].join('|'); };
   const publicLifeTopic = () => currentLifeTopic('miyue').publicQuery || '';
   const lifeSnapshot = () => {
     const discussion = currentLifeTopic('miyue');
@@ -792,6 +870,15 @@ export async function createApp(options = {}) {
     getWakeEvent:()=>companionAgenda.pending('miyue',{suppressedSourceIds:episodes.suppressedSourceIds('miyue')})||companionRuntime.pending(),
     getEligibleRoles: (candidates,{manual=false}={})=>candidates.filter(r=>r.id!=='miyue'||manual||!companionRuntime.advance().availability.sleeping).filter(r=>r.id!=='miyue'||!companionAgenda.view('miyue',{suppressedSourceIds:episodes.suppressedSourceIds('miyue')}).plans.some(p=>p.kind==='quiet'&&p.status==='active')).filter(r=>r.id!=='miyue'||manual&&companionTuning.get().values.initiative>0||companionTuning.canInitiate(proactiveRepo.recent(100).find(e=>e.role==='miyue')?.createdAt,(options.clock||(()=>new Date()))())).map(r=>r.id==='miyue'?{...r,proactiveWeight:.2+companionTuning.get().values.initiative/62.5}:r),
     prepareDelivery: ({role,roleContext:context,result,candidates}) => {
+      if(context.sessionOptions){
+        const reply=cleanDynamicReply(result.message);
+        return {text:reply,afterSave:message=>{
+          assertSessionContext(context);
+          if(context.agendaOpportunity&&!companionAgenda.markDelivered(role.id,context.agendaOpportunity.key,message.id,context.agendaOpportunity.version))throw fail(409,'约定已变化','STALE_COMPANION_AGENDA');
+          if(result.contentId&&!candidates.some(item=>item.id===result.contentId))throw fail(422,'资料已不可用','INVALID_SESSION_SOURCE');
+          recordSessionTurn(role.id,[message],context,result);
+        }};
+      }
       if(context.dynamicOptions)result.message=cleanDynamicReply(result.message);
       if(context.dynamicOptions&&groundedLife.assess(result.groundedLife,{rows:[{id:'draft',role:'miyue',speaker:'assistant',kind:'proactive',text:result.message}],currentCity:groundedLife.location().city,busy:groundedLife.location().travelling||!['rest','home','hobby','travel','cafe','bar','music','reading','sketching'].includes(context.runtime?.current?.kind)}).length)throw fail(422,'这次生活分享与已确认的活动进度不符，暂不发送','LIFE_EVENT_CONFLICT');
       const newsItem = role.interaction?.mode==='information' && result.contentId ? candidates.find(item=>item.id===result.contentId) : null;
@@ -902,6 +989,57 @@ export async function createApp(options = {}) {
       catch(error){if(error.code!=='STALE_COMPANION_RUNTIME'||attempt||control.signal?.aborted)throw error;}
     }
   }
+  async function performSessionChat(body,control,role,attention,savedText,chatStartedAt) {
+    activeRoles.add(role.id);
+    const started=performance.now(),trace={roleId:role.id,trigger:attention?'desktop_invitation':'user_message',mode:'session',semantic:{status:'bypassed'},stageTimings:{},repairIssues:[],repairCount:0};
+    try {
+      const context=sessionContext(role.id,{text:savedText,opening:Boolean(attention),trigger:conversationTrigger({type:attention?'desktop_invitation':'user_message',userText:attention?null:savedText,gesture:attention?.level,at:(options.clock||(()=>new Date()))()})});
+      const actions=sessionReminderActions({store,roleId:role.id,userText:savedText,replyChannel:body.replyChannel,clock:options.clock});
+      const readTools=createSessionReadTools({store,recallRepo,episodes,historyEdits,roleId:role.id,clock:options.clock,getState:()=>sessionState(role.id)});
+      const selected=body.contentId?store.getContent(String(body.contentId)):null;
+      if(body.contentId&&!selected)throw fail(404,'内容不存在','CONTENT_NOT_FOUND');
+      const sourceContext=selected?companionSourceContext(dossiers.decorate([selected]),{now:(options.clock||(()=>new Date()))(),reference:true,query:savedText}):'';
+      const messages=buildSessionMessages({role,...context.sessionOptions,userText:attention?null:savedText,
+        memories:store.listMemories(role.id),informationContext:sourceContext});
+      trace.promptBlocks=promptBlockStats(messages);trace.stageTimings.context=performance.now()-started;
+      const generated=await runSessionDialogue({model,messages,maxToolCalls:3,options:{purpose:'chat',roleId:role.id,signal:control.signal,jsonObject:true,nonThinking:true,maxTokens:2400},
+        execute:async(request,toolOptions)=>{
+          if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
+          if(request.name==='reminder')return actions.prepare(request);
+          return readTools(request,toolOptions);
+        }});
+      trace.toolCalls=generated.toolCalls;
+      const raw=generated.raw;
+      const parsed=parseEmotionEnvelope(raw,savedText),reply=cleanDynamicReply(parsed.reply);
+      if(!reply.trim())throw fail(502,'模型没有返回对话正文','MODEL_REPLY_INVALID');
+      trace.stageTimings.generation=performance.now()-started-trace.stageTimings.context;
+      if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
+      control.markPhase?.('waiting');
+      if(preferences.getReplyPace()==='natural'){
+        const target=4000+Math.floor(Math.max(0,Math.min(.999999,Number(replyRandom())||0))*5001);
+        const remaining=Math.max(0,target-Math.max(0,replyNow()-chatStartedAt));
+        if(remaining)await waitForReply(remaining,control.signal);
+      }
+      if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
+      const source=mentionedSources(reply,store.listContent())[0];
+      const saved=store.saveChatTurn({role:role.id,text:savedText,userTexts:body.userTexts,reply,replyChannel:body.replyChannel,contentId:source?.id||selected?.id,
+        afterSave:rows=>{
+          assertSessionContext(context);
+          if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
+          actions.commit();
+          recordSessionTurn(role.id,rows,context,raw);
+          control.afterSave?.(rows);
+        }});
+      if(!closing&&options.startRecall!==false)recall.schedule(role.id);
+      trace.messageIds=saved.map(row=>row.id);trace.outcome={status:'delivered'};
+      return {messages:saved.map(row=>store.getMessage(row.id)||row)};
+    } catch(error) {
+      trace.outcome={status:control.signal?.aborted?'cancelled':'failed',code:error.code||'CHAT_FAILED'};
+      throw error;
+    } finally {
+      trace.stageTimings.total=performance.now()-started;recordDialogueTrace(trace);activeRoles.delete(role.id);
+    }
+  }
   async function performChatOnce(body,control={}) {
     const chatStartedAt=replyNow()-(control.startedAt?Math.max(0,Date.now()-control.startedAt):0);
  const role = validateRole(body.role);
@@ -913,6 +1051,7 @@ export async function createApp(options = {}) {
       if (body.storyMode !== undefined && typeof body.storyMode !== 'boolean') throw fail(400, '故事模式无效', 'INVALID_INPUT');
       if (!storyEnabled && body.storyMode) throw fail(404, '故事模式已移除', 'NOT_FOUND');
       if (activeRoles.has(role.id)) throw fail(409, '这个角色正在回复，请稍候', 'ROLE_BUSY');
+      if(sessionEnabled()&&role.id==='miyue'&&!body.storyMode&&body.lifeChoiceId===undefined)return performSessionChat(body,control,role,attention,savedText,chatStartedAt);
       const explicitlySelectedContent = body.contentId ? store.getContent(String(body.contentId)) : null;
       if (body.contentId && !explicitlySelectedContent) throw fail(404, '内容不存在', 'CONTENT_NOT_FOUND');
       let sourceOptOut=/(?:不|别|不要|先不).{0,5}(?:新闻|资讯|热搜|换话题)|先听我说|还没说完|晚安|先不聊/u.test(text);
@@ -955,7 +1094,7 @@ export async function createApp(options = {}) {
         trace.semantic=semanticResult;
         trace.stageTimings.understanding=performance.now()-stageStarted;
         const contextStarted=performance.now();
-        const context = roleContext(role.id, { semantic, initiating: false, opening:Boolean(attention), trigger:conversationTrigger({type:attention?'desktop_invitation':'user_message',userText:attention?null:savedText,gesture:attention?.level,at:(options.clock||(()=>new Date()))()}), text, usePursuits:attention?.level!=='affection'&&!body.storyMode&&!body.contentId&&!sourceRequest&&body.lifeChoiceId===undefined });
+        const context = roleContext(role.id, { sessionMode:false,semantic, initiating: false, opening:Boolean(attention), trigger:conversationTrigger({type:attention?'desktop_invitation':'user_message',userText:attention?null:savedText,gesture:attention?.level,at:(options.clock||(()=>new Date()))()}), text, usePursuits:attention?.level!=='affection'&&!body.storyMode&&!body.contentId&&!sourceRequest&&body.lifeChoiceId===undefined });
         context.topicProvenance=topicProvenance({semantic:semanticResult,conversation:context.conversation,receiptFor:id=>interactionPolicy.receipt(id)});
         const provenanceContext=topicProvenanceContext(context.topicProvenance);
         if(provenanceContext){context.characterContext+='\n'+provenanceContext;if(context.dynamicOptions)context.dynamicOptions.topicProvenance=context.topicProvenance;}
@@ -1089,11 +1228,11 @@ export async function createApp(options = {}) {
             if(modelLed){
               parsed.reply=cleanDynamicReply(parsed.reply);
               const annotations=dynamicAnnotations(raw);
-              const issues=protocolIssue?[protocolIssue]:[...lifeEventReplyIssues(parsed.reply,replyLifeEvents(context,parsed.reply),{now:context.runtime?.at}),...topicProvenanceIssues(parsed.reply,context.topicProvenance),...selfContinuityIssues(parsed.reply,context.selfContinuity),...groundedLife.assess(annotations.groundedLife,{rows:[{id:'draft',role:'miyue',speaker:'assistant',kind:'chat',text:parsed.reply}],currentCity:groundedLife.location().city,busy:groundedLife.location().travelling||!['rest','home','hobby','travel','cafe','bar','music','reading','sketching'].includes(context.runtime?.current?.kind)})];
+              const issues=protocolIssue?[protocolIssue]:[...lifeEventReplyIssues(parsed.reply,replyLifeEvents(context,parsed.reply),{now:context.runtime?.at}),...topicProvenanceIssues(parsed.reply,context.topicProvenance),...selfContinuityIssues(parsed.reply,context.selfContinuity),...realityAnswerIssues(parsed.reply,context.qualityPlan.reality),...replyNoveltyIssues(parsed.reply,context.qualityPlan.novelty),...groundedLife.assess(annotations.groundedLife,{rows:[{id:'draft',role:'miyue',speaker:'assistant',kind:'chat',text:parsed.reply}],currentCity:groundedLife.location().city,busy:groundedLife.location().travelling||!['rest','home','hobby','travel','cafe','bar','music','reading','sketching'].includes(context.runtime?.current?.kind)})];
               if(issues.length){
                 trace.repairIssues.push(...issues);
-                if(attempt===1)throw fail(502,'回复的格式或生活进度仍有冲突，请重试','MODEL_REPLY_INVALID');
-                raw=await model.complete([...messages,{role:'assistant',content:raw},{role:'user',content:'这份草稿有待修正的格式或事实冲突：'+JSON.stringify(issues)+'。'+(issues.some(issue=>issue.includes('topic_attribution'))?'用户是在回应你紧邻的上一条消息；如该话题由你主动提出，就直接承接他的看法，不问他为什么突然提起或接来。保留双方各自说过的内容。':'')+'请根据当前事实与已发生进度改正，保留自然回应，仍输出相同 JSON。这是本轮唯一一次修复。'}],{purpose:'chat-repair',roleId:role.id,signal:control.signal,jsonObject:true,nonThinking:true,maxTokens:2400});retries=1;continue;
+                if(attempt===1)throw fail(502,'回复仍未符合本轮事实或表达要求，请重试','MODEL_REPLY_INVALID');
+                raw=await model.complete([...messages,{role:'assistant',content:raw},{role:'user',content:'这份草稿有待修正：'+JSON.stringify(issues)+'。'+(issues.some(issue=>issue.includes('topic_attribution'))?'用户是在回应你紧邻的上一条消息；如该话题由你主动提出，就直接承接他的看法，不问他为什么突然提起或接来。保留双方各自说过的内容。':'')+(issues.some(issue=>['missing_reality_disclosure','missing_origin_explanation','claims_independent_experience'].includes(issue))?'用户直接问提示词与真实感受的来源。明确说自己是虚构角色，愿望与回复来自模型结合设定和对话的生成，没有独立于程序的身体感受；不要声称规则无法影响它，也不要劝用户停止追问。':'')+(issues.includes('repeated_corrected_content')?'用户已明确要求别再重复该说法或动作。简短承认，完全省去这一细节及换序复述，直接接当前话题。':'')+(issues.includes('repeated_reply_content')?'省去刚说过且没有变化的场景和感受，不靠换词重讲。':'')+'请据此改正，保留自然回应，仍输出相同 JSON。这是本轮唯一一次修复。'}],{purpose:'chat-repair',roleId:role.id,signal:control.signal,jsonObject:true,nonThinking:true,maxTokens:2400});retries=1;continue;
               }
               signals=parsed.signals;experienceCandidate=sourceUnavailable||context.turnPlan?.historicalCheck?null:parsed.experience||null;
               companionshipUpdates=sourceUnavailable||context.turnPlan?.historicalCheck?{relationship:[],agenda:[],life:[]}:parseCompanionshipUpdates(raw);
@@ -1117,9 +1256,10 @@ export async function createApp(options = {}) {
             const localAside=!protocolIssue&&styleChecks&&!body.storyMode&&!attention?omitSaturatedLifeAsides(parsed.reply,context.qualityPlan):{reply:parsed.reply,repairs:[]};
             parsed.reply=localAside.reply;
             const behaviorReview=companionBehavior.review(parsed.reply,extra,policyPlan);
-            const issues=protocolIssue?[protocolIssue]:[...lifeEventReplyIssues(companionBehavior.compose(parsed.reply,extra,policyPlan),replyLifeEvents(context,parsed.reply),{now:context.runtime?.at}),...topicProvenanceIssues(parsed.reply,context.topicProvenance),...behaviorReview.blocking,...(attention?desktopAttentionIssues(companionBehavior.compose(parsed.reply,extra,policyPlan)):[])];
+            const issues=protocolIssue?[protocolIssue]:[...lifeEventReplyIssues(companionBehavior.compose(parsed.reply,extra,policyPlan),replyLifeEvents(context,parsed.reply),{now:context.runtime?.at}),...topicProvenanceIssues(parsed.reply,context.topicProvenance),...realityAnswerIssues(parsed.reply,context.qualityPlan.reality),...behaviorReview.blocking,...(attention?desktopAttentionIssues(companionBehavior.compose(parsed.reply,extra,policyPlan)):[])];
             const qualityIssues=body.storyMode?[]:conversationQualityIssues(companionBehavior.compose(parsed.reply,extra,policyPlan),context.qualityPlan);
             if(!body.storyMode&&!policyPlan.anchor)qualityIssues.push(...replyNoveltyIssues(companionBehavior.compose(parsed.reply,extra,policyPlan),context.qualityPlan.novelty));
+            if(qualityIssues.includes('repeated_corrected_content'))issues.push('repeated_corrected_content');
             if(!body.storyMode&&companionBehavior.compose(parsed.reply,extra,policyPlan).length+(policyPlan.anchor?.length||0)>policyPlan.maxChars)qualityIssues.push('reply_too_long');
             if(!body.storyMode)issues.push(...selfContinuityIssues(parsed.reply,context.selfContinuity));
             const styleIssues=body.storyMode?[]:[...(styleChecks?plainSpeechIssues(companionBehavior.compose(parsed.reply,extra,policyPlan),text,context.conversation.filter(m=>m.speaker==='assistant'&&m.kind!=='story').map(m=>m.text)):[]),...continuationIssues(parsed.reply,context.conversationThread,text,context.qualityPlan)];
@@ -1132,6 +1272,8 @@ export async function createApp(options = {}) {
             if(!issues.length){checked.behavior={...policyPlan.behavior,retries:attempt,extra:policyPlan.behavior.extra,behaviorWarnings:behaviorReview.warnings,styleWarnings:styleIssues,qualityWarnings:qualityIssues,sourceMessageIds:context.lookup.rows.map(r=>r.id),threadSourceIds:context.conversationThread?.sourceMessageIds||[]};break;}
             trace.repairIssues.push(...issues);
             if(attempt===0&&issues.some(issue=>issue.includes('topic_attribution')))messages.push({role:'user',content:'上一稿把用户对你刚才消息的回应写成了用户突然发起话题。按已送达的历史承认谁先提起，接住他的看法，不问他为何忽然接这个。'});
+            if(attempt===0&&issues.some(issue=>['missing_reality_disclosure','missing_origin_explanation','claims_independent_experience'].includes(issue)))messages.push({role:'user',content:'用户正在直接问提示词与角色真实感受的关系。明确说自己是虚构角色，愿望与回复来自模型结合设定和对话的生成，没有独立于程序的身体感受；不要声称规则无法影响它，也不要劝用户停止追问。'});
+            if(attempt===0&&issues.includes('repeated_corrected_content'))messages.push({role:'user',content:'用户已要求停止重复刚才的说法或动作。完全省去这一细节及换序复述，简短承认后接当前话题。'});
             if(attempt===1){if(protocolIssue)throw fail(502,'模型没有返回完整的对话正文，请稍后重试','MODEL_REPLY_INVALID');const fallback=companionBehavior.fallback(policyPlan,issues);if(fallback){checked=interactionPolicy.enforce(companionBehavior.compose(fallback.reply,fallback.extra,policyPlan),policyPlan);if(checked.reply.includes(fallback.extra)){signals=null;experienceCandidate=null;companionshipUpdates={relationship:[],agenda:[]};checked.behavior={...policyPlan.behavior,retries:1,authoredFallback:true,sourceMessageIds:context.lookup.rows.map(r=>r.id),threadSourceIds:context.conversationThread?.sourceMessageIds||[]};break;}}throw Object.assign(fail(422,'这次接话没有符合当前相处方式，消息已保留，可以重试','COMPANION_BEHAVIOR_REJECTED'),{issues:[...issues]});}
             raw=await model.complete([...companionRequest(messages,policyPlan.behavior),{role:'assistant',content:raw},{role:'user',content:(qualityIssues.length?(context.qualityPlan.allowClosing?'用户已明确道别，简短自然回应，不重复叮嘱，不打印时间标签。\n':'当前用户愿意聊天。先回应眼前的话和亲近，保留有内容的观点或细节；不要替他收尾或重复已说过的提醒，也不要用下一道问题代替回应。不要打印历史时间标签。\n'):'')+(qualityIssues.includes('copied_user_utterance')?'上一稿把当前用户原话写成了角色自己的开场。请从林晓薇的视角回应他：原话中的我指用户，你指林晓薇；不要互换动作、感受的归属。\n':'')+(qualityIssues.includes('verbatim_reply_replay')?'上一稿大段原样重播了历史回复。历史已经说过，不是这次的答案；保留理解所必需的事实，直接回答当前用户新增的问题或表达自己的新反应。\n':'')+(qualityIssues.includes('repeated_reply_content')?'上一稿重复最近已经说过的内容。删去没有变化的旧状态和同义重述，直接接住当前用户的话；保留必要回应和新细节，不另起无关话题，不复述用户行程来凑字。\n':'')+(qualityIssues.includes('reply_too_long')?`上一稿篇幅过长。正文与额外句合计不超过${Math.max(40,policyPlan.maxChars-(policyPlan.anchor?.length||0))}字，先留对当前消息的直接回应和必要内容，删掉已说过的背景、行程、同义解释，不通过新增问题补足篇幅。\n`:'')+(issues.includes('topic_reply_missing')?'上一稿经过内容核验后只剩批准、应声或收尾，没有回应用户正在分享的事情。直接接当前话题，说一个相关的具体反应或想法，不补造过去，不强行提问或另起话题。\n':'')+(issues.includes('completed_work_regression')?context.selfContinuity.context+'\n上一稿把同一份已完成的工作重新说成未完成，改正矛盾，不新增返工借口。\n':'')+(issues.some(issue=>issue.startsWith('shopping_'))?lifeEventTurnContext(replyLifeEvents(context,parsed.reply))+'\n上一稿与这些进度事实冲突。仍在挑选就不能说已付款或下完单；等送达就不能说尚未下单或已收货；已收到不能改成昨日收货或还在路上。只改正实际冲突，仍自然回应用户。\n':'')+(styleIssues.includes('too_many_decorative_comparisons')?PLAIN_SPEECH_REVISION+'\n':'')+(styleIssues.includes('staged_reaction_narration')?STAGED_REACTION_NARRATION_REVISION+'\n':'')+(styleIssues.includes('premature_topic_closing')?'用户现在正在接着聊，没有说要离开。继续眼前话题，给一个具体想法、细节或自然的小问题，不把交流推迟到旅行回来、下次或以后。\n':'')+(issues.includes('invented_offline_presence')?'你们正在远程聊天。接住拥抱的心意，可以表达想抱抱，不安排用户到你身边坐下、到店里或喝你的饮料。\n':'')+'上一份草稿未通过本轮检查：'+issues.join(',')+'。重新回答刚才的用户消息，遵守本轮行为。主体先回应，extra只一句且不要重复主体、不要问句。输出相同JSON；这是唯一一次修复。'}],{purpose:'chat-repair',roleId:role.id,signal:control.signal,jsonObject:true,nonThinking:true,maxTokens:dialogueLimits(role.id,companionTuning.get().values).maxOutputTokens});retries=1;
           }
@@ -1241,7 +1383,7 @@ export async function createApp(options = {}) {
     }
     if(req.method==='GET'&&pathname==='/api/discussion-topics')return sendJson(res,200,{enabled:discussionEnabled,profile:discussionTopics?.profile(validateRole(url.searchParams.get('role')||'miyue').id)||null});
     if(req.method==='GET'&&pathname==='/api/dialogue-traces')return sendJson(res,200,{enabled:dialogueMemory,traces:dialogueTraces.list({roleId:validateRole(url.searchParams.get('role')||'miyue').id,limit:Math.max(1,Math.min(100,Number(url.searchParams.get('limit'))||20))})});
-    if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, modelConfigured: model.publicConfig().configured, dynamicCompanion:dynamicEnabled(), semanticUnderstanding:Boolean(semanticPlanner), dialogueMemory, discussionTopics:discussionEnabled, turnReaction:dialogueMemory&&options.turnReaction!==false, sourceRelevance:Boolean(sourceRelevance) });
+    if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, modelConfigured: model.publicConfig().configured, dynamicCompanion:dynamicEnabled(), sessionDialogue:sessionEnabled(), semanticUnderstanding:!sessionEnabled()&&Boolean(semanticPlanner), dialogueMemory, discussionTopics:discussionEnabled, turnReaction:!sessionEnabled()&&dialogueMemory&&options.turnReaction!==false, sourceRelevance:!sessionEnabled()&&Boolean(sourceRelevance) });
     if (req.method === 'GET' && pathname === '/api/bootstrap') return sendJson(res, 200, {
       roles, settings: store.getSettings(), provider: model.publicConfig(), feeds: store.listFeeds(), story: storyEnabled ? store.getStory() : null, memories: store.listMemories().filter(item=>item.scope==='shared'||activeRoleIds.has(item.scope)),
       proactive: proactiveStatus(),
@@ -1534,7 +1676,7 @@ export async function createApp(options = {}) {
       const body = await readJsonBody(req);
       if (body.quiet !== undefined && typeof body.quiet !== 'boolean') throw fail(400, 'quiet 必须是布尔值', 'INVALID_INPUT');
       const settings = store.setSettings(body);
-      if (!settings.quiet && store.deliverDueReminders(new Date(),activeRoleIds).length) void onDelivery().catch(() => {});
+      if (!settings.quiet)for(const entry of store.deliverDueReminders((options.clock||(()=>new Date()))(),activeRoleIds))if(entry.message)void onDelivery(entry.message).catch(()=>{});
       return sendJson(res, 200, { settings });
     }
     if (req.method === 'GET' && pathname === '/api/reminders') return sendJson(res, 200, { reminders: store.listReminders().filter(item=>activeRoleIds.has(item.role)) });
@@ -1663,8 +1805,8 @@ export async function createApp(options = {}) {
       sendJson(res, Number(error?.status) || 500, { error: Number(error?.status) ? error.message : '服务暂时出现问题', ...(error?.code ? { code: error.code } : {}) });
     }
   });
-  const reminderTimer = setInterval(() => { try { const delivered = store.deliverDueReminders(new Date(),activeRoleIds); if (delivered.length) onDelivery().catch(() => {}); } catch {} }, options.reminderIntervalMs || 10_000);
-  reminderTimer.unref();
+  const reminderTimer = options.startReminders===false?null:setInterval(() => { try { const delivered = store.deliverDueReminders((options.clock||(()=>new Date()))(),activeRoleIds); for(const entry of delivered)if(entry.message)onDelivery(entry.message).catch(()=>{}); } catch {} }, options.reminderIntervalMs || 10_000);
+  reminderTimer?.unref();
   let lifeThreadTimer=null;
   const tickLifeThreads=()=>{if(!closing&&!activeRoles.has('miyue')&&!chatQueue.busy('miyue')&&!replyDelivery.pending('miyue')){if(options.startLifeThreads!==false)lifeThreads.tick('miyue',life.get('miyue'));pursuits?.tick('miyue');companionAgenda.tick('miyue');}};
 

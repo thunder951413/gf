@@ -7,12 +7,20 @@ import { createApp } from '../server.mjs';
 import { localDayStart } from '../lib/proactive-store.mjs';
 
 const at = new Date('2026-09-06T12:00:00');
+// This suite exercises repository behavior across the retired multi-role
+// topology, so keep its roles explicit instead of depending on the current
+// single-companion app-data catalog.
+const testRoles = [
+  { id: 'zhixia', name: '知夏', systemPrompt: '你是知夏。' },
+  { id: 'wenxi', name: '闻溪', systemPrompt: '你是闻溪。' },
+  { id: 'miyue', name: '林晓薇', systemPrompt: '你是林晓薇。' },
+];
 const feed = { id: 'fixture', url: 'https://example.org/rss', title: '测试知识源', category: '知识' };
 const article = { title: '测试文章：城市里的时间', url: 'https://example.org/articles/time', summary: '这是一段明确用于自动联系验收的来源摘要，讲述城市生活如何影响一个人对时间的感受。它具体比较了通勤等待与周末散步的体验，并说明这些观察只是作者的个人感受。', publishedAt: at.toISOString() };
 const json = body => ({ method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 async function setup(t, options = {}) {
   const dataDir = options.dataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'youjian-proactive-'));
-  const app = await createApp({ replySleep: async () => {},  dataDir, env: {}, startProactive: false, clock: () => at, random: () => 0, lifeRandom: () => .99, initialFeeds: [feed],
+  const app = await createApp({ replySleep: async () => {},  dataDir, roles:testRoles, env: {}, startProactive: false, clock: () => at, random: () => 0, lifeRandom: () => .99, initialFeeds: [feed],
     integrations: { fetchFeed: async () => ({ title: feed.title, items: [article] }) }, desktopNotify: async () => ({ requested: true }), ...options });
   app.proactiveRepo.saveSettings({ activeStart: '00:00', activeEnd: '23:59' });
   const address = await app.listen(0), base = `http://127.0.0.1:${address.port}`;
@@ -37,7 +45,7 @@ function insert(app, { role = 'zhixia', kind = 'continuation', topic = Math.rand
 
 test('real timer collects and delivers without any chat or run request, inbox then ordinary reply retains source and privacy', async t => {
   const calls = []; const { app, request } = await setup(t, { fetchImpl: modelTransport(calls), proactiveIntervalMs: 20 });
-  app.proactive.roles = [JSON.parse(fs.readFileSync('app-data/roles.json','utf8')).find(role=>role.id==='wenxi')];
+  app.proactive.roles = [testRoles.find(role=>role.id==='wenxi')];
   app.model.save({ baseUrl: 'http://model.test/v1', model: 'explicit-test-stub' });
   app.store.addMemory('shared', '共有的时间兴趣'); app.store.addMemory('wenxi', '闻溪自己的约定'); app.store.addMemory('zhixia', '阮绵不能泄露的私事');
   due(app); app.proactive.start();

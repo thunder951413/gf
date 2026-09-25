@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { Store } from '../lib/store.mjs';
 import { ReplyDelivery } from '../lib/chat-queue.mjs';
 import { WeixinBridge } from '../lib/weixin-bridge.mjs';
+import { sessionReminderActions } from '../lib/session-reminders.mjs';
 
 const story = { start: 'start', nodes: { start: { title: '开始', body: '开始', choices: [] } } };
 const baseUrl = 'https://ilinkai.weixin.qq.com';
@@ -130,11 +131,18 @@ test('actual normalized send failures are retained as errors, and a sending row 
     await f.bridge.deliver();
     assert.equal(outbox(f.store)[0].state, 'failed');
     assert.match(f.bridge.snapshot().lastError, /请求过于频繁/);
+    const failedSnapshot = f.bridge.snapshot();
+    assert.equal(failedSnapshot.failedCount, 1);
+    assert.equal(failedSnapshot.uncertainCount, 0);
 
     f.store.db.prepare("UPDATE weixin_outbox SET state='sending',error=NULL WHERE id=?").run(outbox(f.store)[0].id);
     const restarted = new WeixinBridge(f.store, { client: f.client, submit: () => {}, clock: () => new Date() });
     assert.equal(outbox(f.store)[0].state, 'uncertain');
-    assert.equal(restarted.snapshot().failedCount, 1);
+    const uncertainSnapshot = restarted.snapshot();
+    assert.equal(uncertainSnapshot.failedCount, 0);
+    assert.equal(uncertainSnapshot.uncertainCount, 1);
+    await restarted.deliver();
+    assert.equal(outbox(f.store)[0].state, 'uncertain', 'uncertain sends must not be replayed automatically');
   } finally { f.close(); }
 });
 
@@ -304,6 +312,72 @@ test('switching to desktop suppresses new and queued proactive Weixin messages',
     assert.equal(outbox(f.store)[0].state, 'cancelled');
     assert.equal(f.calls.sent.length, 0);
     assert.equal(f.store.getMessages('miyue').length, 2);
+  } finally { f.close(); }
+});
+
+test('session reminder commitments keep their Weixin origin across channel and proactive setting changes', async () => {
+  const f = fixture();
+  try {
+    bind(f.bridge); f.bridge.ingest(inbound());
+    f.store.setChatChannel('miyue', 'desktop');
+    f.bridge.updateSettings({ proactiveEnabled: false });
+    for (const [channel, text] of [['weixin', '带伞'], ['desktop', '关窗']]) {
+      const userText = `一小时后提醒我${text}`;
+      const actions = sessionReminderActions({ store: f.store, roleId: 'miyue', userText, replyChannel: channel, clock: () => new Date(Date.UTC(2026, 0, 1, 8)) });
+      actions.prepare({ action: 'create', text, dueAt: '2026-01-01T09:00:00.000Z', evidence: userText });
+      actions.commit();
+    }
+    const delivered = f.store.deliverDueReminders(new Date('2026-01-01T10:00:00.000Z'));
+    const commitment = delivered.find(row => row.originChannel === 'weixin').message;
+    f.bridge.capture();
+    assert.equal(outbox(f.store).length, 1);
+    assert.equal(outbox(f.store)[0].kind, 'commitment');
+    assert.deepEqual(JSON.parse(outbox(f.store)[0].message_ids), [commitment.id]);
+    await f.bridge.deliver();
+    assert.equal(outbox(f.store)[0].state, 'sent');
+    assert.deepEqual(f.calls.sent.map(row => row.text), ['提醒你：\n带伞']);
+  } finally { f.close(); }
+});
+
+test('a Weixin authentication failure leaves a commitment failed and never reroutes it', async () => {
+  const f = fixture({ client: { async sendText() { throw Object.assign(new Error('登录已失效'), { code: 'AUTH_EXPIRED', sessionExpired: true }); } } });
+  try {
+    bind(f.bridge); f.bridge.ingest(inbound());
+    const commitment = f.store.addAssistantMessage('miyue', '提醒你：\n吃药', 'weixin');
+    f.store.db.prepare("UPDATE messages SET kind='session_reminder' WHERE id=?").run(commitment.id);
+    f.bridge.capture(); await f.bridge.deliver();
+    assert.equal(outbox(f.store)[0].kind, 'commitment');
+    assert.equal(outbox(f.store)[0].state, 'failed');
+    assert.equal(f.bridge.read().lastErrorCode, 'auth_expired');
+    assert.equal(f.store.db.prepare('SELECT reply_channel FROM messages WHERE id=?').get(commitment.id).reply_channel, 'weixin');
+    await f.bridge.deliver();
+    assert.equal(outbox(f.store)[0].attempts, 1);
+  } finally { f.close(); }
+});
+
+test('a commitment becoming due while Weixin is paused is queued on resume without replaying ordinary history', async () => {
+  const f = fixture();
+  try {
+    bind(f.bridge); f.bridge.ingest(inbound());
+    f.bridge.updateSettings({ enabled: false });
+    const userText = '一小时后提醒我喝水';
+    const actions = sessionReminderActions({ store: f.store, roleId: 'miyue', userText, replyChannel: 'weixin', clock: () => new Date(Date.UTC(2026, 0, 1, 8)) });
+    actions.prepare({ action: 'create', text: '喝水', dueAt: '2026-01-01T09:00:00.000Z', evidence: userText });
+    actions.commit();
+    const delivered = f.store.deliverDueReminders(new Date('2026-01-01T10:00:00.000Z'));
+    assert.equal(delivered.length, 1);
+    f.store.addAssistantMessage('miyue', '暂停期间的普通旧回复', 'weixin');
+    f.bridge.capture();
+    assert.equal(outbox(f.store).length, 0);
+
+    f.bridge.updateSettings({ enabled: true });
+    const queued = outbox(f.store);
+    assert.equal(queued.length, 1);
+    assert.equal(queued[0].kind, 'commitment');
+    assert.deepEqual(JSON.parse(queued[0].message_ids), [delivered[0].message.id]);
+    await f.bridge.deliver();
+    assert.equal(queued[0].text, '提醒你：\n喝水');
+    assert.deepEqual(f.calls.sent.map(row => row.text), ['提醒你：\n喝水']);
   } finally { f.close(); }
 });
 

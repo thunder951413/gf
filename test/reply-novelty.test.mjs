@@ -128,3 +128,12 @@ test('plan context is bounded and says recent speech is background, not a demand
   assert.match(plan.context, /不要求每轮都开新话题/);
   assert.ok(plan.recent.length <= 4);
 });
+
+test('an explicit correction blocks the same action even when the draft reverses its word order', () => {
+  const plan = replyNoveltyPlan({ now, userText: '躺着呢，你不用一直说要跺一脚了，我知道了。', conversation: [assistant('我走到门口，跺一脚才进屋。')] });
+  plan.reviewing = true;
+  assert.equal(plan.correction, '跺一脚');
+  assert.match(plan.context, /停止重复/);
+  assert.deepEqual(replyNoveltyIssues('好，我刚到门口，脚一跺就进来了。', plan), ['repeated_corrected_content']);
+  assert.deepEqual(replyNoveltyIssues('好，我不再反复讲那个动作了。你躺着休息一会儿。', plan), []);
+});
