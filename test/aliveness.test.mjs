@@ -226,3 +226,28 @@ test('nearly every message ending on a question earns a note to stop interviewin
   assert.match(noveltyContext(rows, { now: new Date('2026-10-25T01:00:00Z') }), /少用问句收尾/);
   assert.doesNotMatch(noveltyContext(rows.slice(4), { now: new Date('2026-10-25T01:00:00Z') }), /少用问句收尾/);
 });
+
+test('asking him about the open choice settles it, and one line taking over the chat earns a note', async () => {
+  const store = memoryStore(), week = weekOf(NOW);
+  const days = Array.from({ length: 7 }, (_, i) => new Date(Date.parse(`${week}T00:00:00Z`) + i * 86400000).toISOString().slice(0, 10));
+  let now = NOW;
+  const arcs = new StoryArcs(store, { model: fakeModel(() => arcAnswer(days)), clock: () => now, identity: new CompanionIdentity(store), enabled: true });
+  await arcs.ensure('miyue');
+  now = new Date(`${days[1]}T03:00:00Z`);
+  assert.match(arcs.stableContext('miyue'), /拿不定的：要不要干脆退掉这单/);
+  assert.deepEqual(arcs.observe('miyue', [{ id: 'q1', speaker: 'assistant', text: '你说我要不要干脆把这单退掉？' }]), ['a1:choice']);
+  assert.match(arcs.stableContext('miyue'), /已经问过他的意见了/);
+  assert.ok(!arcs.materials('miyue').some(item => item.kind === 'arc_choice'));
+  const rows = Array.from({ length: 8 }, (_, i) => ({ speaker: 'assistant', text: i < 5 ? '那个客户又改方案了' : '今天风好大' }));
+  assert.match(arcs.dominance('miyue', rows), /聊别的.*茶叶客户第三次推翻/);
+  assert.equal(arcs.dominance('miyue', rows.slice(3)), '', 'too few messages to judge');
+});
+
+test('the same thing of his is not queued as two follow-up questions', async () => {
+  const { UserThreads } = await import('../lib/user-threads.mjs');
+  const store = memoryStore(), threads = new UserThreads(store, { clock: () => NOW });
+  const entry = (ref, day, text) => ({ sourceRef: ref, sourceDay: day, sourceText: '他在用AI写重生炼丹的小说', text, askAfterDays: 1, keywords: ['小说', '炼丹'] });
+  assert.equal(threads.add('miyue', [entry('c1:1', '2026-10-24', '你那本炼丹小说写到哪啦？')]).length, 1);
+  assert.equal(threads.add('miyue', [entry('c2:3', '2026-10-25', '那本炼丹小说写到哪啦？男主还炸炉吗？')]).length, 0);
+  assert.equal(threads.add('miyue', [{ ...entry('c3:1', '2026-10-25', '面试准备得怎么样了？'), keywords: ['面试'] }]).length, 1);
+});
