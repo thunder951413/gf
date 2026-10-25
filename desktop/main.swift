@@ -5,6 +5,8 @@ import WebKit
 final class PetPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+    // Keep the user's position, including above the menu bar or beyond a display.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 }
 
 final class PetView: SCNView {
@@ -88,7 +90,7 @@ private struct DesktopAttentionError: LocalizedError {
     let message: String
     var errorDescription: String? { message }
 }
-private enum DesktopAttentionCancelled: Error { case modelCancelled }
+private enum DesktopAttentionCancelled: Error { case modelCancelled, waitingForReply }
 
 private struct DesktopRuntimeSnapshot: Decodable {
     struct Settings: Decodable { let automaticScenes: Bool }
@@ -168,6 +170,8 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         }
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // The chat window loads later, on demand; the cookie is in place by then.
+        if !demo && !testProfile { CompanionServer.installSessionCookie(baseURL: baseURL) }
         NSApp.setActivationPolicy(.accessory)
         installMainMenu()
         panel = PetPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 478), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -185,17 +189,17 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         pet.setAccessibilityLabel("林晓薇 3D 备用角色，单击聊天，双击关心她，再次双击表达亲昵，拖动调整位置，右键打开菜单")
         pet.clicked = { [weak self] in self?.openChat() }
         pet.attention = { [weak self] in self?.requestDesktopAttention() }
-        pet.moved = { [weak self] in self?.clampPosition(); self?.savePosition() }
+        pet.moved = { [weak self] in self?.savePosition() }
         pet.showMenu = { [weak self] event in guard let self else { return }; NSMenu.popUpContextMenu(self.makeMenu(), with: event, for: self.pet) }
         photoPet.setAccessibilityElement(true); photoPet.setAccessibilityRole(.button)
         photoPet.setAccessibilityLabel("林晓薇照片角色，单击聊天，双击关心她，再次双击表达亲昵，拖动调整位置，右键打开菜单")
         photoPet.clicked = { [weak self] in self?.openChat() }
         photoPet.attention = { [weak self] in self?.requestDesktopAttention() }
-        photoPet.moved = { [weak self] in self?.clampPosition(); self?.savePosition() }
+        photoPet.moved = { [weak self] in self?.savePosition() }
         photoPet.showMenu = { [weak self] event in guard let self else { return }; NSMenu.popUpContextMenu(self.makeMenu(), with: event, for: self.photoPet) }
         sceneCanvas.uploadedView.clicked = { [weak self] in self?.openChat() }
         sceneCanvas.uploadedView.attention = { [weak self] in self?.requestDesktopAttention() }
-        sceneCanvas.uploadedView.moved = { [weak self] in self?.clampPosition();self?.savePosition() }
+        sceneCanvas.uploadedView.moved = { [weak self] in self?.savePosition() }
         sceneCanvas.uploadedView.showMenu = { [weak self] event in guard let self else{return};NSMenu.popUpContextMenu(self.makeMenu(),with:event,for:self.sceneCanvas.uploadedView) }
         sceneCanvas.uploadedView.setAccessibilityElement(true);sceneCanvas.uploadedView.setAccessibilityRole(.button)
         sceneCanvas.uploadedView.setAccessibilityLabel("林晓薇场景图片，单击聊天，双击关心她，再次双击表达亲昵，拖动调整位置，右键切换场景图片")
@@ -209,8 +213,9 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
             panel.setFrameOrigin(NSPoint(x: defaults.double(forKey: "x"), y: defaults.double(forKey: "y")))
         } else if let screen = NSScreen.main {
             panel.setFrameOrigin(NSPoint(x: screen.visibleFrame.maxX - panel.frame.width - 2, y: screen.visibleFrame.minY + 2))
+            clampPosition()
         }
-        clampPosition(); panel.orderFrontRegardless()
+        panel.orderFrontRegardless()
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         status.button?.image = MenuBarIcon.makeImage()
         status.button?.imagePosition = .imageOnly
@@ -255,7 +260,14 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
             }
         }
     }
-    func endpoint(_ path: String) -> URL { baseURL.appendingPathComponent(path) }
+    func endpoint(_ path: String) -> URL {
+        // appendingPathComponent would percent-escape "?", so a query is attached separately.
+        let parts = path.split(separator: "?", maxSplits: 1)
+        let url = baseURL.appendingPathComponent(String(parts[0]))
+        guard parts.count == 2, var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        components.percentEncodedQuery = String(parts[1])
+        return components.url ?? url
+    }
     func installMainMenu() {
         let main = NSMenu()
         let appItem = NSMenuItem(); let appMenu = NSMenu()
@@ -274,9 +286,10 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     }
     func read<T: Decodable>(_ path: String, as type: T.Type) async throws -> T {
         var request = URLRequest(url: endpoint(path)); request.timeoutInterval = 6; request.cachePolicy = .reloadIgnoringLocalCacheData
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await CompanionServer.session.data(for: request)
         guard let response = response as? HTTPURLResponse, response.statusCode == 200, data.count < 20_000_000 else { throw URLError(.badServerResponse) }
-        return try JSONDecoder().decode(type, from: data)
+        // Decode away from the main thread so the character and bubble never stutter on a poll.
+        return try await Task.detached(priority: .utility) { try JSONDecoder().decode(type, from: data) }.value
     }
     func readIfAvailable<T: Decodable>(_ path: String, as type: T.Type) async -> T? {
         try? await read(path, as: type)
@@ -288,7 +301,9 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
             defer { polling = false }
             do {
                 async let runtime: DesktopRuntimeSnapshot? = readIfAvailable("api/companion-runtime", as: DesktopRuntimeSnapshot.self)
-                async let conversation = read("api/conversations/miyue", as: ConversationSnapshot.self)
+                // The tracker needs only recent messages plus its seen set; the full history
+                // was 2 MB per poll. After a long absence it falls back to the unread inbox.
+                async let conversation = read("api/conversations/miyue?limit=60", as: ConversationSnapshot.self)
                 async let canonicalWardrobe: WardrobeSnapshot? = readIfAvailable("api/wardrobe", as: WardrobeSnapshot.self)
                 async let canonicalAppearance: AppearanceSnapshot? = readIfAvailable("api/appearance", as: AppearanceSnapshot.self)
                 let snapshot = try await conversation
@@ -386,6 +401,10 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
                     self.showMessage(responseMessage)
                 }
                 self.poll()
+            } catch DesktopAttentionCancelled.waitingForReply {
+                self.attentionCoordinator.cancel()
+                self.previewUntil = Date().addingTimeInterval(10)
+                self.bubble.show("等你回复后再继续聊。", title: "等待回复", message: false)
             } catch DesktopAttentionCancelled.modelCancelled {
                 self.attentionCoordinator.cancel()
                 self.previewUntil = Date().addingTimeInterval(10)
@@ -407,11 +426,12 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.timeoutInterval = min(65, max(1, deadline.timeIntervalSinceNow))
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await CompanionServer.session.data(for: request)
                 guard let http = response as? HTTPURLResponse else { throw DesktopAttentionError(message: "服务响应无效") }
                 if http.statusCode == 200 { return try JSONDecoder().decode(DesktopAttentionResponse.self, from: data) }
                 let errorCode = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["code"] as? String
                 if http.statusCode == 409, errorCode == "MODEL_CANCELLED" { throw DesktopAttentionCancelled.modelCancelled }
+                if http.statusCode == 409, errorCode == "UNANSWERED_MESSAGE_LIMIT" { throw DesktopAttentionCancelled.waitingForReply }
                 if http.statusCode == 409, errorCode == "ROLE_BUSY", Date().addingTimeInterval(2) < deadline {
                     try await Task.sleep(nanoseconds: 2_000_000_000)
                     continue
@@ -626,7 +646,6 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         sceneCanvas.setMotionRequested(panel?.isVisible == true)
         photoPet.setAccessibilityHidden(uploaded || asset == nil)
         pet.setAccessibilityHidden(uploaded || asset != nil)
-        clampPosition()
         positionBubbleAboveHead()
     }
     func postAppearance(selection: VisualSelection, settings: AppearanceSnapshot.Settings) {
@@ -657,7 +676,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
                 request.cachePolicy = .reloadIgnoringLocalCacheData
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try JSONSerialization.data(withJSONObject: patch)
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await CompanionServer.session.data(for: request)
                 guard let http = response as? HTTPURLResponse, data.count < 20_000_000 else { throw URLError(.badServerResponse) }
                 guard http.statusCode == 200 else {
                     let detail = (try? JSONDecoder().decode(WardrobeErrorPayload.self, from: data).error) ?? "服务拒绝了不可用的照片组合。"
@@ -687,7 +706,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
                 request.cachePolicy = .reloadIgnoringLocalCacheData
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try JSONSerialization.data(withJSONObject: patch)
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await CompanionServer.session.data(for: request)
                 guard let http = response as? HTTPURLResponse, data.count < 1_000_000 else { throw URLError(.badServerResponse) }
                 guard http.statusCode == 200 else {
                     let detail = (try? JSONDecoder().decode(WardrobeErrorPayload.self, from: data).error) ?? "有间服务没有接受这次修改。"
@@ -934,6 +953,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         _ = item(panel.isVisible ? "暂时隐藏角色" : "显示角色", #selector(togglePet))
         _ = item("把角色移回屏幕右下角", #selector(resetPosition))
         _ = item("重新连接", #selector(reconnect))
+        _ = item(CompanionServer.isRemote ? "连接服务器…（\(baseURL.host ?? "")）" : "连接服务器…", #selector(configureServer))
         menu.addItem(.separator())
         _ = item("退出桌面陪伴", #selector(quit)).keyEquivalent = "q"
         return menu
@@ -967,6 +987,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
             imagePickerWebView = browser; imagePickerWindow = window
         }
         if imagePickerWebView?.url != url { imagePickerWebView?.load(URLRequest(url: url)) }
+        else { imagePickerWebView?.reload() }
         NSApp.activate(ignoringOtherApps: true); imagePickerWindow?.makeKeyAndOrderFront(nil)
     }
     @objc func toggleCharacterImagePin() {
@@ -982,7 +1003,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
                 request.httpMethod = "POST"; request.timeoutInterval = 15
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = try JSONSerialization.data(withJSONObject: ["revision": latest.revision, "settings": ["automaticScenes": automatic]])
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await CompanionServer.session.data(for: request)
                 guard (response as? HTTPURLResponse)?.statusCode == 200 else {
                     let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
                     throw NSError(domain: "YoujianFigure", code: 1, userInfo: [NSLocalizedDescriptionKey: body?["error"] as? String ?? "固定状态未保存，请重试。"])
@@ -1047,7 +1068,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         }
         updateMenu()
     }
-    @objc func chooseSize(_ sender: NSMenuItem) { guard let factor = sender.representedObject as? Double else { return }; defaults.set(factor, forKey: "scale"); resize(factor); clampPosition(); savePosition(); updateMenu() }
+    @objc func chooseSize(_ sender: NSMenuItem) { guard let factor = sender.representedObject as? Double else { return }; defaults.set(factor, forKey: "scale"); resize(factor); savePosition(); updateMenu() }
     func resize(_ factor: CGFloat) {
         panel.setContentSize(NSSize(width: 300 * factor, height: 478 * factor))
         panel.contentView?.setBoundsSize(NSSize(width: 300, height: 478))
@@ -1063,6 +1084,10 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         if let frame = NSScreen.main?.visibleFrame { panel.setFrameOrigin(NSPoint(x: frame.maxX - artworkInPanel.maxX - 2, y: frame.minY - artworkInPanel.minY + 2)); clampPosition() }
         panel.orderFrontRegardless(); pet.isPlaying = !pet.isHidden; sceneCanvas.setMotionRequested(true); savePosition(); updateMenu()
     }
+    @objc func configureServer() {
+        NSApp.activate(ignoringOtherApps: true)
+        if CompanionServer.presentSettings() { CompanionServer.relaunch() }
+    }
     @objc func reconnect() { lastLifeCheck = .distantPast; if !demo { poll(); web?.load(URLRequest(url: baseURL)) } }
     @objc func switchCharacterFigure() {
         guard !switchingFigure && !demo else { return }
@@ -1074,7 +1099,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
                 request.httpMethod = "POST"; request.timeoutInterval = 15
                 request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 request.httpBody = Data("{}".utf8)
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await CompanionServer.session.data(for: request)
                 guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                     let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
                     throw NSError(domain: "YoujianFigure", code: 1, userInfo: [NSLocalizedDescriptionKey: body?["error"] as? String ?? "切换没有成功，请稍后重试。"])
@@ -1090,7 +1115,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         }
     }
     @objc func woke() { lastLifeCheck = .distantPast; if !demo { poll() } }
-    @objc func screenChanged() { clampPosition(); savePosition() }
+    @objc func screenChanged() { positionBubbleAboveHead(); savePosition() }
     var artworkInPanel: NSRect {
         guard let content = panel?.contentView else { return NSRect(x: 0, y: 0, width: 300, height: 350) }
         content.layoutSubtreeIfNeeded()
@@ -1130,7 +1155,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         defer {
             if let screen = panel.screen, let content = panel.contentView {
                 let visible = content.convert(panel.convertFromScreen(screen.visibleFrame), from: nil).intersection(content.bounds)
-                if !visible.isNull {
+                if !visible.isNull && visible.width > 8 && visible.height > 0 {
                     let width = min(270, visible.width - 8)
                     bubble.setFrameSize(NSSize(width: width, height: 130))
                     bubble.setFrameOrigin(NSPoint(x: max(visible.minX + 4, min(bubble.frame.minX, visible.maxX - width - 4)), y: max(visible.minY, min(bubble.frame.minY, visible.maxY - 130))))
@@ -1216,9 +1241,12 @@ func argument(_ key: String) -> String? {
     return CommandLine.arguments[index + 1]
 }
 
-guard let baseURL = companionBaseURL(argument("--base-url") ?? "http://127.0.0.1:8765/") else {
-    fputs("仅支持本机 http://127.0.0.1:端口 或 localhost 服务地址。\n", stderr); exit(2)
+// --base-url / --token (development) take precedence over the saved server settings.
+let savedServer = CompanionServer.load()
+guard let baseURL = companionBaseURL(argument("--base-url") ?? savedServer?.baseURL ?? CompanionServer.defaultURL) else {
+    fputs("服务地址无效：只接受 http(s)://主机:端口/。\n", stderr); exit(2)
 }
+CompanionServer.configure(token: argument("--token") ?? (argument("--base-url") == nil ? savedServer?.token : nil))
 let isDemo = CommandLine.arguments.contains("--demo")
 let app = NSApplication.shared
 if !isDemo, !CommandLine.arguments.contains("--test-profile"), let identifier = Bundle.main.bundleIdentifier,

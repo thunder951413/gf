@@ -1,3 +1,4 @@
+import { testRoles } from './support/role-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -26,7 +27,7 @@ function transport(calls, override) {
 async function setup(t, options = {}) {
   const dir = options.dataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'youjian-zhihu-test-'));
   let time = new Date(at), sinaCalls = 0; const calls = [];
-  const app = await createApp({ replySleep: async () => {},  dataDir: dir, env: {}, startProactive: false, clock: () => new Date(time), random: () => 0, lifeRandom: () => .99,
+  const app = await createApp({roles:testRoles(), replySleep: async () => {},  dataDir: dir, env: {}, startProactive: false, clock: () => new Date(time), random: () => 0, lifeRandom: () => .99,
     initialFeeds: [], integrations: { fetchFeed: async () => { throw new Error('Virtual feed must not use RSS'); } },
     fetchSina: async () => { sinaCalls++; return { items: [topic] }; }, zhihuFetchImpl: transport(calls, options.override), ...options });
   app.proactiveRepo.saveSettings({ activeStart: '00:00', activeEnd: '23:59', desktopNotifications: false });
@@ -51,7 +52,7 @@ test('real independent timer discovers public headlines without a key or fake co
 test('full official request pipeline saves author evidence, excludes private data and reasoning, feeds both chat paths', async t => {
   const modelCalls = [];
   const f = await setup(t, { fetchImpl: async (_url, options) => { const body = JSON.parse(options.body); modelCalls.push(body); const id = body.messages.map(m => m.content).join('\n').match(/ID:([^\n]+)/)?.[1] || null; return Response.json({ choices: [{ message: { content: body.max_tokens === 1800 ? JSON.stringify({ skip: false, contentId: id, reason: '可聊的公开资料', message: '【验收开场】这段阅读资料让我想到你的习惯，你怎么看？' }) : '【验收回复】可以继续讨论。' } }] }); } });
-  f.app.proactive.roles = [JSON.parse(fs.readFileSync('app-data/roles.json','utf8')).find(role=>role.id==='wenxi')];
+  f.app.proactive.roles = [testRoles().find(role=>role.id==='wenxi')];
   configure(f.app); f.app.store.addMemory('shared', '不要发给知乎的私密爱好'); f.app.store.addMemory('zhixia', '阮绵的私聊记忆');
   const result = await f.request('/api/zhihu/refresh', {}); assert.equal(result.body.added, 1);
   assert.deepEqual(f.calls.map(c => c.pathname), ['/api/v1/content/global_search', '/api/v1/content/zhihu_search', '/v1/chat/completions']);

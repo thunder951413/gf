@@ -1,3 +1,4 @@
+import { testRoles } from './support/role-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,7 +20,7 @@ const noVoice = {
 
 async function start(t, overrides = {}) {
   const dataDir = overrides.dataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'life-backend-'));
-  const app = await createApp({ replySleep: async () => {},  appDataDir, dataDir, integrations: noVoice, env: {}, startRecall: false, ...overrides });
+  const app = await createApp({roles:testRoles(), replySleep: async () => {},  appDataDir, dataDir, integrations: noVoice, env: {}, startRecall: false, ...overrides });
   const address = await app.listen(0);
   const base = `http://127.0.0.1:${address.port}`;
   t.after(async () => { await app.close(); if (!overrides.keepData) fs.rmSync(dataDir, { recursive: true, force: true }); });
@@ -94,7 +95,7 @@ test('model failure stores neither side of a chat turn', async (t) => {
 
 test('SQLite state survives restart and stale story choices are rejected', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'life-restart-'));
-  const first = await createApp({ replySleep: async () => {},  appDataDir, dataDir, integrations: noVoice, env: {}, fetchImpl: async () => new Response(JSON.stringify({ choices: [{ message: { content: '持久回复' } }] }), { status: 200 }) });
+  const first = await createApp({roles:testRoles(), replySleep: async () => {},  appDataDir, dataDir, integrations: noVoice, env: {}, fetchImpl: async () => new Response(JSON.stringify({ choices: [{ message: { content: '持久回复' } }] }), { status: 200 }) });
   const firstAddress = await first.listen(0); const firstBase = `http://127.0.0.1:${firstAddress.port}`;
   await request(firstBase, '/api/provider', json({ baseUrl: 'http://model.test/v1', model: 'local' }));
   await request(firstBase, '/api/chat', json({ role: 'zhixia', text: '持久消息' }));
@@ -105,7 +106,7 @@ test('SQLite state survives restart and stale story choices are rejected', async
   await request(firstBase, '/api/memories', json({ scope: 'miyue', text: '重启后还在' }));
   await first.close();
 
-  const second = await createApp({ replySleep: async () => {},  appDataDir, dataDir, integrations: noVoice, env: {} });
+  const second = await createApp({roles:testRoles(), replySleep: async () => {},  appDataDir, dataDir, integrations: noVoice, env: {} });
   const secondAddress = await second.listen(0); const secondBase = `http://127.0.0.1:${secondAddress.port}`;
   t.after(async () => { await second.close(); fs.rmSync(dataDir, { recursive: true, force: true }); });
   const restored = (await request(secondBase, '/api/story')).body;
@@ -211,7 +212,9 @@ test('model conversation history is limited to the latest 30 messages and 12000 
   assert.match(background[0].content, /角色当前生活状态/);
   const clock = captured.messages.filter(item => item.content.startsWith('【本轮当前时间】'));
   assert.equal(clock.length, 1);
-  assert.ok(clock[0].content.length <= 160, 'The current-time context must stay compact');
+  assert.match(clock[0].content, /历史原话中的相对日期按那条原话的发送时间解释/);
+  assert.match(clock[0].content, /时间经过不证明计划已完成/);
+  assert.ok(clock[0].content.length <= 256, 'The time anchor and temporal grounding rules must stay compact');
   const current = captured.messages.at(-1);
   assert.equal(current.content, '最新问题');
   const history = captured.messages.filter((item) => item !== current && item.role !== 'system' && !background.includes(item) && !clock.includes(item));
@@ -276,12 +279,12 @@ test('static serving stays inside public and refuses dotfiles and symlink escape
 
 test('quiet reminders remain pending, survive restart, and deliver once resumed', async (t) => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'life-reminder-'));
-  const first = await createApp({ replySleep: async () => {},  appDataDir, dataDir, integrations: noVoice, env: {}, reminderIntervalMs: 60_000 });
+  const first = await createApp({roles:testRoles(), replySleep: async () => {},  appDataDir, dataDir, integrations: noVoice, env: {}, reminderIntervalMs: 60_000 });
   const a1 = await first.listen(0); const base1 = `http://127.0.0.1:${a1.port}`;
   await request(base1, '/api/settings', json({ quiet: true }));
   await request(base1, '/api/reminders', json({ role: 'zhixia', text: '给花浇水', dueAt: new Date(Date.now() - 1000).toISOString() }));
   await first.close();
-  const second = await createApp({ replySleep: async () => {},  appDataDir, dataDir, integrations: noVoice, env: {}, reminderIntervalMs: 60_000 });
+  const second = await createApp({roles:testRoles(), replySleep: async () => {},  appDataDir, dataDir, integrations: noVoice, env: {}, reminderIntervalMs: 60_000 });
   const a2 = await second.listen(0); const base2 = `http://127.0.0.1:${a2.port}`;
   t.after(async () => { await second.close(); fs.rmSync(dataDir, { recursive: true, force: true }); });
   assert.equal((await request(base2, '/api/reminders')).body.reminders[0].status, 'pending');

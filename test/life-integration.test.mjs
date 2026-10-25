@@ -44,8 +44,8 @@ test('the authoritative runtime activity drives API and model context across tra
  const {app,request,calls,setTime}=await fixture(t);
  const start=(await request('/api/life')).body,trip=start.active;
  assert.equal(start.world.event.phase.id,'plan');
- assert.equal(start.world.location,'苏州的家中');
- assert.match(start.world.activity,/整理去/);
+ assert.match(start.world.location,/苏州/);
+ assert.doesNotMatch(start.world.activity,/整理去/);
  assert.notEqual(start.world.activity,trip.title);
  const tuning=app.companionTuning.get();
  for(const phase of trip.phases){
@@ -55,17 +55,24 @@ test('the authoritative runtime activity drives API and model context across tra
    assert.equal(snapshot.world.location,runtime.world.location);
    assert.equal(snapshot.world.activity,runtime.world.activity);
    assert.ok(snapshot.world.activity);
-   assert.equal(snapshot.world.event.phase.id,phase.id);
+   if(phase.id==='home'){
+     assert.equal(snapshot.world.event,null);
+     assert.match(snapshot.world.location,/苏州/);
+     assert.doesNotMatch(snapshot.world.activity,/回到家安顿行李/);
+   }else assert.equal(snapshot.world.event.phase.id,phase.id);
    assert.ok(Date.parse(snapshot.world.nextTransitionAt)>Date.parse(snapshot.world.at));
    assert.deepEqual(snapshot.world.traits,tuning.values);
-   const prepared=app.proactive.getRoleContext('miyue');
+   const prepared=await app.proactive.getRoleContext('miyue');
    const proactive=prepared.characterContext;
-   assert.ok(proactive.includes(`地点：${snapshot.world.location}`));
    assert.equal(prepared.runtime.world.activity,snapshot.world.activity);
-   if(prepared.lifeParticipation.detailedState){
-     assert.ok(proactive.includes(`正在做：${snapshot.world.activity}`));
-     assert.ok(proactive.includes(`阶段：${phase.title}`));
-   }else assert.match(proactive,/连续性背景/);
+   assert.ok(proactive.includes(`地点：${snapshot.world.location}`));
+   if(phase.id==='home')assert.ok(!proactive.includes(`阶段：${phase.title}`));
+   else{
+     if(prepared.lifeParticipation.detailedState){
+       assert.ok(proactive.includes(`正在做：${snapshot.world.activity}`));
+       assert.ok(proactive.includes(`阶段：${phase.title}`));
+     }else assert.match(proactive,/连续性背景/);
+   }
    const sent=await request('/api/chat',{role:roleId,text:'你现在在哪儿，在做什么？'});
    assert.equal(sent.status,200);
    const context=calls.at(-1).messages.find(m=>m.content.startsWith('【本轮背景开始】')).content;

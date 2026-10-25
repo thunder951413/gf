@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { partitionDialogueHistory, recentDialogueWindow } from '../lib/dialogue-history.mjs';
+import { partitionDialogueHistory, recentDialogueWindow, prepareDialogueHistory } from '../lib/dialogue-history.mjs';
 import { buildChatMessages } from '../lib/model.mjs';
 
 const miyue = { id: 'miyue', name: '林晓薇', systemPrompt: 'fixture' };
@@ -9,6 +9,18 @@ const row = (speaker, text, createdAt = undefined) => ({ speaker, text, ...(crea
 const archiveRows = messages => messages.filter(message => message.content.includes('【历史资料｜')).flatMap(message => JSON.parse(message.content.split('\n')[1]));
 const native = messages => messages.filter(message => ['user', 'assistant'].includes(message.role) && !message.content.startsWith('【')).map(message => ({ speaker: message.role, text: message.content }));
 const build = (role, conversation, options = {}) => buildChatMessages({ role, memories: [], conversation, ...options });
+
+test('consecutive user additions are one complete exchange for native projection and budget trimming',()=>{
+  const at='2026-10-03T12:00:00Z';
+  const first=[row('user','原始问题',at),row('assistant','原始回答',at)];
+  const batch=[row('user','问题及背景'.repeat(80),at),row('user','补充：这个就行',at),row('assistant','按补充回应',at)];
+  const recent=partitionDialogueHistory([...first,...batch],{recentTurns:1});
+  assert.deepEqual(recent.recent,batch.map(m=>({role:m.speaker,content:m.text})));
+  const projection=prepareDialogueHistory([...first,...batch],{now:at,maxTokens:1000});
+  assert.deepEqual(projection.rows,[],'the oversized latest exchange cannot leave only the short addition and its answer');
+  assert.deepEqual(recentDialogueWindow(batch,{now:at,maxChars:50}),[]);
+  assert.deepEqual(partitionDialogueHistory(batch,{maxChars:50}),{archive:[],recent:[]});
+});
 
 test('older miyue turns become JSON evidence while the last two user turns stay native and exact', () => {
   const history = [row('user', '早些时候问："a"'), row('assistant', '早些回答：{x}'), row('user', '中间问题？'), row('assistant', '中间回答！'), row('user', '最近问题'), row('assistant', '最近回答')];

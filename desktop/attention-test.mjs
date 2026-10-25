@@ -17,6 +17,7 @@ const server = http.createServer(async (req, res) => {
     const body = JSON.parse(raw); requests.push(body);
     if (requests.length === 1) return send(409, { error: '正在回复', code: 'ROLE_BUSY' });
     if (requests.length === 6) return send(409, { error: '已有更新消息', code: 'MODEL_CANCELLED' });
+    if (requests.length === 7) return send(409, { error: '等你回复后再继续', code: 'UNANSWERED_MESSAGE_LIMIT' });
     const number = requests.length - 1;
     await new Promise(resolve => setTimeout(resolve, number === 2 ? 450 : 100));
     const rows = [{ id: `a-${number}`, speaker: 'assistant', text: `桌面关怀测试 ${number}` }];
@@ -69,6 +70,14 @@ try {
         await pause(400)
         check(!attentionCoordinator.queuedAffection, "cancelled request retained affection")
         check(lastMessage?.id == "a-4", "cancelled request created a reply")
+        // Reaching the delivery cap must clear retained gestures and show a
+        // waiting state, without retrying or adding a third chat message.
+        for count in 1...4 { click(photoPet, count) }
+        await until { !attentionCoordinator.inFlight }
+        await pause(400)
+        check(!attentionCoordinator.queuedAffection, "delivery cap retained affection")
+        check(lastMessage?.id == "a-4", "delivery cap created a reply")
+        check(bubble.body.stringValue == "等你回复后再继续聊。", "delivery cap was shown as a network error")
         click(photoPet, 1)
         await pause(Int(NSEvent.doubleClickInterval * 1000) + 150)
         check(chatWindow != nil, "single click no longer opens chat")
@@ -100,16 +109,16 @@ try {
   source = source.replace('        if snapshotsDirectory != nil { exportSnapshots() }', '        Task { @MainActor in await self.checkAttentionFlow() }\n        if snapshotsDirectory != nil { exportSnapshots() }');
   fs.writeFileSync(path.join(temp, 'main.swift'), source);
   const binary = path.join(contents, 'MacOS', 'AttentionCheck');
-  execFileSync('/usr/bin/xcrun', ['swiftc', '-swift-version', '5', ...['CompanionCore.swift', 'AttentionGesture.swift', 'CharacterScene.swift', 'SceneImages.swift', 'PhotoPetView.swift', 'VisualStudio.swift'].map(file => path.join(root, file)), path.join(temp, 'main.swift'), '-framework', 'AppKit', '-framework', 'SceneKit', '-framework', 'WebKit', '-o', binary], { stdio: 'inherit' });
+  execFileSync('/usr/bin/xcrun', ['swiftc', '-swift-version', '5', ...['CompanionCore.swift', 'AttentionGesture.swift', 'CharacterScene.swift', 'SceneImages.swift', 'PhotoPetView.swift', 'VisualStudio.swift', 'MenuBarIcon.swift'].map(file => path.join(root, file)), path.join(temp, 'main.swift'), '-framework', 'AppKit', '-framework', 'SceneKit', '-framework', 'WebKit', '-o', binary], { stdio: 'inherit' });
   await new Promise((resolve, reject) => {
     const child = spawn(binary, ['--test-profile', '--base-url', `http://127.0.0.1:${server.address().port}/`], { stdio: ['ignore', 'pipe', 'pipe'] });
     let output = ''; child.stdout.on('data', chunk => { output += chunk; }); child.stderr.on('data', chunk => { output += chunk; });
     const timer = setTimeout(() => { child.kill('SIGTERM'); reject(Error('Native attention flow timed out')); }, 25_000);
     child.on('error', reject); child.on('exit', code => { clearTimeout(timer); if (code === 0) { console.log(output.trim()); resolve(); } else reject(Error(output)); });
   });
-  assert.equal(requests.length, 6, 'cancelled request must not retry or dispatch retained affection');
+  assert.equal(requests.length, 7, 'cancelled or capped requests must not retry or dispatch retained affection');
   assert.equal(requests[0].requestId, requests[1].requestId, 'busy retries must reuse the request ID');
-  assert.deepEqual(requests.map(r => r.level), ['care', 'care', 'affection', 'affection', 'affection', 'affection']);
+  assert.deepEqual(requests.map(r => r.level), ['care', 'care', 'affection', 'affection', 'affection', 'affection', 'affection']);
   assert.equal(messages.length, 4);
   assert.ok(messages.every(message => message.speaker === 'assistant'));
   console.log('Native HTTP contract and saved message counts passed.');

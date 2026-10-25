@@ -49,11 +49,11 @@ writeFileSync(path.join(contents,'Info.plist'),`<?xml version="1.0" encoding="UT
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
-<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
+<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/><key>NSExceptionDomains</key><dict><key>ts.net</key><dict><key>NSIncludesSubdomains</key><true/><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict></dict></dict>
 <key>NSMicrophoneUsageDescription</key><string>在有间聊天窗口中录制你主动发送的语音。</string>
 </dict></plist>`);
 execFileSync('/usr/bin/xcrun',['swiftc','-swift-version','5','-O','-target',`${process.arch==='arm64'?'arm64':'x86_64'}-apple-macosx14.0`,
-  path.join(root,'CompanionCore.swift'),path.join(root,'AttentionGesture.swift'),path.join(root,'CharacterScene.swift'),path.join(root,'SceneImages.swift'),path.join(root,'PhotoPetView.swift'),path.join(root,'VisualStudio.swift'),path.join(root,'MenuBarIcon.swift'),path.join(root,'main.swift'),
+  path.join(root,'CompanionCore.swift'),path.join(root,'AttentionGesture.swift'),path.join(root,'CharacterScene.swift'),path.join(root,'SceneImages.swift'),path.join(root,'PhotoPetView.swift'),path.join(root,'VisualStudio.swift'),path.join(root,'MenuBarIcon.swift'),path.join(root,'ServerConnection.swift'),path.join(root,'main.swift'),
   '-framework','AppKit','-framework','SceneKit','-framework','WebKit','-o',path.join(contents,'MacOS','YoujianDesktop')],{stdio:'inherit'});
 execFileSync('/usr/bin/codesign',['--force','--sign','-',app],{stdio:'inherit'});
 console.log(`已构建：${app}`);

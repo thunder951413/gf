@@ -1,3 +1,4 @@
+import { testRoles } from './support/role-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -80,7 +81,7 @@ async function fixture(t, { failure = false, catalog = pursuitCatalog, modelEnve
     else reply = '闻溪只回应眼前的话题。';
     return Response.json({ choices: [{ message: { content: isMiyue ? envelope(reply) : reply } }] });
   };
-  app = await createApp({
+  app = await createApp({roles:testRoles(),
     appDataDir: path.resolve('app-data'),
     dataDir,
     initialFeeds: [],

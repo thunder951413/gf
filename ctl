@@ -76,6 +76,19 @@ status() {
   fi
 }
 
+if [[ "$(uname -s)" == "Linux" ]]; then
+  # systemd user unit installed by `npm run service:install`.
+  UNIT="youjian.service"
+  case "${1:-}" in
+    start) systemctl --user start "$UNIT"; wait_for up; echo "有间服务已启动：$URL" ;;
+    stop) systemctl --user stop "$UNIT"; wait_for down; echo "有间服务已停止。" ;;
+    restart) systemctl --user restart "$UNIT"; wait_for up; echo "有间服务已重启：$URL" ;;
+    status) systemctl --user --no-pager status "$UNIT" | head -5 ;;
+    *) usage; exit 2 ;;
+  esac
+  exit 0
+fi
+
 case "${1:-}" in
   start) start ;;
   stop) stop ;;

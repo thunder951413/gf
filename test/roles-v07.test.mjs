@@ -1,7 +1,8 @@
+import { testRoles } from './support/role-fixtures.mjs';
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {createApp} from '../server.mjs';
 async function fixture(t) {
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'roles-v07-'));const calls=[];
- const app=await createApp({ replySleep: async () => {}, dataDir:dir,env:{LIFE_MODEL_BASE_URL:'https://fixture.test/v1',LIFE_MODEL_NAME:'fixture'},initialFeeds:[],startProactive:false,startRecall:false,clock:()=>new Date('2026-09-07T02:00:00Z'),lifeRandom:()=>.99,random:()=>.5,integrations:{fetchFeed:async()=>({items:[]})},fetchImpl:async(_u,o)=>{calls.push(JSON.parse(o.body));return Response.json({choices:[{message:{content:'【测试】我先听你说，我们接着这里聊。'}}],usage:{prompt_tokens:100,completion_tokens:20}})}});
+ const app=await createApp({roles:testRoles(), replySleep: async () => {}, dataDir:dir,env:{LIFE_MODEL_BASE_URL:'https://fixture.test/v1',LIFE_MODEL_NAME:'fixture'},initialFeeds:[],startProactive:false,startRecall:false,clock:()=>new Date('2026-09-07T02:00:00Z'),lifeRandom:()=>.99,random:()=>.5,integrations:{fetchFeed:async()=>({items:[]})},fetchImpl:async(_u,o)=>{calls.push(JSON.parse(o.body));return Response.json({choices:[{message:{content:'【测试】我先听你说，我们接着这里聊。'}}],usage:{prompt_tokens:100,completion_tokens:20}})}});
  const {port}=await app.listen(0);t.after(async()=>{await app.close();fs.rmSync(dir,{recursive:true,force:true})});
  const req=async(url,body)=>{const r=await fetch(`http://127.0.0.1:${port}${url}`,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});return {status:r.status,body:await r.json()}};
  return {app,calls,req};

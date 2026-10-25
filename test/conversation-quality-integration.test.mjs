@@ -1,3 +1,4 @@
+import { testRoles } from './support/role-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -298,7 +299,7 @@ test('hindsight scolding gets one repair then is removed before a real chat turn
 async function fixture(t, drafts = []) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'conversation-quality-integration-'));
   const calls = [];
-  const app = await createApp({
+  const app = await createApp({roles:testRoles(),
     dataDir, initialFeeds: [], startProactive: false, startWeixin: false, startRuntime: false,
     startRecall: false, startLifeThreads: false, startDailyLife: false, startDossiers: false,
     startChatQueue: false, replySleep: async () => {}, clock, random: () => 0.5,
@@ -322,6 +323,21 @@ async function fixture(t, drafts = []) {
     attention: (requestId, level = 'care') => request('/api/desktop/attention', { requestId, level }),
   };
 }
+
+test('a saturated assistant-led motif is revised through the real chat route', async t => {
+  const f = await fixture(t, [
+    { reply: '碗收好就过来坐。那只陶瓷小鹿还朝着门口。', extra: '' },
+    { reply: '碗收好就过来坐，我给你留了位置。', extra: '' },
+  ]);
+  f.app.store.saveChatTurn({ role: 'miyue', text: '我到公司了。', reply: '窗台上的陶瓷小鹿被太阳照亮了。' });
+  f.app.store.saveChatTurn({ role: 'miyue', text: '午饭吃过了。', reply: '我又看见那只陶瓷小鹿，角上落了一点灰。' });
+  f.app.store.saveChatTurn({ role: 'miyue', text: '快下班了。', reply: '刚才经过窗边，陶瓷小鹿还朝着门口。' });
+  const result = await f.chat('我已经把碗收好了。');
+  assert.equal(result.status, 200, JSON.stringify(result));
+  assert.equal(f.calls.length, 2);
+  assert.doesNotMatch(result.messages.at(-1).text, /陶瓷小鹿/);
+  assert.match(JSON.stringify(f.calls[1]), /saturated_topic_reuse|话题饱和|冷却/);
+});
 
 test('length-only repair receives the actual draft instead of having to reconstruct it from history',async t=>{
   const draft='书里那个整理房间的细节让我记住了。'+('她把常用的东西挪到伸手够得着的地方，我喜欢这个实际的改变。'.repeat(40));

@@ -1,3 +1,4 @@
+import { testRoles } from './support/role-fixtures.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -39,7 +40,7 @@ function fakeIntegrations(state) {
   };
 }
 async function openApp(dataDir, state) {
-  const app = await createApp({
+  const app = await createApp({roles:testRoles(),
     appDataDir, dataDir, initialFeeds: [], integrations: fakeIntegrations(state), env: {},
     startProactive: false, startRecall: false, startResearch: false, startLife: false,
     startDossiers: false, startChatQueue: false, replySleep: async () => {},
@@ -53,6 +54,7 @@ test('role defaults initialize by voice name and assignments survive a repositor
   const state = { voices: defaultVoices, starts: [] };
   t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }));
   let opened = await openApp(dataDir, state);
+  t.after(() => opened.app.close());
   const initial = await request(opened.base, '/api/voice/catalog');
   assert.equal(initial.status, 200);
   assert.ok(initial.body.voices.every(voice => !Object.hasOwn(voice, 'referencePath') && !Object.hasOwn(voice, 'path') && !Object.hasOwn(voice, 'audio_path')));
@@ -63,7 +65,6 @@ test('role defaults initialize by voice name and assignments survive a repositor
   await opened.app.close();
 
   opened = await openApp(dataDir, state);
-  t.after(() => opened.app.close());
   const restarted = await request(opened.base, '/api/voice/catalog');
   assert.equal(restarted.body.assignments.wenxi.voiceId, 'voice-extra');
   assert.equal(restarted.body.assignments.wenxi.name, '测试音色');

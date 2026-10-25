@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Store } from '../lib/store.mjs';
 import { RecallEngine, RecallRepository } from '../lib/recall.mjs';
+import { importHistoricalMessages } from './support/history-fixtures.mjs';
 
 const story = { start: 'start', nodes: { start: { id: 'start', title: 'start', body: '', choices: [] } } };
 const now = new Date('2026-09-11T12:00:00.000Z');
@@ -18,8 +19,8 @@ function fixture(t) {
 }
 
 function add(store, { id, role = 'miyue', speaker = 'assistant', text, at, kind = 'chat' }) {
-  store.db.prepare('INSERT INTO messages(id,role,speaker,text,kind,content_id,created_at) VALUES(?,?,?,?,?,NULL,?)')
-    .run(id, role, speaker, text, kind, at);
+  importHistoricalMessages(store, () => store.db.prepare('INSERT INTO messages(id,role,speaker,text,kind,content_id,created_at) VALUES(?,?,?,?,?,NULL,?)')
+    .run(id, role, speaker, text, kind, at));
 }
 
 class Model {

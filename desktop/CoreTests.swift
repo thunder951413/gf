@@ -232,7 +232,10 @@ import AppKit
         }
         assert(companionBaseURL("http://127.0.0.1:8765/") != nil)
         assert(companionBaseURL("http://localhost:8877") != nil)
-        for invalid in ["https://evil.com", "http://127.0.0.1.evil.com", "http://user:secret@localhost", "file:///tmp/x", "http://localhost/path", "http://localhost?token=x"] { assert(companionBaseURL(invalid) == nil) }
+        assert(companionBaseURL("http://192.168.1.20:8765/") != nil)
+        assert(companionBaseURL("https://youjian.example.com") != nil)
+        for invalid in ["http://user:secret@localhost", "file:///tmp/x", "http://localhost/path", "http://localhost?token=x", "ftp://host", "http://"] { assert(companionBaseURL(invalid) == nil) }
+        assert(CompanionServer.sessionCookieValue("a-long-enough-access-token-for-tests") == "08cf716fb3951292d2363cbcef1cf3aa1d6b1b1a1d5df4fd06eff7cf12682e15")
         assert(bubbleExcerpt(String(repeating:"雨",count:100),privatePreview:false).count == 67)
         assert(!bubbleExcerpt("私密聊天",privatePreview:true).contains("私密聊天"))
         print("Desktop core checks passed: messaging, life/photo mapping, real approved visual assets and scenes, exact matching, layout bounds, URL boundary and private preview.")

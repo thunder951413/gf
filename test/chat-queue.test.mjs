@@ -5,3 +5,20 @@ test('queued consecutive inputs merge into one call while preserving each origin
 test('new input aborts obsolete generation and only the latest combined answer commits',async t=>{let calls=0;const {app,req}=await setup(t,{fetchImpl:async(_u,o)=>{calls++;if(calls===1)return new Promise((_,reject)=>o.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true}));return Response.json({choices:[{message:{content:'最后决定不去。'}}]});}});await req('/api/chat/send',{role:'miyue',text:'我准备去了',clientId:'request-abort-001'});await until(()=>calls===1);await req('/api/chat/send',{role:'miyue',text:'等等，我决定不去了',clientId:'request-abort-002'});await until(()=>app.store.getMessages('miyue').length===3);assert.equal(calls,2);assert.equal(app.store.getMessages('miyue').at(-1).text,'最后决定不去。');assert.equal(app.usage.snapshot().recent.some(u=>u.status==='cancelled'),true);});
 test('unseen reply chunks are cancelled by new input and never enter conversation history',async t=>{const {app,req}=await setup(t,{fetchImpl:async()=>Response.json({choices:[{message:{content:Array.from({length:16},(_,i)=>`第${i+1}段的这句话描述一件今天发生的小事。`).join('')+'\n'+Array.from({length:8},(_,i)=>`接着讲第${i+1}件有趣的小事和感受。`).join('')}}]})});await req('/api/chat/send',{role:'miyue',text:'聊聊今天',clientId:'request-chunk-001'});await until(()=>app.replyDelivery.pending('miyue')>0);const visible=app.store.getMessages('miyue').filter(m=>m.speaker==='assistant').length;assert.equal(visible,1);await req('/api/chat/send',{role:'miyue',text:'先别说了',clientId:'request-chunk-002'});assert.equal(app.replyDelivery.pending('miyue'),0);await req('/api/chat/cancel',{role:'miyue'});assert.equal(app.store.getMessages('miyue').filter(m=>m.speaker==='assistant').length,1);});
 test('failed queued input is retained and explicit retry completes it without another user duplicate',async t=>{let calls=0;const {app,req}=await setup(t,{chatRetryDelaysMs:[],fetchImpl:async()=>{calls++;if(calls===1)throw new Error('offline');return Response.json({choices:[{message:{content:'这次收到了。'}}]});}});await req('/api/chat/send',{role:'miyue',text:'保留这条消息',clientId:'request-retry-001'});await until(()=>app.chatQueue.get('miyue').phase==='failed');assert.equal(app.chatQueue.get('miyue').items.length,1);await req('/api/chat/retry',{role:'miyue'});await until(()=>app.store.getMessages('miyue').length===2);assert.equal(calls,2);});
+
+test('queued input timestamps survive batching, midnight and a failed generation retry',async t=>{
+  let at='2026-10-03T15:59:40.000Z',calls=0;
+  const {app,req}=await setup(t,{clock:()=>new Date(at),chatRetryDelaysMs:[],fetchImpl:async()=>{
+    if(++calls===1){at='2026-10-03T16:00:20.000Z';throw new Error('offline');}
+    return Response.json({choices:[{message:{content:'保留这两条原话的实际发送时间。'}}]});
+  }});
+  await req('/api/chat/send',{role:'miyue',text:'明天去看牙',clientId:'request-date-first'});
+  at='2026-10-03T15:59:50.000Z';
+  await req('/api/chat/send',{role:'miyue',text:'补充：下午三点',clientId:'request-date-second'});
+  await until(()=>app.chatQueue.get('miyue').phase==='failed');
+  await req('/api/chat/retry',{role:'miyue'});
+  await until(()=>app.store.getMessages('miyue').length===3);
+  assert.deepEqual(app.store.getMessages('miyue').map(m=>m.createdAt),[
+    '2026-10-03T15:59:40.000Z','2026-10-03T15:59:50.000Z','2026-10-03T16:00:20.000Z',
+  ]);
+});

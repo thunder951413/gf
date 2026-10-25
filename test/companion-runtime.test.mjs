@@ -31,6 +31,12 @@ test('stored plan survives restart without random reroll', () => {
   const restarted = new CompanionRuntime(f.store, { clock: () => new Date(f.now), random: () => { throw new Error('rerolled'); } });
   assert.deepEqual(restarted.snapshot().dayPlan, first.dayPlan);
 });
+test('National Day uses a rest-day plan and weekday plans retain meals and a leisure break',()=>{
+ const holiday=fixture({time:'2026-10-06T02:00:00Z'}),view=holiday.runtime.snapshot();
+ assert.equal(view.dayPlan.some(i=>i.kind==='work'),false);assert.ok(view.dayPlan.some(i=>i.kind==='meal'));holiday.store.close();
+ const regular=fixture({time:'2026-10-08T02:00:00Z'}),plan=regular.runtime.snapshot().dayPlan;
+ assert.ok(plan.some(i=>i.kind==='work'));assert.ok(plan.some(i=>i.id.endsWith('afternoon-reading')&&i.kind==='rest'));regular.store.close();
+});
 
 test('travel keeps trip location while sleep and meals retain routine action', () => {
   const inputs = { life: { active: { id: 'trip', type: 'travel', startedAt: '2026-09-08T00:00:00Z', endsAt: '2026-09-10T00:00:00Z', phase: { location: '南京', activity: '逛博物馆' } } } };

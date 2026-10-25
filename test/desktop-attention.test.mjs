@@ -275,3 +275,39 @@ test('an ordinary typed reply after a gesture keeps its own user message', async
   assert.deepEqual(f.app.store.getMessages('miyue').map(m=>m.speaker),['assistant','user','assistant']);
   assert.equal(r.messages[0].text,'我想和你聊聊今天的事。');
 });
+
+test('desktop invitations stop after two messages before generating, replay safely, and resume after a typed reply', async t => {
+  const f = await fixture(t);
+  const first = await f.attention('limit-first-001');
+  assert.equal(first.status, 200);
+  assert.equal((await f.attention('limit-second-001', 'affection')).status, 200);
+  const calls = f.requests.length;
+  const blocked = await f.attention('limit-third-001');
+  assert.equal(blocked.status, 409); assert.equal(blocked.code, 'UNANSWERED_MESSAGE_LIMIT');
+  assert.equal(f.requests.length, calls);
+  const replay = await f.attention('limit-first-001');
+  assert.deepEqual(replay.messages.map(row => row.id), first.messages.map(row => row.id));
+  assert.equal(f.app.store.getMessages('miyue').length, 2);
+  f.generate(async () => '河边今天怎么样，风大吗？');
+  assert.equal((await f.request('/api/chat', { role: 'miyue', text: '刚刚去散步了。' })).status, 200);
+  assert.equal(f.app.store.unansweredAssistantCount('miyue'), 1);
+  f.generate(async () => '我刚收好桌上的纸边，想先坐一会儿。');
+  assert.equal((await f.attention('limit-resumed-001')).status, 200);
+  assert.equal((await f.attention('limit-resumed-third')).code, 'UNANSWERED_MESSAGE_LIMIT');
+});
+
+test('a desktop draft cannot become a third message if another delivery takes its slot during generation', async t => {
+  const f = await fixture(t);
+  f.app.store.saveChatTurn({ role: 'miyue', text: '我先忙一会儿。', reply: '好呀。' });
+  let release, started;
+  const entered = new Promise(resolve => { started = resolve; });
+  f.generate(() => new Promise(resolve => { release = () => resolve('忽然有点想和你说说话。'); started(); }));
+  const pending = f.attention('limit-race-001');
+  await entered;
+  f.app.store.addAssistantMessage('miyue', '一条已送达的提醒。');
+  release();
+  const blocked = await pending;
+  assert.equal(blocked.status, 409); assert.equal(blocked.code, 'UNANSWERED_MESSAGE_LIMIT');
+  assert.equal(f.app.store.getMessages('miyue').filter(row => row.speaker === 'assistant').length, 2);
+  assert.equal(f.app.store.db.prepare('SELECT count(*) n FROM desktop_attention_receipts').get().n, 0);
+});

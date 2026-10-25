@@ -116,3 +116,14 @@ test('official DeepSeek structured replies use documented JSON mode and a non-th
 });
 
 test('official OpenAI small model receives JSON mode without DeepSeek-specific fields',async t=>{const{dataDir}=fixture(t);let body;const client=new ModelClient({dataDir,env:{LIFE_MODEL_BASE_URL:'https://api.openai.com/v1',LIFE_MODEL_NAME:'gpt-4.1-mini'},fetchImpl:async(_u,o)=>{body=JSON.parse(o.body);return Response.json({choices:[{message:{content:'{"reply":"你好","extra":""}'}}]});}});await client.complete([{role:'user',content:'请输出JSON'}],{jsonObject:true,maxTokens:700});assert.deepEqual(body.response_format,{type:'json_object'});assert.equal(body.thinking,undefined);assert.equal(body.max_tokens,700);});
+
+test('explicit semantic reasoning overrides the short JSON default only on supported official DeepSeek models',async t=>{
+ const {dataDir}=fixture(t);const calls=[];
+ const model=new ModelClient({dataDir,env:{LIFE_MODEL_BASE_URL:'https://api.deepseek.com/v1',LIFE_MODEL_NAME:'deepseek-v4-flash'},fetchImpl:async(_u,o)=>{calls.push(JSON.parse(o.body));return Response.json({choices:[{message:{reasoning_content:'private internal reasoning',content:'{"guidance":[]}'}}]});}});
+ assert.equal(await model.complete([{role:'system',content:'Return JSON'}],{purpose:'session-review',jsonObject:true,thinking:true,maxTokens:4096}),'{"guidance":[]}');
+ assert.deepEqual(calls[0].thinking,{type:'enabled'});assert.equal(calls[0].reasoning_effort,'low');
+ assert.deepEqual(calls[0].response_format,{type:'json_object'});assert.equal(calls[0].max_tokens,4096);
+ model.env={LIFE_MODEL_BASE_URL:'https://compatible.test/v1',LIFE_MODEL_NAME:'deepseek-v4-flash'};
+ await model.complete([{role:'system',content:'Return JSON'}],{jsonObject:true,thinking:true});
+ assert.equal(calls[1].thinking,undefined);assert.equal(calls[1].reasoning_effort,undefined);
+});

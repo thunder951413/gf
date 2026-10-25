@@ -62,11 +62,11 @@ test('proactive history retains shared facts without reinserting an old-experien
   const {app}=await setup(t,['测试']);
   const rows=app.store.saveChatTurn({role:'miyue',text:'最近看了什么',reply:'我看过《小森林》，里面做饭的节奏很舒服。'});
   app.personalExperiences.observe('miyue',rows);
-  const proactive=app.proactive.getRoleContext('miyue');
+  const proactive=await app.proactive.getRoleContext('miyue');
   assert.match(JSON.stringify(proactive.conversation),/小森林/);
   assert.doesNotMatch(proactive.characterContext,/近期经历简记/);
   assert.match(app.roleContext('miyue',{initiating:false,text:'记得你说过小森林吗'}).characterContext,/小森林/);
-  assert.doesNotMatch(app.proactive.getRoleContext('wenxi').characterContext,/近期经历简记|小森林/);
+  assert.doesNotMatch((await app.proactive.getRoleContext('wenxi')).characterContext,/近期经历简记|小森林/);
 });
 
 test('a named old experience remains available on explicit request after leaving the digest',async t=>{
@@ -74,7 +74,7 @@ test('a named old experience remains available on explicit request after leaving
   const rows=app.store.saveChatTurn({role:'miyue',text:'最近看了什么',reply:'我看过《小森林》，里面做饭的节奏很舒服。'});
   app.personalExperiences.observe('miyue',rows);
   app.store.db.prepare('UPDATE personal_experiences SET created_at=?').run('2020-01-01T00:00:00Z');
-  assert.doesNotMatch(app.proactive.getRoleContext('miyue').characterContext,/小森林/);
-  const context=app.proactive.getRoleContext('miyue',{initiating:false,text:'之前你看小森林有什么感受'}).characterContext;
+  assert.doesNotMatch((await app.proactive.getRoleContext('miyue')).characterContext,/小森林/);
+  const context=(await app.proactive.getRoleContext('miyue',{initiating:false,text:'之前你看小森林有什么感受'})).characterContext;
   assert.match(context,/角色虚构经历[\s\S]*小森林/);
 });

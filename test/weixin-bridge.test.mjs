@@ -88,9 +88,11 @@ test('binding starts at the current history cursor, then captures only 林晓薇
     f.bridge.capture();
     assert.equal(outbox(f.store).length, 0, 'existing chat history must not be sent when binding');
 
+    f.store.db.prepare('INSERT INTO messages(id,role,speaker,text,kind,created_at) VALUES(?,?,?,?,?,?)').run('new-turn', 'miyue', 'user', '继续说吧。', 'chat', new Date().toISOString());
     const first = f.store.addAssistantMessage('miyue', '第一段', 'weixin');
     const second = f.store.addAssistantMessage('miyue', '第二段', 'weixin');
     f.store.addAssistantMessage('wenxi', '闻溪不应发送');
+    f.store.db.prepare('INSERT INTO messages(id,role,speaker,text,kind,created_at) VALUES(?,?,?,?,?,?)').run('story-choice', 'miyue', 'user', '继续故事。', 'story', new Date().toISOString());
     f.store.db.prepare("INSERT INTO messages(id,role,speaker,text,kind,created_at) VALUES(?,?,?,?,?,?)").run('story-reply', 'miyue', 'assistant', '故事不应发送', 'story', new Date(Date.now()).toISOString());
     f.store.db.prepare('UPDATE messages SET created_at=? WHERE id=?').run('2026-01-01T08:00:00.000Z', first.id);
     f.store.db.prepare('UPDATE messages SET created_at=? WHERE id=?').run('2026-01-01T08:00:20.000Z', second.id);
@@ -268,11 +270,12 @@ test('desktop replies never enter Weixin outbox, including between Weixin reply 
     assert.equal(outbox(f.store).length, 0);
     assert.equal(f.bridge.read().messageCursor, f.bridge.latestRow());
     f.store.addAssistantMessage('miyue', '微信第一轮', 'weixin');
+    f.store.db.prepare('INSERT INTO messages(id,role,speaker,text,kind,created_at) VALUES(?,?,?,?,?,?)').run('next-turn', 'miyue', 'user', '接着聊。', 'chat', new Date().toISOString());
     f.store.addAssistantMessage('miyue', '桌面第二轮');
     f.store.addAssistantMessage('miyue', '微信第三轮', 'weixin');
     f.bridge.capture(); await f.bridge.deliver(); await f.bridge.deliver();
     assert.deepEqual(f.calls.sent.map(row => row.text), ['微信第一轮', '微信第三轮']);
-    assert.equal(f.store.getMessages('miyue').length, 4);
+    assert.equal(f.store.getMessages('miyue').filter(row => row.speaker === 'assistant').length, 4);
   } finally { f.close(); }
 });
 

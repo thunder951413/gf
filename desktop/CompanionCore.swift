@@ -364,9 +364,11 @@ struct PhotoAlphaMask {
     }
 }
 
+/// The service address: this Mac (http) or another machine (http or https).
+/// Only scheme, host and port; no credentials, path, query or fragment.
 func companionBaseURL(_ raw: String) -> URL? {
-    guard let url = URL(string: raw), url.scheme == "http",
-          ["127.0.0.1", "localhost", "[::1]"].contains(url.host ?? ""),
+    guard let url = URL(string: raw), let scheme = url.scheme, ["http", "https"].contains(scheme),
+          let host = url.host, !host.isEmpty,
           url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
           url.path.isEmpty || url.path == "/" else { return nil }
     return url

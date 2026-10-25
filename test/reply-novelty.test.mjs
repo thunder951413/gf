@@ -137,3 +137,26 @@ test('an explicit correction blocks the same action even when the draft reverses
   assert.deepEqual(replyNoveltyIssues('好，我刚到门口，脚一跺就进来了。', plan), ['repeated_corrected_content']);
   assert.deepEqual(replyNoveltyIssues('好，我不再反复讲那个动作了。你躺着休息一会儿。', plan), []);
 });
+
+test('repeated assistant-led detail is caught across different wording and unrelated user turns', () => {
+  const conversation = [
+    assistant('今天有风，我披了件薄外套。'), user('去逛逛吧'),
+    assistant('出门时我把薄外套的领子拢了拢。'), user('赶上车了'),
+    assistant('今天你那件薄外套真别穿。'), user('碗已经洗完啦'),
+  ];
+  const plan = replyNoveltyPlan({ now, conversation, userText: '碗已经洗完啦' });
+  assert.ok(plan.saturation.topics.some(topic => topic.phrase.includes('薄外套')));
+  assert.deepEqual(replyNoveltyIssues('洗好了就过来坐。那件薄外套的事先记账。', plan), ['saturated_topic_reuse']);
+  assert.deepEqual(replyNoveltyIssues('洗好了就过来坐，我把书翻到下一页。', plan), []);
+});
+
+test('user-led detail and older mentions do not create a recurring-detail ban', () => {
+  const old = new Date(+now - 49 * 60 * 60 * 1000).toISOString();
+  const conversation = [assistant('薄外套挂好了。', old), assistant('薄外套穿着正好。'), user('那件薄外套找到了吗？'), assistant('薄外套还在门边。')];
+  const plan = replyNoveltyPlan({ now, conversation, userText: '薄外套找到了吗？' });
+  assert.ok(!plan.saturation.topics.some(topic => topic.phrase.includes('薄外套')));
+  assert.deepEqual(replyNoveltyIssues('薄外套找到了，我把它挂起来了。', plan), []);
+  const direct = replyNoveltyPlan({ now, conversation: [assistant('薄外套挂好了。'), assistant('薄外套穿着正好。'), assistant('薄外套还在门边。')], userText: '那件外套找到了吗？' });
+  assert.ok(!direct.saturation.topics.some(topic => topic.phrase.includes('薄外套')));
+  assert.deepEqual(replyNoveltyIssues('那件薄外套找到了。', direct), []);
+});

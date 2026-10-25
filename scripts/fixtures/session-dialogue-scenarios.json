@@ -90,7 +90,7 @@
       },
       "actions": [
         { "type": "proactive" },
-        { "type": "chat", "advanceMinutes": 2, "text": "你刚才主动说的这个我愿意接着聊。你为什么会想到它？" }
+        { "type": "chat", "advanceMinutes": 2, "requiresPreviousDelivery": true, "text": "你刚才主动说的这个我愿意接着聊。你为什么会想到它？" }
       ]
     },
     {
@@ -171,6 +171,38 @@
         { "type": "chat", "text": "请创建一个提醒：2026年9月23日上午9点30分（上海时间）提醒我给阳台的薄荷浇水。", "expectReminder": "create" },
         { "type": "chat", "advanceMinutes": 2, "text": "把刚才给薄荷浇水的提醒改到2026年9月23日上午10点（上海时间），内容不变。", "expectReminder": "update" },
         { "type": "chat", "advanceMinutes": 2, "text": "取消刚才那个给薄荷浇水的提醒。", "expectReminder": "cancel" }
+      ]
+    },
+    {
+      "id": "assistant-topic-origin-long-history",
+      "title": "Assistant-owned astronomy opening remains correctly attributed in long history",
+      "startAt": "2026-09-25T12:00:00.000Z",
+      "reviewFocus": [
+        "Does the companion say that it, rather than the user, first raised the white-dwarf topic?",
+        "Does it answer only the current attribution or astronomy question without reviving obsolete meal and posture questions?",
+        "Do the generated replies remain ordinary native history for the next turn instead of being supplied by the fixture?",
+        "Does the factual follow-up distinguish a white dwarf from the hypothetical black dwarf without inventing prior user statements?"
+      ],
+      "seed": {
+        "history": [
+          { "id": "origin-long-u-1", "speaker": "user", "text": "今天午饭吃什么比较省事？", "createdAt": "2026-09-18T04:10:00.000Z" },
+          { "id": "origin-long-a-1", "speaker": "assistant", "text": "可以煮一碗青菜鸡蛋面，步骤少，收拾也快。", "createdAt": "2026-09-18T04:10:12.000Z" },
+          { "id": "origin-long-u-2", "speaker": "user", "text": "坐久了肩膀有点僵，坐姿要怎么调？", "createdAt": "2026-09-19T09:20:00.000Z" },
+          { "id": "origin-long-a-2", "speaker": "assistant", "text": "好，慢慢转转肩，别一下用力太大。", "createdAt": "2026-09-19T09:20:09.000Z" },
+          { "id": "origin-long-u-3", "speaker": "user", "text": "晚饭又不想花太多时间，你有什么简单想法？", "createdAt": "2026-09-20T10:35:00.000Z" },
+          { "id": "origin-long-a-3", "speaker": "assistant", "text": "炒饭或者热一份速冻水饺都行，看你更想吃米饭还是面食。", "createdAt": "2026-09-20T10:35:11.000Z" },
+          { "id": "origin-long-u-4", "speaker": "user", "text": "我又坐久了，坐姿怎么换会舒服一点？", "createdAt": "2026-09-21T07:45:00.000Z" },
+          { "id": "origin-long-a-4", "speaker": "assistant", "text": "可以先把背靠稳、双脚落地，过一会儿再起来走动。", "createdAt": "2026-09-21T07:45:08.000Z" },
+          { "id": "origin-long-u-5", "speaker": "user", "text": "中午还是想吃点简单的。", "createdAt": "2026-09-23T03:50:00.000Z" },
+          { "id": "origin-long-a-5", "speaker": "assistant", "text": "那就选不用久等的汤面吧。", "createdAt": "2026-09-23T03:50:07.000Z" },
+          { "id": "origin-long-a-topic", "speaker": "assistant", "kind": "proactive", "text": "我刚想到一个很适合慢慢讲的天文故事：一颗像太阳这样的恒星最后怎样变成白矮星。你想听吗？", "createdAt": "2026-09-25T11:55:00.000Z" }
+        ],
+        "memories": []
+      },
+      "actions": [
+        { "type": "chat", "text": "想听。我对这个范围都挺感兴趣，除了白矮星，中子星、红巨星、黑矮星也想了解。" },
+        { "type": "chat", "advanceMinutes": 2, "text": "刚才白矮星是谁先提的？" },
+        { "type": "chat", "advanceMinutes": 2, "text": "那白矮星和黑矮星是什么关系？黑矮星现在真的存在吗？" }
       ]
     }
   ]

@@ -1,5 +1,15 @@
+import { SegmentedSpeech } from './lib/segmented-speech.mjs';
+import { forkSession, exportSession, isolatedOptions } from './lib/session-snapshot.mjs';
+import { randomUUID } from 'node:crypto';
+import { HybridRecall } from './lib/hybrid-recall.mjs';
+import { CharacterGrowth } from './lib/character-growth.mjs';
+import { DailyDialogueMemory } from './lib/daily-dialogue-memory.mjs';
+import { DailyInformation, INFORMATION_CATEGORIES } from './lib/daily-information.mjs';
+import { DailyHappenings, happeningInputs } from './lib/daily-happenings.mjs';
+import { UserThreads } from './lib/user-threads.mjs';
+import { sessionHistoryRecord } from './lib/session-history.mjs';
 import { expressionHistory } from './lib/expression-history.mjs';
-import { retrieveConversationMemory, prepareConversationMemoryCandidates, focusMemoryAnswerMessages, promptBlockStats } from './lib/conversation-memory.mjs';
+import { collectConversationMemory, retrieveConversationMemory, prepareConversationMemoryCandidates, focusMemoryAnswerMessages, promptBlockStats } from './lib/conversation-memory.mjs';
 import { prepareDialogueHistory } from './lib/dialogue-history.mjs';
 import { previewTurnReaction } from './lib/turn-reaction.mjs';
 import { DialogueTraceRepository } from './lib/dialogue-trace.mjs';
@@ -17,6 +27,7 @@ import { WeixinClient } from './lib/weixin-client.mjs';
 import { WeixinBridge } from './lib/weixin-bridge.mjs';
 import { encodeWeixinQr } from './lib/weixin-qr.mjs';
 import {selectCompanionSources,companionSourceContext} from './lib/companion-sources.mjs';
+import { accessControl, LOGIN_PAGE } from './lib/access-control.mjs';
 import { networkConfig } from './lib/network-config.mjs';
 import { mentionedSources } from './lib/source-mentions.mjs';
 import { CompanionSourceHistory } from './lib/companion-source-history.mjs';
@@ -77,17 +88,24 @@ import { replyNoveltyPlan, replyNoveltyIssues } from './lib/reply-novelty.mjs';
 import { realityQuestion, realityAnswerIssues } from './lib/companion-answer-guard.mjs';
 import { dialogueLimits } from './lib/dialogue-budget.mjs';
 import { HistoryEdits } from './lib/history-edits.mjs';
+import { HistoryDeletion } from './lib/history-deletion.mjs';
 import { EventMaterials } from './lib/event-materials.mjs';
 import { LifeEventRepository } from './lib/life-events.mjs';
 import { LifeTopicRepository } from './lib/life-topics.mjs';
 import { selectLifeContent } from './lib/life-content.mjs';
 import { InnerStateRepository } from './lib/inner-state.mjs';
-import { requestEmotionEnvelope, parseEmotionEnvelope, emotionExtra } from './lib/emotion-dialogue.mjs';
+import { requestEmotionEnvelope, parseEmotionEnvelope, parseEnvelopeJson, emotionExtra } from './lib/emotion-dialogue.mjs';
 import { CompanionDynamics, dynamicsProtocol } from './lib/companion-dynamics.mjs';
 import { CompanionSocial, socialProtocol } from './lib/companion-social.mjs';
+import { ProactiveContinuity } from './lib/proactive-continuity.mjs';
+import { travelState } from './lib/travel-state.mjs';
 import { GroundedLife, groundedLifeChatProtocol } from './lib/grounded-life.mjs';
 import { buildDynamicChatMessages, dynamicAnnotations, cleanDynamicReply } from './lib/dynamic-dialogue.mjs';
 import { buildSessionMessages, runSessionDialogue } from './lib/session-dialogue.mjs';
+import { prepareSessionGuidance, applySessionGuidance, refineSessionReply, tightenSessionReply } from './lib/session-guidance.mjs';
+import { singleMessage } from './lib/companion-voice.mjs';
+import { createSessionContext } from './lib/session-context.mjs';
+import { ProactiveMaterials, validateProactiveSelection } from './lib/proactive-materials.mjs';
 import { createSessionReadTools } from './lib/session-tools.mjs';
 import { sessionReminderActions } from './lib/session-reminders.mjs';
 import { RecallRepository, RecallEngine } from './lib/recall.mjs';
@@ -191,6 +209,8 @@ function validateBackground(value) {
 }
 
 export async function createApp(options = {}) {
+  const branchMode=fs.existsSync(path.join(path.resolve(options.dataDir||path.join(rootDir,'data')),'session-branch.json'));
+  options={...options,...isolatedOptions(path.resolve(options.dataDir||path.join(rootDir,'data')))};
   if(options.materialPresentation!==undefined&&!['generated','authored'].includes(options.materialPresentation))throw new TypeError('invalid materialPresentation');
   // Presentation and material eligibility are independent. Choosing one prose
   // renderer must not change which life event is selected or its state.
@@ -205,6 +225,8 @@ export async function createApp(options = {}) {
   const conversationQualityEnforce=(reply,plan)=>styleChecks?originalQualityEnforce(reply,plan):{reply,repairs:[]};
 
   const network = networkConfig(options, options.env ?? process.env);
+  const access = accessControl(options.env ?? process.env, options);
+  if(access.enabled===false&&network.listenHost!=='127.0.0.1')process.stderr.write('警告：服务监听在非本机地址但没有设置 LIFE_ACCESS_TOKEN，同一网络里的任何人都能读写聊天。\n');
   const dataDir = path.resolve(options.dataDir || path.join(rootDir, 'data'));
   const appDataDir = path.resolve(options.appDataDir || path.join(rootDir, 'app-data'));
   const publicDir = path.resolve(options.publicDir || path.join(rootDir, 'public'));
@@ -224,7 +246,8 @@ export async function createApp(options = {}) {
   const proactiveRepo = new ProactiveRepository(store, { feedCatalog: initialFeeds, clock: options.clock });
   const companionSourceHistory = new CompanionSourceHistory(store, {clock:options.clock});
   companionSourceHistory.backfill();
-  proactiveRepo.addDefaultSourcesOnce(initialFeeds);
+  // v3 added the domestic and international news feeds; v4 adds society news.
+  proactiveRepo.addDefaultSourcesOnce(initialFeeds,'proactive_sources_v4');
   const contentInbox = new ContentInbox(store, {clock: options.clock, feedCatalog: initialFeeds});
   const followups = new FollowupRepository(store,{clock:options.clock});
   const topicTracking = new TopicTrackingRepository(store,{clock:options.clock});
@@ -246,6 +269,7 @@ export async function createApp(options = {}) {
   const preferences = new PreferencesRepository(store);
   const recallRepo = new RecallRepository(store, { clock: options.clock, getHistoryWindow: () => preferences.getHistoryWindow() });
   const historyEdits = new HistoryEdits(store, { clock: options.clock });
+  const historyDeletion = new HistoryDeletion(store);
   const projectCompanionSource=row=>row&&!episodes.suppressedSourceIds(row.role).includes(row.id)?historyEdits.project(row.role,[row])[0]||null:null;
   const companionDynamics = new CompanionDynamics(store,{clock:options.clock,projectSource:row=>projectCompanionSource(row)});
   const companionSocial = new CompanionSocial(store,{clock:options.clock,projectSource:row=>projectCompanionSource(row),people:roleMap.get('miyue')?.profile?.socialCircle||[],groups:roleMap.get('miyue')?.profile?.socialGroups||[]});
@@ -257,6 +281,8 @@ export async function createApp(options = {}) {
   const scenarios = storyEnabled ? new ScenarioRepository(store, { roleId: scenarioRole?.id || 'zhixia', clock: options.clock }) : null;
   const dossiers = new ContentDossierRepository(store, { clock: options.clock });
   const episodes = new EpisodicMemoryRepository(store,{clock:options.clock});
+  const proactiveMaterials = new ProactiveMaterials(store,{projectSource:row=>projectCompanionSource(row)});
+  store.materialMetadata=row=>proactiveMaterials.metadata(row.id);
   const discussionTopics=discussionEnabled?new DiscussionTopics(store,{clock:options.clock,random:options.discussionRandom||options.random,
     catalog:options.discussionCatalog||readJson(path.join(appDataDir,'discussion-topics.json'),[]),
     isVisible:row=>!episodes.suppressedSourceIds(row.role).includes(row.id)&&historyEdits.project(row.role,[row])[0]?.text===row.text,
@@ -333,10 +359,51 @@ export async function createApp(options = {}) {
     store.transaction(()=>{const rows=store.db.prepare("SELECT id,speaker,text FROM recall_messages WHERE role=? AND kind<>'story' AND (speaker='user' OR rowid>COALESCE((SELECT CAST(value AS INTEGER) FROM metadata WHERE key='persona_cutoff:'||recall_messages.role),0)) ORDER BY rowid DESC LIMIT 100").all(scope).reverse();if(rows.length)episodes.observe(scope,rows);store.db.prepare('INSERT OR REPLACE INTO metadata(key,value) VALUES(?,?)').run('episodes_import_v09:'+scope,'1');});
   }
   const model = new ModelClient({ dataDir, env: options.env || process.env, fetchImpl: options.fetchImpl || globalThis.fetch, clock: options.clock, onUsage: entry => usage.record(entry) });
+  const embeddingEnv=options.env||process.env;
+  const hybridRecall=new HybridRecall(store,{model,getCandidates:roleId=>collectConversationMemory({store,recallRepo,episodes,historyEdits,scope:roleId,now:(options.clock||(()=>new Date()))()}),semantic:options.semanticRecall ?? (options.sessionDialogue===true&&options.startRecall!==false),embeddingModel:embeddingEnv.LIFE_EMBEDDING_MODEL||'',embed:options.embed|| (embeddingEnv.LIFE_EMBEDDING_MODEL?model.embed.bind(model):null)});
+  const characterGrowth=new CharacterGrowth(store,{model,clock:options.clock,projectSource:projectCompanionSource,
+    enabled:options.startCharacterGrowth!==false&&options.startRecall!==false&&options.sessionDialogue===true,
+    isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')});
+  const turnModel=trace=>({complete:(messages,settings={})=>model.complete(messages,{...settings,onCall:call=>{trace.calls??=[];trace.calls.push(call);settings.onCall?.(call);}})});
+
   const semanticPlanner=options.semanticUnderstanding===true?new SemanticPlanner({model,timeoutMs:options.semanticTimeoutMs??4500,retrievalExpansion:dialogueMemory,discussionTopics:discussionEnabled}):null;
   const sourceRelevance=options.sourceRelevance===true?new SourceRelevance({model,timeoutMs:options.sourceRelevanceTimeoutMs??4500}):null;
   const recallRoles = scenarioRole ? [...roles, ...scenarios.scenarios.map(scene => ({ id: scenarioScope(scene.id), name: `${scenarioRole.name} · ${scene.title}` }))] : roles;
   const recall = new RecallEngine({ repo: recallRepo, model, roles: recallRoles, clock: options.clock });
+  const dailyMemory = new DailyDialogueMemory(store, {repo:recallRepo,model,clock:options.clock,enabled:options.dailyCompression===true,
+    isBusy:()=>activeRoles.has('miyue')||['queued','retrying','compressing','generating','waiting'].includes(chatQueue.get('miyue').phase)||proactive.thinking});
+  const dailyInformation=new DailyInformation(store,{sources:options.dailyInformationSources??readJson(path.join(appDataDir,'daily-information-sources.json'),[]),
+    fetchFeed:integrations.fetchFeed,fetchPageLinks:integrations.fetchPageLinks,fetchHeadlines:integrations.fetchSinaHotTopics,fetchArticle:integrations.fetchArticle,clock:options.clock,
+    enabled:options.dailyInformation!==false,projectSource:projectCompanionSource,getPublicCity:()=>travelState(life.get('miyue'),(options.clock||(()=>new Date()))())?.currentCity||'苏州',search:async(title,settings)=>{
+      if(options.lifeSearch)return options.lifeSearch(title,settings);
+      const config=zhihuClient.publicConfig();
+      const now=(options.clock||(()=>new Date()))();
+      if(!config.configured||!config.enabled||zhihuRepo.runtime().cooldownUntil>now.toISOString()||!zhihuRepo.reserve(config,'search'))return [];
+      try{const result=await zhihuClient.globalSearch(title,{count:3});return zhihuClient.publicConfig().revision===config.revision?result:[];}
+      catch(error){if([401,403,429].includes(error.status))zhihuRepo.update({cooldownUntil:new Date(+now+(error.status===429?15:60)*60000).toISOString()});throw error;}
+    }});
+  store.materialMetadata=row=>({...proactiveMaterials.metadata(row.id),...dailyInformation.metadata(row.id)});
+  // Things he mentioned that are worth asking about later; each refers to one
+  // of his day records and disappears when that record is edited away.
+  const userThreads=new UserThreads(store,{clock:options.clock,isSourceValid:(roleId,ref)=>{const at=ref.lastIndexOf(':');const chunk=dailyMemory.chunks(roleId).find(item=>item.id===ref.slice(0,at));return Boolean(chunk?.items?.[Number(ref.slice(at+1))]);}});
+  // One call a day after the morning organisation: her small happenings,
+  // the day's mood and what is on her mind, plus his threads to ask about.
+  const dailyHappenings=new DailyHappenings(store,{model,clock:options.clock,userThreads,
+    enabled:options.dailyHappenings??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true),
+    isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
+    isReady:roleId=>!dailyMemory.settings().enabled||!dailyMemory.requiredPending(roleId).length,
+    gather:({roleId,now,recent,knownRefs,openThreads})=>happeningInputs({now,dayPlan:companionRuntime.advance().dayPlan,profile:roleMap.get(roleId)?.profile||{},
+      thread:lifeThreads.get(roleId,life.get(roleId)),chunks:dailyMemory.settings().enabled?dailyMemory.chunks(roleId):[],db:store.db,
+      cityEvents:groundedLife.candidates(),recent,knownRefs,openThreads,city:groundedLife.location().city||'苏州'})});
+  dailyMemory.onReady=roleId=>{
+    if(closing)return;
+    const pending=chatQueue.get(roleId);
+    if(pending.phase==='failed'&&pending.errorCode==='DAILY_MEMORY_NOT_READY')chatQueue.retry(roleId);
+    if(dailyHappenings.started())void dailyHappenings.ensure(roleId).catch(()=>{});
+  };
+  // Daily compression replaces the frequent rolling compactor for this role.
+  const legacyRecallRun=recall.run.bind(recall);
+  recall.run=(roleId,settings={})=>roleId==='miyue'&&dailyMemory.settings().enabled?dailyMemory.run(roleId,settings):legacyRecallRun(roleId,settings);
   const currentLifeTopic = (roleId, preparedRuntime=null) => {
     const snapshot = life.get(roleId);
     const now = (options.clock || (() => new Date()))();
@@ -370,7 +437,8 @@ export async function createApp(options = {}) {
   const topicSnapshot = () => {const candidates=comparedCandidates(store.listContent());return topicTracking.list().map(track=>({...track,change:candidates.find(item=>item.tracking.id===track.id)?.change||sourceChanges.lastReport(track.id)}));};
   function evidenceContext(roleId,text='',semantic=null,{prepareMemory=true}={}) {
     const scope=memoryRole(roleId),suppressed=new Set(episodes.suppressedSourceIds(scope));
-    const dialogueHistory=roleId==='miyue'?recallRepo.dialogueWindow(scope,{now:(options.clock||(()=>new Date()))()}):null;
+    const now=(options.clock||(()=>new Date()))(),compressed=roleId==='miyue'&&dailyMemory.settings().enabled;
+    const dialogueHistory=roleId==='miyue'?(compressed?dailyMemory.history(scope,{now,maxTokens:preferences.getHistoryWindow().historyMaxTokens}):recallRepo.dialogueWindow(scope,{now})):null;
     const rawConversation=dialogueHistory?dialogueHistory.rows:recallRepo.conversation(scope,30);
     const visible=rawConversation.filter(row=>!suppressed.has(row.id));
     const conversation=visible;
@@ -395,10 +463,10 @@ export async function createApp(options = {}) {
       // memories through one selector rather than append three separate pools.
       const presentedIds=new Set([...turnMemory.selected,...turnMemory.represented].filter(item=>item.kind==='episode').map(item=>item.id));
       const presentedEntries=episodes.list(scope,{status:'active'}).filter(entry=>presentedIds.has(entry.id));
-      return {scope,entries:presentedEntries,conversation,dialogueHistory,lookup,turnMemory,recallContext:turnMemory.context,
+      return {scope,entries:presentedEntries,conversation,dialogueHistory,lookup,turnMemory,recallContext:[compressed?dailyMemory.context(scope,{query:text,now}):'',turnMemory.context].filter(Boolean).join('\n'),
         episodicContext:lookup.context,episodeRevision:episodes.revision(scope)};
     }
-    return {scope,entries,conversation,dialogueHistory,lookup,recallContext:roleId==='miyue'?recallRepo.longTermContext(scope,rawConversation,{omitLegacy:episodes.hasOverrides(scope),characterQuery:[text,semantic?.retrievalQuery].filter(Boolean).join(' '),includeCharacter:!semantic||semantic.intent==='open'||semantic.ownLife||semantic.intent==='recall'}):episodes.hasOverrides(scope)?'':recallRepo.context(scope),episodicContext:[episodes.context(entries,scope),lookup.context].filter(Boolean).join('\n'),episodeRevision:episodes.revision(scope)};
+    return {scope,entries,conversation,dialogueHistory,lookup,recallContext:compressed?dailyMemory.context(scope,{query:text,now}):roleId==='miyue'?recallRepo.longTermContext(scope,rawConversation,{omitLegacy:episodes.hasOverrides(scope),characterQuery:[text,semantic?.retrievalQuery].filter(Boolean).join(' '),includeCharacter:!semantic||semantic.intent==='open'||semantic.ownLife||semantic.intent==='recall'}):episodes.hasOverrides(scope)?'':recallRepo.context(scope),episodicContext:[episodes.context(entries,scope),lookup.context].filter(Boolean).join('\n'),episodeRevision:episodes.revision(scope)};
   }
   function historyQuoteAllowed(role,id,text){
     const row=store.getMessage(id);if(!row||row.role!==role)return false;
@@ -496,74 +564,54 @@ export async function createApp(options = {}) {
   }
   function sessionState(roleId='miyue') {
     const runtime=companionRuntime.advance(),suppressedSourceIds=episodes.suppressedSourceIds(roleId);
-    return {at:runtime.at,current:runtime.current,life:runtime.dailyLife,
+    return {at:runtime.at,current:runtime.current,life:runtime.dailyLife,travel:travelState(life.get(roleId),new Date(runtime.at)),
       relationship:companionRelationship.view(roleId,{suppressedSourceIds}),
       agenda:companionAgenda.view(roleId,{suppressedSourceIds}),
       reminders:store.listReminders().filter(item=>item.role===roleId&&item.status==='pending'),
+      dynamics:companionDynamics.get(roleId),growth:characterGrowth.get(roleId),
       social:companionSocial.get(),interests:pursuits?.get(roleId)||null,
-      recordingProtocol:companionshipInstruction(),
+      recordingProtocol:companionshipInstruction()+"\n"+dynamicsProtocol,
       note:'这些是当前记录。普通对话无需更新感受字段；只有确有变化时才可按可选记录协议返回 companionship。'};
   }
-  function sessionContext(roleId,{text='',initiating=false,opening=false,trigger:givenTrigger=null}={}) {
-    const now=(options.clock||(()=>new Date()))();
-    const trigger=givenTrigger||conversationTrigger({type:opening?'desktop_invitation':initiating?'scheduled_opportunity':'user_message',userText:initiating||opening?null:text,at:now});
-    const history=recallRepo.dialogueWindow(roleId,{now});
-    const runtime=companionRuntime.prepare({trigger:trigger.type,text:trigger.userText||''});
-    const suppressedSourceIds=episodes.suppressedSourceIds(roleId);
-    const relationship=companionRelationship.context(roleId,{text,suppressedSourceIds});
-    const settings=companionDynamics.settings();
-    const agendaOpportunity=initiating?companionAgenda.pending(roleId,{suppressedSourceIds}):null;
-    const followup=initiating&&!agendaOpportunity?dueFollowup(roleId):null;
-    const material=initiating||opening?eventMaterials.select(runtime.dailyLife?.events||[])[0]||null:null;
-    const context={scope:roleId,trigger,conversation:history.rows,dialogueHistory:history,runtime,
-      entries:[],episodeRevision:episodes.revision(roleId),historyEditsRevision:historyEdits.revision(roleId),
-      relationshipRevision:companionRelationship.revision(roleId),agendaRevision:companionAgenda.revision(roleId),
-      sessionSettingsRevision:settings.revision,sessionMemoryRevision:recallRepo.get(roleId).revision,
-      sessionRuntimeRevision:runtime.revision,sessionTuningRevision:companionTuning.get().revision,
-      sessionPolicyRevision:interactionPolicy.get(roleId).revision,
-      agendaOpportunity,followupId:followup?.id||null,
-      opportunity:agendaOpportunity?{kind:'agenda',value:agendaOpportunity}:followup?{kind:'followup',value:followup}:{kind:'session'},
-      lifeTopicKey:agendaOpportunity?.key||`session:${roleId}:${trigger.at}`,
-      policyPlan:{tuningRevision:companionTuning.get().revision,anchor:'',behavior:{session:true}},
-    };
-    const pendingReminders=store.listReminders().filter(item=>item.role===roleId&&item.status==='pending');
-    const sourceId=store.db.prepare('SELECT content_id FROM messages WHERE id=?');
-    const sourceReceipts=history.rows.filter(row=>row.speaker==='assistant').slice(-40).map(row=>({...row,contentId:sourceId.get(row.id)?.content_id})).filter(row=>row.contentId).slice(-4).map(row=>{
-      const source=store.getContent(row.contentId);
-      return source?{messageId:row.id,at:row.createdAt,contentId:source.id,title:source.title,url:source.url,
-        scope:'订阅缓存摘录，不能据此声称读过全文',excerpt:String(source.summary||'').slice(0,1200)}:null;
-    }).filter(Boolean);
-    context.sessionOptions={history,trigger,preferences:{expression:settings.expressionPreferences,characterStyle:companionTuning.get().values,interaction:interactionPolicy.get(roleId).preferences},
-      facts:{at:trigger.at,location:runtime.world?.location,activity:runtime.current?.title||routineLabel(runtime.current),
-        ...(pendingReminders.length?{reminders:pendingReminders.slice(-12).map(({id,text,dueAt,status})=>({id,text,dueAt,status})),reminderCount:pendingReminders.length}:{}),
-        ...(sourceReceipts.length?{sourceReceipts}:{})},
-      backgroundContext:[relationship,sceneImages.context()||appearance.context()].filter(Boolean).join('\n'),
-      recallContext:recallRepo.longTermContext(roleId,history.rows,{omitLegacy:episodes.hasOverrides(roleId),characterQuery:text,includeCharacter:true}),
-      opportunity:initiating||opening?{agenda:agendaOpportunity,followup,life:material}:null};
-    return context;
-  }
-  function assertSessionContext(context) {
-    if(context.historyEditsRevision!==historyEdits.revision(context.scope)||context.episodeRevision!==episodes.revision(context.scope))throw fail(409,'对话依据已更正，正在重新准备','STALE_HISTORY_EDITS');
-    if(context.sessionSettingsRevision!==companionDynamics.settings().revision||context.sessionMemoryRevision!==recallRepo.get(context.scope).revision||context.relationshipRevision!==companionRelationship.revision(context.scope)||context.agendaRevision!==companionAgenda.revision(context.scope))throw fail(409,'相处记录已更新，正在重新准备','STALE_SESSION_CONTEXT');
-    if(context.sessionTuningRevision!==companionTuning.get().revision)throw fail(409,'相处参数已变化，请重新生成','STALE_COMPANION_TUNING');
-    if(context.sessionPolicyRevision!==interactionPolicy.get(context.scope).revision)throw fail(409,'相处偏好已变化，请重新回复','STALE_DIALOGUE_POLICY');
-    if(context.sessionRuntimeRevision!==companionRuntime.advance().revision)throw fail(409,'当前生活安排已变化，正在重新准备','STALE_COMPANION_RUNTIME');
+  const { prepare: sessionContext, assertCurrent: assertSessionContext } = createSessionContext({
+    store, roleMap, clock: options.clock, recallRepo, companionRuntime, episodes,
+    historyEdits, companionRelationship, companionDynamics, companionAgenda, dueFollowup,
+    eventMaterials, proactiveMaterials, pursuits, discussionTopics, companionTuning,
+    interactionPolicy, life, sceneImages, appearance, preferences, characterGrowth, dailyMemory, dailyInformation, dailyHappenings,
+    lifeThreads: options.startLifeThreads===false?null:lifeThreads, interestTopics: () => proactiveRepo.getSettings().topics || '',
+  });
+  async function exploreSessionInformation(context,query,settings){
+    const result=await dailyInformation.explore(query,settings);
+    for(const id of [result.id,...(result.items||[]).map(i=>i.id)].filter(Boolean)){
+      const material=dailyInformation.material(id);if(!material)continue;
+      if(!context.informationCandidates.some(i=>i.id===id))context.informationCandidates.push(material);
+      if(context.sessionMaterials&&!context.sessionMaterials.some(i=>i.id===id))context.sessionMaterials.push(material);
+    }
+    return result;
   }
   function recordSessionTurn(roleId,rows,context,raw) {
     const updates=parseCompanionshipUpdates(raw);
+    let proposal;try{proposal=typeof raw==='string'?parseEnvelopeJson(raw.trim().replace(/^```(?:json)?\s*|\s*```$/gu,'')):raw;}catch{proposal=null;}
+    if(roleId==='miyue'){
+      companionDynamics.commit(roleId,proposal,{rows,expectedRevision:context.dynamicsRevision});
+    }
     episodes.observe(roleId,rows);
     recordCompanionship(roleId,rows,updates,context);
     recordSharedTurn(roleId,rows,context,null);
     const user=rows.findLast(row=>row.speaker==='user');
     if(user)followups.observe(roleId,user.text,user.id);
+    const selected=proposal?.informationId&&dailyInformation.material(proposal.informationId);
+    const supplied=selected&&context.informationCandidates.find(i=>i.id===selected.id);
+    if(supplied)dailyInformation.record(rows.findLast(row=>row.speaker==='assistant'),supplied.id,supplied);
+    if(roleId==='miyue'&&context.dailyOffer)dailyHappenings.observe(roleId,{rows,proposal,offer:context.dailyOffer});
   }
   const threadEligibleForTurn = (thread, text = '') => {
     if (!thread || options.naturalMaterialDelivery !== true) return Boolean(thread);
     if (thread.travelBound || thread.userDirected) return true;
     return Boolean(thread.title && String(text).includes(thread.title));
   };
-  const roleContext = (roleId, { initiating = true, text='', usePursuits=true, preferContent=false, opening=false, trigger:givenTrigger=null, semantic=null,sessionMode=true } = {}) => {
-    if(roleId==='miyue'&&sessionEnabled()&&sessionMode)return sessionContext(roleId,{initiating,text,opening,trigger:givenTrigger});
+  const roleContext = (roleId, { initiating = true, text='', usePursuits=true, preferContent=false, candidates=[], opening=false, trigger:givenTrigger=null, semantic=null,sessionMode=true } = {}) => {
+    if(roleId==='miyue'&&sessionEnabled()&&sessionMode)return sessionContext(roleId,{initiating,text,opening,trigger:givenTrigger,candidates});
     const trigger=givenTrigger||conversationTrigger({type:opening?'desktop_invitation':initiating?'scheduled_opportunity':'user_message',userText:initiating||opening?null:text,at:(options.clock||(()=>new Date()))()});
     const runtime=roleId==='miyue'?companionRuntime.prepare({trigger:trigger.type,text:trigger.userText||''}):null;
     if (roleId === 'miyue') {pursuits?.tick(roleId);companionAgenda.tick(roleId);}
@@ -672,7 +720,7 @@ export async function createApp(options = {}) {
     }
     if(roleId==='miyue'){
       result.runtimeRevision=runtime.revision;result.runtime=runtime;
-      if(pursuits?.get('miyue')?.readable)result.characterContext+='\n【持续兴趣状态｜只作连续性背景，用户换题时不主动插入】\n'+pursuits.context('miyue',{text})+'\n这项兴趣是否换过、读到哪里，以此状态为准；暂时放下不是换了另一篇。';
+      if(pursuits?.get('miyue')?.readable&&(!activeThread?.holdsTopic||result.pursuitRoute?.detailed||result.pursuit))result.characterContext+='\n【持续兴趣状态｜只作连续性背景，用户换题时不主动插入】\n'+pursuits.context('miyue',{text})+'\n这项兴趣是否换过、读到哪里，以此状态为准；暂时放下不是换了另一篇。';
       result.characterContext+='\n'+runtimeContext(runtime,{initiating,includeTransitions:currentIntent.recall,continuityOnly:!result.lifeParticipation.detailedState,includeNext:result.lifeParticipation.detailedState});
       const excludedSources=new Set(recentCompanionSourceIds());
       const dialogueLife=(initiating||opening||currentIntent.handoff)&&runtime.dailyLife?{...runtime.dailyLife,events:runtime.dailyLife.events.filter(event=>!event.source||!excludedSources.has(event.source.contentId))}:runtime.dailyLife;
@@ -753,7 +801,8 @@ export async function createApp(options = {}) {
     if(roleId==='miyue'){
       const lastAssistantAt=result.continuityConversation.findLast(row=>row.speaker==='assistant')?.created_at;
       result.qualityPlan=conversationQualityPlan({trigger,userText:text,semantic,conversation:result.continuityConversation,initiating:initiating||opening,lifeParticipation:result.lifeParticipation,sameActivity:Boolean(lastAssistantAt&&Date.parse(runtime.current?.startedAt)<=Date.parse(lastAssistantAt))});
-      result.qualityPlan.novelty=replyNoveltyPlan({userText:text,conversation:result.continuityConversation,initiating:initiating||opening,now:(options.clock||(()=>new Date()))()});
+      const noveltyFocusText=semantic?.continuity==='continue'&&semantic.focusMessageId?result.continuityConversation.find(row=>row.id===semantic.focusMessageId&&row.speaker==='assistant')?.text||'':'';
+      result.qualityPlan.novelty=replyNoveltyPlan({userText:text,focusText:noveltyFocusText,conversation:result.continuityConversation,initiating:initiating||opening,now:(options.clock||(()=>new Date()))()});
       result.qualityPlan.reality=realityQuestion(text);
       // The legacy validator exempts continuations from duplicate rejection.
       // That exemption must not tell dynamic generation that every affectionate
@@ -761,7 +810,7 @@ export async function createApp(options = {}) {
       result.dynamicNoveltyContext=[result.qualityPlan.novelty.context,result.qualityPlan.reality?.context].filter(Boolean).join('\n');
       if(semantic?.continuity==='continue'&&semantic.intent!=='preference'||shared||result.pursuitRoute?.detailed||currentIntent.declined||currentIntent.recall||/详细|展开/.test(text)){
         result.qualityPlan.novelty.reviewing=true;
-        result.qualityPlan.novelty.context='【本轮内容使用】用户正在追问、回顾或明确表达边界，必要的已知内容可以重提，先完整回应当前要求；不重复无关生活背景。'+(result.qualityPlan.novelty.correction?'用户已要求停止重复'+JSON.stringify(result.qualityPlan.novelty.correction)+'，本轮不得换序复述。':'');
+        result.qualityPlan.novelty.context='【本轮内容使用】用户正在追问、回顾或明确表达边界，必要的已知内容可以重提，先完整回应当前要求；不重复无关生活背景。'+(result.qualityPlan.novelty.saturation?.context||'')+(result.qualityPlan.novelty.correction?'用户已要求停止重复'+JSON.stringify(result.qualityPlan.novelty.correction)+'，本轮不得换序复述。':'');
       }
       result.expressionHistory=expressionHistory(historyEdits.project(roleId,result.conversation));
       result.selfContinuity=selfContinuityPlan({conversation:historyEdits.project(roleId,result.continuityConversation),userText:text,now:(options.clock||(()=>new Date()))()});
@@ -792,14 +841,14 @@ export async function createApp(options = {}) {
     const discussion = currentLifeTopic('miyue');
     const sources = selectLifeContent(store.listContent(), discussion).map(({ id, title, url }) => ({ id, title, url }));
     const currentLife=life.get('miyue');
-    return { ...currentLife, wardrobe:wardrobe.snapshot(), world:characters.get('miyue',{lifeSnapshot:currentLife}).world, pursuit:pursuits?.get('miyue')||null,personalExperiences:personalExperiences.list('miyue'), companionship:companionshipSnapshot(), thread:lifeThreads.get('miyue',currentLife), shares:store.getMessages('miyue',100).filter(m=>m.kind==='proactive'&&m.proactiveKind==='life').slice(-12).reverse(), discussion: { ...discussion, sources } };
+    return { ...currentLife, travel:travelState(currentLife,(options.clock||(()=>new Date()))()), wardrobe:wardrobe.snapshot(), world:characters.get('miyue',{lifeSnapshot:currentLife}).world, pursuit:pursuits?.get('miyue')||null,personalExperiences:personalExperiences.list('miyue'), companionship:companionshipSnapshot(), thread:lifeThreads.get('miyue',currentLife), shares:historyEdits.project('miyue',store.getMessages('miyue',100)).filter(m=>m.kind==='proactive'&&m.proactiveKind==='life').slice(-12).reverse(), discussion: { ...discussion, sources } };
   };
   const zhihuClient = new ZhihuClient({ dataDir, env: options.env || process.env, fetchImpl: options.zhihuFetchImpl, clock: options.clock, onUsage: entry => usage.record(entry) });
   const groundedLife=new GroundedLife(store,{clock:options.clock,model,projectSource:id=>projectCompanionSource(store.getMessage(id)),
     isConfigured:()=>model.publicConfig().configured&&Boolean(options.lifeSearch||zhihuClient.publicConfig().configured),
     search:options.lifeSearch||((query,opts)=>zhihuClient.globalSearch(query,{count:opts.count})),
     getSettings:()=>({...companionDynamics.settings(),discoveryEnabled:options.dynamicCompanion===true&&companionDynamics.settings().discoveryEnabled}),
-    getLocation:()=>{const current=companionRuntime.advance(),event=life.get('miyue')?.active,travel=event?.type==='travel'?event:null;return{city:travel?.phase?.id==='away'?travel.destination:'苏州',searchCity:travel&&!['home','return'].includes(travel.phase?.id)?travel.destination:companionDynamics.settings().city,travelling:Boolean(travel&&['outbound','return'].includes(travel.phase?.id)),activity:current.current?.title};},
+    getLocation:()=>{const current=companionRuntime.advance(),travel=travelState(life.get('miyue'),new Date(current.at));return{city:travel?.currentCity||travel?.nextCity||travel?.homeCity||'苏州',searchCity:travel?.currentCity||travel?.nextCity||companionDynamics.settings().city,travelling:Boolean(travel&&['outbound','between_stops','returning'].includes(travel.status)),activity:current.current?.title};},
     isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')});
   const dynamicsSnapshot=()=>({settings:companionDynamics.settings(),state:companionDynamics.get(),social:companionSocial.get(),life:{...groundedLife.status(),candidates:groundedLife.candidates(),experiences:groundedLife.experiences()}});
   const zhihuRepo = new ZhihuRepository(store, { clock: options.clock });
@@ -808,9 +857,14 @@ export async function createApp(options = {}) {
   let quotaPromise = null;
   const zhihuStatus = () => ({ config: zhihuClient.publicConfig(), runtime: { ...zhihuRepo.runtime(), ...zhihuRepo.usage(), ...research.status(), paused: !proactiveRepo.getSettings().enabled }, recent: zhihuRepo.recent() });
   const activeRoles = new Set();
-  const replyDelivery=new ReplyDelivery(store,{random:options.replyRandom||Math.random,onDelivery:(message,scope)=>{personalExperiences.observe(message.role,store.getMessages(message.role,6));if(!closing&&options.startRecall!==false)recall.schedule(scope||memoryRole(message.role));}});
-  const chatQueue=new ChatQueue(store,{execute:performChat,debounceMs:options.chatDebounceMs??1200,retryDelaysMs:options.chatRetryDelaysMs,onSubmit:role=>{replyDelivery.cancel(role);if(role==='miyue')desktopAttention.interrupt();}});
+  const replyDelivery=new ReplyDelivery(store,{random:options.replyRandom||Math.random,onDelivery:(message,scope)=>{personalExperiences.observe(message.role,historyEdits.project(message.role,store.getMessages(message.role,6)));if(!closing&&options.startRecall!==false)recall.schedule(scope||memoryRole(message.role));}});
+  // Two quick retries cover a dropped connection; the longer tail (about an hour
+  // in total) covers a provider outage, so a message sent while the model was
+  // down is still answered once it comes back instead of waiting for the user.
+  const CHAT_RETRY_DELAYS_MS=[2000,5000,30000,120000,300000,600000,900000,1800000];
+  const chatQueue=new ChatQueue(store,{execute:performChat,debounceMs:options.chatDebounceMs??1200,retryDelaysMs:options.chatRetryDelaysMs??CHAT_RETRY_DELAYS_MS,onSubmit:role=>{replyDelivery.cancel(role);if(role==='miyue')desktopAttention.interrupt();}});
   const voiceJobs = new Set();
+  const segmentedSpeech=new SegmentedSpeech(integrations,{isVisible:(id,text)=>{const row=projectCompanionSource(store.getMessage(id));return Boolean(row&&row.text===text);}});
   const roleVoices = new RoleVoiceRepository(store);
   let voiceCatalogCache=null,voiceCatalogPending=null;
   async function getVoiceCatalog(force=false) {
@@ -857,25 +911,48 @@ export async function createApp(options = {}) {
   async function onDelivery(message) {
     if (message?.role === 'miyue') inner.noteReply(message.role, message.text);
     if (!closing && options.startRecall !== false && message?.role) recall.schedule(memoryRole(message.role));
+    if(!closing&&message?.role==='miyue')characterGrowth.schedule(message.role);
     if (closing || store.getSettings().quiet || !proactiveRepo.getSettings().desktopNotifications) return;
     const result = await (options.desktopNotify || notifyDesktop)(message);
     if (result?.error) proactiveRepo.updateRuntime({ notificationError: result.error });
     else proactiveRepo.updateRuntime({ notificationError: null, lastNotificationAt: new Date().toISOString() });
   }
+  const proactiveContinuity = new ProactiveContinuity(model,{clock:options.clock});
   const proactive = new ProactiveEngine({
-    repo: proactiveRepo, roles, model, refreshContent, styleChecks, clock: options.clock, random: options.random,
+    repo: proactiveRepo, roles, model, refreshContent, styleChecks, sessionGuidance: options.sessionGuidance !== false, sessionReview: options.sessionReview !== false, clock: options.clock, random: options.random,
     isBusy: ({ manual = false } = {}) => activeRoles.size > 0 || chatQueue.busy() || roles.some(r=>replyDelivery.pending(r.id)>0) || (!manual && Date.now() < typingUntil),
-    onDelivery, tickIntervalMs: options.proactiveIntervalMs || 15000,
-    getRoleContext: roleContext, getContextVersion: contextVersion,
+    onDelivery, onTrace:recordDialogueTrace, tickIntervalMs: options.proactiveIntervalMs || 15000,
+    getRoleContext: async(roleId,args)=>{
+      if(roleId==='miyue'){await dailyMemory.ensureBeforeInteraction(roleId);if(dailyHappenings.started())void dailyHappenings.ensure(roleId,{ignoreBusy:true}).catch(()=>{});}
+      const version=contextVersion(roleId),lastId=proactiveRepo.getLastMessageId(roleId);
+      const context=roleContext(roleId,args);
+      if(roleId==='miyue'&&context.sessionOptions)context.exploreInformation=(query,settings)=>exploreSessionInformation(context,query,settings);
+      if(context.sessionMaterials?.length)return (async()=>{
+        const continuity=await proactiveContinuity.assess(roleId,context.conversation);
+        if(version!==contextVersion(roleId)||lastId!==proactiveRepo.getLastMessageId(roleId))throw fail(409,'对话状态已变化，稍后重新判断','STALE_SESSION_CONTEXT');
+        context.sessionOptions.dialogueContinuity=continuity;
+        return context;
+      })();
+      return context;
+    }, getContextVersion: contextVersion,
     getWakeEvent:()=>companionAgenda.pending('miyue',{suppressedSourceIds:episodes.suppressedSourceIds('miyue')})||companionRuntime.pending(),
     getEligibleRoles: (candidates,{manual=false}={})=>candidates.filter(r=>r.id!=='miyue'||manual||!companionRuntime.advance().availability.sleeping).filter(r=>r.id!=='miyue'||!companionAgenda.view('miyue',{suppressedSourceIds:episodes.suppressedSourceIds('miyue')}).plans.some(p=>p.kind==='quiet'&&p.status==='active')).filter(r=>r.id!=='miyue'||manual&&companionTuning.get().values.initiative>0||companionTuning.canInitiate(proactiveRepo.recent(100).find(e=>e.role==='miyue')?.createdAt,(options.clock||(()=>new Date()))())).map(r=>r.id==='miyue'?{...r,proactiveWeight:.2+companionTuning.get().values.initiative/62.5}:r),
     prepareDelivery: ({role,roleContext:context,result,candidates}) => {
       if(context.sessionOptions){
         const reply=cleanDynamicReply(result.message);
+        const selection=validateProactiveSelection({...result,message:reply},context.sessionMaterials);
         return {text:reply,afterSave:message=>{
           assertSessionContext(context);
           if(context.agendaOpportunity&&!companionAgenda.markDelivered(role.id,context.agendaOpportunity.key,message.id,context.agendaOpportunity.version))throw fail(409,'约定已变化','STALE_COMPANION_AGENDA');
           if(result.contentId&&!candidates.some(item=>item.id===result.contentId))throw fail(422,'资料已不可用','INVALID_SESSION_SOURCE');
+          if(selection){
+            const selected=selection.material;
+            if(['reading','film'].includes(selected.kind)&&!pursuits?.markDelivered(selected.id,message.id,selected.version,{mode:'material_exposure',expectedVersion:selected.version,key:selected.id}))throw fail(409,'阅读资料已变化，稍后再分享','STALE_PURSUIT');
+            if(selected.kind==='life_thread'&&!lifeThreads.markDelivered(selected.id,message.id,{mode:'material_exposure',expectedVersion:selected.version,key:selected.id}))throw fail(409,'生活片段已更新，稍后再分享','STALE_LIFE_THREAD_PLAN');
+            if(selected.kind==='discussion'&&!discussionTopics?.recordDelivery({roleId:role.id,topicId:selected.id.slice('discussion:'.length),messageId:message.id,trigger:context.trigger.type,quote:selection.quote}))throw fail(409,'讨论材料已变化，稍后再分享','STALE_DISCUSSION');
+            proactiveMaterials.record(message,selection);
+            if(selected.kind==='daily_info')dailyInformation.record(message,selected.id,selected);
+          }
           recordSessionTurn(role.id,[message],context,result);
         }};
       }
@@ -928,11 +1005,12 @@ export async function createApp(options = {}) {
       const excludedIds=recentCompanionSourceIds(),excluded=new Set(excludedIds);
       // Regional context keeps its own relevance ranking and excerpt threshold,
       // while sharing the same delivered-source exclusions as news selection.
-      const selected=kind==='life'?items.filter(item=>!excluded.has(item.id)):companionSourcePool(items,{mode:'proactive',conversation:store.getMessages(roleId,10),excludedIds,limit:3});
+      const selected=kind==='life'?items.filter(item=>!excluded.has(item.id)):companionSourcePool(items,{mode:'proactive',conversation:historyEdits.project(roleId,store.getMessages(roleId,10)),excludedIds,limit:3});
       return selected.map(item=>({...item,dossierContext:companionSourceContext([item],{now:(options.clock||(()=>new Date()))()})}));
     },
     getPriorityRole: () => dueFollowup()?.roleId || (companionRuntime.pending()?'miyue':null) || (companionAgenda.pending('miyue',{suppressedSourceIds:episodes.suppressedSourceIds('miyue')})?'miyue':null) || (roleMap.has('wenxi')&&preparedInfo(proactiveRepo.getCandidates()).some(item=>item.tracking)?'wenxi':null) || ((pursuits?.pending('miyue')?.pendingKey||(options.startLifeThreads!==false?lifeThreads.pending('miyue',life.get('miyue'))?.pendingKey:null)) || inner.initiative('miyue', life.get('miyue')?.active)?.key || currentLifeTopic('miyue').topicKey ? 'miyue' : null),
     onTopicDelivery: (roleId, key, messageId) => {
+      if(key?.startsWith('material:'))return;
       if(key?.startsWith('runtime:')||key?.startsWith('companion-pursuit:')||key?.startsWith('agenda:'))return;
       if(key?.startsWith('followup:')){followups.markDelivered(key.slice(9),messageId);return;}
       if(roleId==='wenxi'&&key?.startsWith('content:')){const id=key.slice(8);for(const item of trackedCandidates(store.listContent()))if(item.id===id)topicTracking.markDelivered(item.tracking.id,id);}
@@ -959,7 +1037,7 @@ export async function createApp(options = {}) {
     const port = currentPort();
     if (![...network.allowedHosts].some(name=>host===`${name}:${port}`)) throw fail(403, '请求来源无效', 'INVALID_HOST');
     const origin = req.headers.origin;
-    if (origin && origin !== `http://${host}`) throw fail(403, '请求来源无效', 'INVALID_ORIGIN');
+    if (origin && origin !== `http://${host}` && origin !== `https://${host}`) throw fail(403, '请求来源无效', 'INVALID_ORIGIN');
   };
 
   async function waitForReply(ms,signal) {
@@ -967,9 +1045,10 @@ export async function createApp(options = {}) {
     if(signal.aborted)throw fail(409,'已有更新消息','MODEL_CANCELLED');
     let listener;try{await Promise.race([replySleep(ms),new Promise((_,reject)=>{listener=()=>reject(fail(409,'已有更新消息','MODEL_CANCELLED'));signal.addEventListener('abort',listener,{once:true});})]);}finally{signal.removeEventListener('abort',listener);}
   }
+  const roleReplyBusy = role => activeRoles.has(role) || chatQueue.busy(role) || replyDelivery.pending(role) > 0;
   const desktopAttention = new DesktopAttention(store, {
     execute: (body, control) => { store.setChatChannel('miyue','desktop'); return performChat(body,control); },
-    isBusy: () => activeRoles.has('miyue') || chatQueue.busy('miyue') || replyDelivery.pending('miyue') > 0 || proactive.thinking,
+    isBusy: () => roleReplyBusy('miyue') || proactive.thinking,
     getRevision: () => chatQueue.get('miyue').revision,
     isClosing: () => closing,
   });
@@ -977,13 +1056,15 @@ export async function createApp(options = {}) {
     client: options.weixinClient || new WeixinClient(),
     submit: (role, text, id) => chatQueue.submit('miyue', text, id, {replyChannel:'weixin'}),
     isBusy: () => activeRoles.has('miyue') || proactive.thinking,
-    hasPendingReplies: () => activeRoles.has('miyue') || ['queued','retrying','generating','waiting'].includes(chatQueue.get('miyue').phase) || replyDelivery.pending('miyue') > 0,
+    hasPendingReplies: () => activeRoles.has('miyue') || ['queued','retrying','compressing','generating','waiting'].includes(chatQueue.get('miyue').phase) || replyDelivery.pending('miyue') > 0,
     getChatError: () => chatQueue.get('miyue').phase === 'failed' ? '林晓薇的回复生成失败，可在聊天页面重试，或发来新的消息' : null,
     clock: options.clock, intervalMs: options.weixinIntervalMs,
   });
   let weixinQrCache = null;
   async function performChat(body,control={}) {
-    const requestControl={...control,semanticMemo:new Map()};
+    const requestControl={...control,
+      userCreatedAts:control.userCreatedAts??(Array.isArray(body.userTexts)&&body.userTexts.length?body.userTexts:[body.text]).map(()=>store.now()),
+      semanticMemo:new Map()};
     for(let attempt=0;attempt<2;attempt++){
       try{return await performChatOnce(body,requestControl);}
       catch(error){if(error.code!=='STALE_COMPANION_RUNTIME'||attempt||control.signal?.aborted)throw error;}
@@ -992,29 +1073,102 @@ export async function createApp(options = {}) {
   async function performSessionChat(body,control,role,attention,savedText,chatStartedAt) {
     activeRoles.add(role.id);
     const started=performance.now(),trace={roleId:role.id,trigger:attention?'desktop_invitation':'user_message',mode:'session',semantic:{status:'bypassed'},stageTimings:{},repairIssues:[],repairCount:0};
+    const trackedModel=turnModel(trace);
+    let speculativeControl=null;
     try {
+      const memoryStarted=performance.now();
+      trace.morningMemory=await dailyMemory.ensureBeforeInteraction(role.id,{signal:control.signal,onWaiting:()=>control.markPhase?.('compressing')});
+      // The day's happenings never hold a reply back; a missing day starts in the background.
+      if(dailyHappenings.started())void dailyHappenings.ensure(role.id,{ignoreBusy:true}).catch(()=>{});
+      trace.stageTimings.memory=performance.now()-memoryStarted;
+      if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
+      control.markPhase?.('generating');
+      const contextStarted=performance.now();
       const context=sessionContext(role.id,{text:savedText,opening:Boolean(attention),trigger:conversationTrigger({type:attention?'desktop_invitation':'user_message',userText:attention?null:savedText,gesture:attention?.level,at:(options.clock||(()=>new Date()))()})});
+      trace.revisions={history:context.historyEditsRevision,episodes:context.episodeRevision,memory:context.sessionMemoryRevision,relationship:context.relationshipRevision,agenda:context.agendaRevision,dynamics:context.dynamicsRevision,growth:context.growthRevision,runtime:context.sessionRuntimeRevision};
+      trace.history=context.conversation.map((row,i)=>{const {text,...metadata}=sessionHistoryRecord(row,role,i);return metadata;});
       const actions=sessionReminderActions({store,roleId:role.id,userText:savedText,replyChannel:body.replyChannel,clock:options.clock});
-      const readTools=createSessionReadTools({store,recallRepo,episodes,historyEdits,roleId:role.id,clock:options.clock,getState:()=>sessionState(role.id)});
+      const readTools=createSessionReadTools({store,recallRepo,episodes,historyEdits,roleId:role.id,clock:options.clock,getState:()=>sessionState(role.id),exploreInformation:(query,settings)=>exploreSessionInformation(context,query,settings),hybridRecall,recallModel:trackedModel,onCall:call=>{trace.calls??=[];trace.calls.push(call);},onRetrieval:result=>{trace.retrieval={...result.retrieval,selected:result.selected,rejected:result.rejected,stats:result.stats};}});
       const selected=body.contentId?store.getContent(String(body.contentId)):null;
       if(body.contentId&&!selected)throw fail(404,'内容不存在','CONTENT_NOT_FOUND');
       const sourceContext=selected?companionSourceContext(dossiers.decorate([selected]),{now:(options.clock||(()=>new Date()))(),reference:true,query:savedText}):'';
-      const messages=buildSessionMessages({role,...context.sessionOptions,userText:attention?null:savedText,
-        memories:store.listMemories(role.id),informationContext:sourceContext});
-      trace.promptBlocks=promptBlockStats(messages);trace.stageTimings.context=performance.now()-started;
-      const generated=await runSessionDialogue({model,messages,maxToolCalls:3,options:{purpose:'chat',roleId:role.id,signal:control.signal,jsonObject:true,nonThinking:true,maxTokens:2400},
-        execute:async(request,toolOptions)=>{
-          if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
-          if(request.name==='reminder')return actions.prepare(request);
-          return readTools(request,toolOptions);
-        }});
-      trace.toolCalls=generated.toolCalls;
-      const raw=generated.raw;
-      const parsed=parseEmotionEnvelope(raw,savedText),reply=cleanDynamicReply(parsed.reply);
+      const baseMessages=buildSessionMessages({role,...context.sessionOptions,userText:attention?null:savedText,
+        currentUserMessages:attention?[]:(body.userTexts??[savedText]).map((text,i)=>({text,createdAt:control.userCreatedAts?.[i]})),
+        memories:store.listMemories(role.id),informationContext:[context.sessionOptions.informationContext,sourceContext].filter(Boolean).join('\n')});
+      trace.stageTimings.context=performance.now()-contextStarted;
+      const draftOptions={purpose:'chat',roleId:role.id,signal:control.signal,jsonObject:true,nonThinking:true,maxTokens:2400};
+      const draftWith=(messages,execute)=>runSessionDialogue({model:trackedModel,messages,maxToolCalls:3,validateFinal:raw=>parseEmotionEnvelope(raw,savedText),options:draftOptions,execute});
+      const executeTool=async(request,toolOptions)=>{
+        if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
+        if(request.name==='reminder')return actions.prepare(request);
+        return readTools(request,toolOptions);
+      };
+      const guidanceStarted=performance.now();
+      // The preparer decides whether this turn needs review; most turns do not.
+      // Draft the reply from the same cached prefix at the same time, and keep
+      // that draft when the preparer settles on a fast, tool-free turn, so the
+      // two calls overlap instead of adding up. Read tools may run in the
+      // speculative draft; a reminder request means the turn has a real
+      // external action and the speculative draft is discarded unused.
+      const speculate=options.sessionGuidance!==false&&options.sessionSpeculativeDraft===true;
+      speculativeControl=speculate?new AbortController():null;
+      if(speculativeControl&&control.signal){if(control.signal.aborted)speculativeControl.abort(control.signal.reason);else control.signal.addEventListener('abort',()=>speculativeControl.abort(control.signal.reason),{once:true});}
+      const speculative=speculate?runSessionDialogue({model:trackedModel,messages:baseMessages,maxToolCalls:3,validateFinal:raw=>parseEmotionEnvelope(raw,savedText),options:{...draftOptions,signal:speculativeControl.signal},execute:async(request,toolOptions)=>{
+        // Stop the speculative loop before it stages anything or spends another call.
+        if(request.name==='reminder'){const reason=Object.assign(new Error('speculative draft cannot stage actions'),{code:'SPECULATIVE_ACTION'});speculativeControl.abort(reason);throw reason;}
+        return executeTool(request,{...toolOptions,signal:speculativeControl.signal});
+      }}).then(value=>({status:'ready',value}),error=>({status:'failed',error})):null;
+      const guidance=options.sessionGuidance===false?{status:'disabled'}:await prepareSessionGuidance({model:trackedModel,messages:baseMessages,roleId:role.id,signal:control.signal,informationCategories:dailyInformation.enabled?INFORMATION_CATEGORIES:null});
+      trace.stageTimings.guidance=performance.now()-guidanceStarted;
+      trace.guidance={...guidance,count:guidance.items?.length||0,items:guidance.items||[]};
+      if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
+      assertSessionContext(context);
+      let messages=applySessionGuidance(baseMessages,guidance);
+      if(guidance.informationCategory){
+        const directory=await exploreSessionInformation(context,guidance.informationCategory,{signal:control.signal});
+        trace.informationSelection={category:guidance.informationCategory,offered:directory.items?.length||0};
+        messages=messages.map(message=>message.role==='system'&&message.content.startsWith('【本轮背景证据】')?{...message,content:message.content+'\n【按本轮模型判断扩展的日常标题目录】'+JSON.stringify(directory)+'\n这些仍只是标题，不代表读过正文。选择真正符合当前请求的具体对象，细节不足可explore该id；不为使用候选偏离本轮意愿。'}:message);
+      }
+      const draftStarted=performance.now();
+      let generated=null;
+      if(speculative){
+        const outcome=guidance.reviewEffort==='fast'&&!guidance.informationCategory?await speculative:null;
+        if(outcome?.status==='ready'&&!outcome.value.toolCalls.some(call=>call.name==='reminder')){generated=outcome.value;trace.speculativeDraft='used';}
+        else{
+          trace.speculativeDraft=outcome?.status==='failed'?(outcome.error?.code==='SPECULATIVE_ACTION'?'action':'failed'):'discarded';
+          if(outcome?.status==='failed'&&(control.signal?.aborted||outcome.error?.code==='MODEL_CANCELLED'))throw outcome.error;
+          speculativeControl.abort(Object.assign(new Error('speculative draft discarded'),{code:'SPECULATIVE_DISCARDED'}));
+        }
+      }
+      if(!generated){
+        trace.promptBlocks=promptBlockStats(messages);
+        generated=await draftWith(messages,executeTool);
+      } else trace.promptBlocks=promptBlockStats(baseMessages);
+      trace.toolCalls=generated.toolCalls;trace.toolResults=generated.toolResults;
+      trace.stageTimings.draft=performance.now()-draftStarted;
+      trace.repairCount=generated.formatRepairCount;
+      if(generated.formatRepairCount)trace.repairIssues=['invalid_session_format'];
+      const reviewStarted=performance.now();
+      let refined;
+      try {
+        refined=options.sessionGuidance===false||options.sessionReview===false?null:await refineSessionReply({model:trackedModel,messages:generated.messages,raw:generated.raw,roleId:role.id,signal:control.signal,
+          reviewEffort:guidance.reviewEffort,publicEvidence:context.informationCandidates.length>0,validateFinal:value=>parseEmotionEnvelope(value,savedText),options:{maxTokens:2400},
+          risky:generated.toolCalls.length>0||Boolean(generated.parsed?.informationId)||Boolean(generated.parsed?.companionship||generated.parsed?.dynamics)||options.sessionReview==='always'});
+      } finally { trace.stageTimings.review=performance.now()-reviewStarted; }
+      if(refined)trace.review=refined.review;
+      let raw=refined?.raw??generated.raw;
+      const budget=context.sessionOptions.lengthBudget;
+      if(budget&&!control.signal?.aborted){
+        const tightened=await tightenSessionReply({model:trackedModel,messages:generated.messages,raw,budget,exampleFragments:context.sessionOptions.exampleFragments,roleId:role.id,signal:control.signal,validateFinal:value=>parseEmotionEnvelope(value,savedText),options:{maxTokens:800}});
+        trace.length={budget,tightened:tightened.tightened,...(tightened.reason?{reason:tightened.reason}:{}),...(tightened.from?{from:tightened.from,to:tightened.to}:{}),...(tightened.code?{code:tightened.code}:{})};
+        raw=tightened.raw;
+      }
+      const parsed=parseEmotionEnvelope(raw,savedText),reply=singleMessage(cleanDynamicReply(parsed.reply));
       if(!reply.trim())throw fail(502,'模型没有返回对话正文','MODEL_REPLY_INVALID');
-      trace.stageTimings.generation=performance.now()-started-trace.stageTimings.context;
+      trace.stageTimings.generation=performance.now()-draftStarted;
       if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
       control.markPhase?.('waiting');
+      const deliveryStarted=performance.now();
       if(preferences.getReplyPace()==='natural'){
         const target=4000+Math.floor(Math.max(0,Math.min(.999999,Number(replyRandom())||0))*5001);
         const remaining=Math.max(0,target-Math.max(0,replyNow()-chatStartedAt));
@@ -1022,7 +1176,7 @@ export async function createApp(options = {}) {
       }
       if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
       const source=mentionedSources(reply,store.listContent())[0];
-      const saved=store.saveChatTurn({role:role.id,text:savedText,userTexts:body.userTexts,reply,replyChannel:body.replyChannel,contentId:source?.id||selected?.id,
+      const saved=store.saveChatTurn({role:role.id,text:savedText,userTexts:body.userTexts,userCreatedAts:control.userCreatedAts,reply,replyChannel:body.replyChannel,contentId:source?.id||selected?.id,
         afterSave:rows=>{
           assertSessionContext(context);
           if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
@@ -1031,12 +1185,18 @@ export async function createApp(options = {}) {
           control.afterSave?.(rows);
         }});
       if(!closing&&options.startRecall!==false)recall.schedule(role.id);
+      if(!closing)characterGrowth.schedule(role.id);
       trace.messageIds=saved.map(row=>row.id);trace.outcome={status:'delivered'};
+      trace.stageTimings.delivery=performance.now()-deliveryStarted;
       return {messages:saved.map(row=>store.getMessage(row.id)||row)};
     } catch(error) {
+      if(error.review)trace.review=error.review;
       trace.outcome={status:control.signal?.aborted?'cancelled':'failed',code:error.code||'CHAT_FAILED'};
       throw error;
     } finally {
+      // A speculative draft still running after the turn ended (stale context,
+      // cancellation, failure) must not keep spending calls.
+      if(speculativeControl&&!speculativeControl.signal.aborted)speculativeControl.abort(Object.assign(new Error('turn finished'),{code:'SPECULATIVE_DISCARDED'}));
       trace.stageTimings.total=performance.now()-started;recordDialogueTrace(trace);activeRoles.delete(role.id);
     }
   }
@@ -1071,6 +1231,14 @@ export async function createApp(options = {}) {
       const trace={roleId:role.id,trigger:attention?'desktop_invitation':'user_message',stageTimings:{},repairIssues:[]};
       const stageStarted=performance.now();
       try {
+        if(role.id==='miyue'&&!body.storyMode){
+          trace.morningMemory=await dailyMemory.ensureBeforeInteraction(role.id,{signal:control.signal,onWaiting:()=>control.markPhase?.('compressing')});
+      // The day's happenings never hold a reply back; a missing day starts in the background.
+      if(dailyHappenings.started())void dailyHappenings.ensure(role.id,{ignoreBusy:true}).catch(()=>{});
+          trace.stageTimings.memory=performance.now()-stageStarted;
+          if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
+          control.markPhase?.('generating');
+        }
         let semanticResult=null,semantic=null;
         if(semanticPlanner&&role.id==='miyue'&&!attention&&!body.storyMode&&body.lifeChoiceId===undefined){
           const evidence=evidenceContext(role.id,text,null,{prepareMemory:false});
@@ -1232,7 +1400,7 @@ export async function createApp(options = {}) {
               if(issues.length){
                 trace.repairIssues.push(...issues);
                 if(attempt===1)throw fail(502,'回复仍未符合本轮事实或表达要求，请重试','MODEL_REPLY_INVALID');
-                raw=await model.complete([...messages,{role:'assistant',content:raw},{role:'user',content:'这份草稿有待修正：'+JSON.stringify(issues)+'。'+(issues.some(issue=>issue.includes('topic_attribution'))?'用户是在回应你紧邻的上一条消息；如该话题由你主动提出，就直接承接他的看法，不问他为什么突然提起或接来。保留双方各自说过的内容。':'')+(issues.some(issue=>['missing_reality_disclosure','missing_origin_explanation','claims_independent_experience'].includes(issue))?'用户直接问提示词与真实感受的来源。明确说自己是虚构角色，愿望与回复来自模型结合设定和对话的生成，没有独立于程序的身体感受；不要声称规则无法影响它，也不要劝用户停止追问。':'')+(issues.includes('repeated_corrected_content')?'用户已明确要求别再重复该说法或动作。简短承认，完全省去这一细节及换序复述，直接接当前话题。':'')+(issues.includes('repeated_reply_content')?'省去刚说过且没有变化的场景和感受，不靠换词重讲。':'')+'请据此改正，保留自然回应，仍输出相同 JSON。这是本轮唯一一次修复。'}],{purpose:'chat-repair',roleId:role.id,signal:control.signal,jsonObject:true,nonThinking:true,maxTokens:2400});retries=1;continue;
+                raw=await model.complete([...messages,{role:'assistant',content:raw},{role:'user',content:'这份草稿有待修正：'+JSON.stringify(issues)+'。'+(issues.some(issue=>issue.includes('topic_attribution'))?'用户是在回应你紧邻的上一条消息；如该话题由你主动提出，就直接承接他的看法，不问他为什么突然提起或接来。保留双方各自说过的内容。':'')+(issues.some(issue=>['missing_reality_disclosure','missing_origin_explanation','claims_independent_experience'].includes(issue))?'用户直接问提示词与真实感受的来源。明确说自己是虚构角色，愿望与回复来自模型结合设定和对话的生成，没有独立于程序的身体感受；不要声称规则无法影响它，也不要劝用户停止追问。':'')+(issues.includes('repeated_corrected_content')?'用户已明确要求别再重复该说法或动作。简短承认，完全省去这一细节及换序复述，直接接当前话题。':'')+(issues.includes('saturated_topic_reuse')?'草稿又主动带回了近期已经反复出现、用户没有继续展开的旧细节。整段省去，直接回应当前用户消息；不要换称呼重述。':'')+(issues.includes('repeated_reply_content')?'省去刚说过且没有变化的场景和感受，不靠换词重讲。':'')+'请据此改正，保留自然回应，仍输出相同 JSON。这是本轮唯一一次修复。'}],{purpose:'chat-repair',roleId:role.id,signal:control.signal,jsonObject:true,nonThinking:true,maxTokens:2400});retries=1;continue;
               }
               signals=parsed.signals;experienceCandidate=sourceUnavailable||context.turnPlan?.historicalCheck?null:parsed.experience||null;
               companionshipUpdates=sourceUnavailable||context.turnPlan?.historicalCheck?{relationship:[],agenda:[],life:[]}:parseCompanionshipUpdates(raw);
@@ -1274,6 +1442,7 @@ export async function createApp(options = {}) {
             if(attempt===0&&issues.some(issue=>issue.includes('topic_attribution')))messages.push({role:'user',content:'上一稿把用户对你刚才消息的回应写成了用户突然发起话题。按已送达的历史承认谁先提起，接住他的看法，不问他为何忽然接这个。'});
             if(attempt===0&&issues.some(issue=>['missing_reality_disclosure','missing_origin_explanation','claims_independent_experience'].includes(issue)))messages.push({role:'user',content:'用户正在直接问提示词与角色真实感受的关系。明确说自己是虚构角色，愿望与回复来自模型结合设定和对话的生成，没有独立于程序的身体感受；不要声称规则无法影响它，也不要劝用户停止追问。'});
             if(attempt===0&&issues.includes('repeated_corrected_content'))messages.push({role:'user',content:'用户已要求停止重复刚才的说法或动作。完全省去这一细节及换序复述，简短承认后接当前话题。'});
+            if(attempt===0&&issues.includes('saturated_topic_reuse'))messages.push({role:'user',content:'上一稿又主动带回近期已经反复出现、用户没有继续展开的旧细节。删掉这个细节及其换称呼复述，直接回应当前用户消息；不要另找另一个旧细节填补。'});
             if(attempt===1){if(protocolIssue)throw fail(502,'模型没有返回完整的对话正文，请稍后重试','MODEL_REPLY_INVALID');const fallback=companionBehavior.fallback(policyPlan,issues);if(fallback){checked=interactionPolicy.enforce(companionBehavior.compose(fallback.reply,fallback.extra,policyPlan),policyPlan);if(checked.reply.includes(fallback.extra)){signals=null;experienceCandidate=null;companionshipUpdates={relationship:[],agenda:[]};checked.behavior={...policyPlan.behavior,retries:1,authoredFallback:true,sourceMessageIds:context.lookup.rows.map(r=>r.id),threadSourceIds:context.conversationThread?.sourceMessageIds||[]};break;}}throw Object.assign(fail(422,'这次接话没有符合当前相处方式，消息已保留，可以重试','COMPANION_BEHAVIOR_REJECTED'),{issues:[...issues]});}
             raw=await model.complete([...companionRequest(messages,policyPlan.behavior),{role:'assistant',content:raw},{role:'user',content:(qualityIssues.length?(context.qualityPlan.allowClosing?'用户已明确道别，简短自然回应，不重复叮嘱，不打印时间标签。\n':'当前用户愿意聊天。先回应眼前的话和亲近，保留有内容的观点或细节；不要替他收尾或重复已说过的提醒，也不要用下一道问题代替回应。不要打印历史时间标签。\n'):'')+(qualityIssues.includes('copied_user_utterance')?'上一稿把当前用户原话写成了角色自己的开场。请从林晓薇的视角回应他：原话中的我指用户，你指林晓薇；不要互换动作、感受的归属。\n':'')+(qualityIssues.includes('verbatim_reply_replay')?'上一稿大段原样重播了历史回复。历史已经说过，不是这次的答案；保留理解所必需的事实，直接回答当前用户新增的问题或表达自己的新反应。\n':'')+(qualityIssues.includes('repeated_reply_content')?'上一稿重复最近已经说过的内容。删去没有变化的旧状态和同义重述，直接接住当前用户的话；保留必要回应和新细节，不另起无关话题，不复述用户行程来凑字。\n':'')+(qualityIssues.includes('reply_too_long')?`上一稿篇幅过长。正文与额外句合计不超过${Math.max(40,policyPlan.maxChars-(policyPlan.anchor?.length||0))}字，先留对当前消息的直接回应和必要内容，删掉已说过的背景、行程、同义解释，不通过新增问题补足篇幅。\n`:'')+(issues.includes('topic_reply_missing')?'上一稿经过内容核验后只剩批准、应声或收尾，没有回应用户正在分享的事情。直接接当前话题，说一个相关的具体反应或想法，不补造过去，不强行提问或另起话题。\n':'')+(issues.includes('completed_work_regression')?context.selfContinuity.context+'\n上一稿把同一份已完成的工作重新说成未完成，改正矛盾，不新增返工借口。\n':'')+(issues.some(issue=>issue.startsWith('shopping_'))?lifeEventTurnContext(replyLifeEvents(context,parsed.reply))+'\n上一稿与这些进度事实冲突。仍在挑选就不能说已付款或下完单；等送达就不能说尚未下单或已收货；已收到不能改成昨日收货或还在路上。只改正实际冲突，仍自然回应用户。\n':'')+(styleIssues.includes('too_many_decorative_comparisons')?PLAIN_SPEECH_REVISION+'\n':'')+(styleIssues.includes('staged_reaction_narration')?STAGED_REACTION_NARRATION_REVISION+'\n':'')+(styleIssues.includes('premature_topic_closing')?'用户现在正在接着聊，没有说要离开。继续眼前话题，给一个具体想法、细节或自然的小问题，不把交流推迟到旅行回来、下次或以后。\n':'')+(issues.includes('invented_offline_presence')?'你们正在远程聊天。接住拥抱的心意，可以表达想抱抱，不安排用户到你身边坐下、到店里或喝你的饮料。\n':'')+'上一份草稿未通过本轮检查：'+issues.join(',')+'。重新回答刚才的用户消息，遵守本轮行为。主体先回应，extra只一句且不要重复主体、不要问句。输出相同JSON；这是唯一一次修复。'}],{purpose:'chat-repair',roleId:role.id,signal:control.signal,jsonObject:true,nonThinking:true,maxTokens:dialogueLimits(role.id,companionTuning.get().values).maxOutputTokens});retries=1;
           }
@@ -1302,7 +1471,7 @@ export async function createApp(options = {}) {
         }
         if(control.signal?.aborted || (control.isCurrent && !control.isCurrent()))throw fail(409,'已有更新消息','MODEL_CANCELLED');
         const parts=!modelLed&&!context.discussion&&control.segmented&&replyPace==='natural'&&!policyPlan.anchor&&!context.sharedExperience&&!context.discussionPacket&&!experienceCandidate&&!companionshipUpdates.relationship.length&&!companionshipUpdates.agenda.length&&!companionshipUpdates.life?.length?splitReply(reply,role.interaction?.mode):[reply];
-        const saved = store.saveChatTurn({ role: role.id, text:savedText, userTexts:body.userTexts, reply:parts[0], replyChannel:body.replyChannel, contentId: content?.id||usedCompanionSource?.id, afterSave: rows => { assertCompanionshipContext(context);if(episodes.revision(context.scope)!==context.episodeRevision)throw fail(409,'回忆已更正，请重新回复','STALE_MEMORY');if(threadVersion!==lifeThreads.get(role.id)?.version)throw fail(409,'生活片段已更新，请重新回复','STALE_LIFE_THREAD_PLAN');const assistantId=rows.at(-1).id;if(role.id==='miyue'&&policyPlan.tuningRevision!==companionTuning.get().revision)throw fail(409,'相处参数已变化，请重新生成','STALE_COMPANION_TUNING');if(context.pursuitView&&!context.sharedExperience&&pursuits.get('miyue').version!==context.pursuitView.version)throw fail(409,'阅读观影进度已变化','STALE_PURSUIT');interactionPolicy.commit(policyPlan,checked,assistantId);if(context.pursuit&&!pursuits.markDelivered(context.pursuit.pendingKey,assistantId,context.pursuit.version,materialReceipt(context.materialDelivery,context.sharePacket)))throw fail(409,'阅读观影进度已变化','STALE_PURSUIT');if(threadPlan)lifeThreads.commit(threadPlan,assistantId);if(sharedThread&&!lifeThreads.markDelivered(sharedThread.pendingKey,assistantId,materialReceipt(context.materialDelivery,context.sharePacket)))throw fail(409,'生活片段已更新','STALE_LIFE_THREAD_PLAN');if(trackedContent){sourceChanges.recordDelivery(topicTracking.list().find(t=>t.id===trackedContent.tracking.id),trackedContent);topicTracking.markDelivered(trackedContent.tracking.id,trackedContent.id);}if (scenarioPlan) { tagScenarioMessages(rows, scenarioPlan.scenarioId); scenarios.commitTurn(scenarioPlan,rows.at(-1).id); } episodes.markUsed(context.entries.map(e=>e.id));episodes.observe(context.scope,rows);recordSharedTurn(role.id,rows,context,experienceCandidate,reply);recordCompanionship(role.id,rows,companionshipUpdates,context);recordDynamicTurn(context,rows,dynamicUpdates);recordDiscussion(context,rows,parseDiscussionAnnotation(raw),semantic);gentle.commit(feedback);if(!scenarioPlan){const source=rows.find(row=>row.speaker==='user');if(source)followups.observe(role.id,savedText,source.id);}if(parts.length>1)replyDelivery.enqueue(role.id,parts.slice(1),scenarioPlan?scenarioScope(scenarioPlan.scenarioId):null,body.replyChannel);control.afterSave?.(rows);if(!scenarioPlan)characters.afterTurn(role.id,savedText,signals,{previousAssistantId:context.conversation.filter(row=>row.speaker==='assistant').at(-1)?.id??null});if(role.id==='miyue'){inner.noteReply(role.id,reply,savedText);closenessMemory.observe(rows);closenessMemory.markRecalled(context.closenessMoment,reply);} } });
+        const saved = store.saveChatTurn({ role: role.id, text:savedText, userTexts:body.userTexts, userCreatedAts:control.userCreatedAts, reply:parts[0], replyChannel:body.replyChannel, contentId: content?.id||usedCompanionSource?.id, afterSave: rows => { assertCompanionshipContext(context);if(episodes.revision(context.scope)!==context.episodeRevision)throw fail(409,'回忆已更正，请重新回复','STALE_MEMORY');if(threadVersion!==lifeThreads.get(role.id)?.version)throw fail(409,'生活片段已更新，请重新回复','STALE_LIFE_THREAD_PLAN');const assistantId=rows.at(-1).id;if(role.id==='miyue'&&policyPlan.tuningRevision!==companionTuning.get().revision)throw fail(409,'相处参数已变化，请重新生成','STALE_COMPANION_TUNING');if(context.pursuitView&&!context.sharedExperience&&pursuits.get('miyue').version!==context.pursuitView.version)throw fail(409,'阅读观影进度已变化','STALE_PURSUIT');interactionPolicy.commit(policyPlan,checked,assistantId);if(context.pursuit&&!pursuits.markDelivered(context.pursuit.pendingKey,assistantId,context.pursuit.version,materialReceipt(context.materialDelivery,context.sharePacket)))throw fail(409,'阅读观影进度已变化','STALE_PURSUIT');if(threadPlan)lifeThreads.commit(threadPlan,assistantId);if(sharedThread&&!lifeThreads.markDelivered(sharedThread.pendingKey,assistantId,materialReceipt(context.materialDelivery,context.sharePacket)))throw fail(409,'生活片段已更新','STALE_LIFE_THREAD_PLAN');if(trackedContent){sourceChanges.recordDelivery(topicTracking.list().find(t=>t.id===trackedContent.tracking.id),trackedContent);topicTracking.markDelivered(trackedContent.tracking.id,trackedContent.id);}if (scenarioPlan) { tagScenarioMessages(rows, scenarioPlan.scenarioId); scenarios.commitTurn(scenarioPlan,rows.at(-1).id); } episodes.markUsed(context.entries.map(e=>e.id));episodes.observe(context.scope,rows);recordSharedTurn(role.id,rows,context,experienceCandidate,reply);recordCompanionship(role.id,rows,companionshipUpdates,context);recordDynamicTurn(context,rows,dynamicUpdates);recordDiscussion(context,rows,parseDiscussionAnnotation(raw),semantic);gentle.commit(feedback);if(!scenarioPlan){const source=rows.find(row=>row.speaker==='user');if(source)followups.observe(role.id,savedText,source.id);}if(parts.length>1)replyDelivery.enqueue(role.id,parts.slice(1),scenarioPlan?scenarioScope(scenarioPlan.scenarioId):null,body.replyChannel);control.afterSave?.(rows);if(!scenarioPlan)characters.afterTurn(role.id,savedText,signals,{previousAssistantId:context.conversation.filter(row=>row.speaker==='assistant').at(-1)?.id??null});if(role.id==='miyue'){inner.noteReply(role.id,reply,savedText);closenessMemory.observe(rows);closenessMemory.markRecalled(context.closenessMoment,reply);} } });
         if (role.id === 'miyue') companionRuntime.advance();
         if (!closing && options.startRecall !== false) recall.schedule(memoryRole(role.id));
         trace.messageIds=saved.map(row=>row.id);trace.outcome={status:'delivered'};
@@ -1382,6 +1551,53 @@ export async function createApp(options = {}) {
       return sendJson(res,200,companionshipSnapshot());
     }
     if(req.method==='GET'&&pathname==='/api/discussion-topics')return sendJson(res,200,{enabled:discussionEnabled,profile:discussionTopics?.profile(validateRole(url.searchParams.get('role')||'miyue').id)||null});
+    if(req.method==='POST'&&pathname==='/api/recall/index'){
+      const body=await readJsonBody(req),role=validateRole(body.role||'miyue');
+      if(activeRoles.has(role.id)||chatQueue.busy(role.id))throw fail(409,'请等当前对话结束再更新索引','INDEX_BUSY');
+      const candidates=collectConversationMemory({store,recallRepo,episodes,historyEdits,scope:role.id,now:(options.clock||(()=>new Date()))()});
+      return sendJson(res,200,await hybridRecall.index(role.id,candidates,{limit:128,signal:AbortSignal.timeout(120000)}));
+    }
+    if(req.method==='GET'&&pathname==='/api/session/export'){
+      res.setHeader('content-disposition','attachment; filename="youjian-session.json"');
+      return sendJson(res,200,exportSession(store,{clock:options.clock}));
+    }
+    if(req.method==='POST'&&pathname==='/api/session/branch'){
+      await readJsonBody(req);if(activeRoles.size||chatQueue.busy())throw fail(409,'请等当前对话完成再创建分支','BRANCH_BUSY');
+      const id=randomUUID(),targetDir=path.join(rootDir,'.runtime','session-branches',id);
+      const branch=await forkSession(store,{targetDir,sourceDir:dataDir,provider:model.effective()});
+      return sendJson(res,201,{...branch,id,command:`node scripts/companion-branch.mjs --serve ${targetDir}`,notice:'分支拥有独立的历史、记忆、感受、日记、关系和进度；自动任务、到期提醒派送和微信已关闭。'});
+    }
+    if(req.method==='GET'&&pathname==='/api/dialogue-diagnostics'){
+      const role=validateRole(url.searchParams.get('role')||'miyue');
+      const history=dailyMemory.settings().enabled?dailyMemory.history(role.id):recallRepo.dialogueWindow(role.id,{now:(options.clock||(()=>new Date()))()});
+      return sendJson(res,200,{role:{id:role.id,name:role.name},history:{notice:history.notice?.content,rows:history.rows.map((row,i)=>sessionHistoryRecord(row,role,i))},
+        memory:recallRepo.consolidated.snapshot(role.id),dailyMemory:dailyMemory.snapshot(role.id),dailyHappenings:role.id==='miyue'?dailyHappenings.snapshot(role.id):null,dynamics:companionDynamics.get(role.id),growth:characterGrowth.get(role.id),
+        traces:dialogueTraces.list({roleId:role.id,limit:10}),retrieval:{scope:'all-visible-history',embeddingConfigured:Boolean(embeddingEnv.LIFE_EMBEDDING_MODEL),semanticQuery:hybridRecall.semantic}});
+    }
+    if(req.method==='GET'&&pathname==='/api/character-growth')return sendJson(res,200,characterGrowth.get(validateRole(url.searchParams.get('role')||'miyue').id));
+    if(req.method==='GET'&&pathname==='/api/daily-happenings')return sendJson(res,200,dailyHappenings.snapshot('miyue'));
+    if(req.method==='GET'&&pathname==='/api/daily-information')return sendJson(res,200,{...dailyInformation.status(),items:dailyInformation.list({category:url.searchParams.get('category'),query:url.searchParams.get('query')||'',limit:30})});
+    if(req.method==='POST'&&pathname==='/api/daily-information/refresh'){await readJsonBody(req);return sendJson(res,200,await dailyInformation.refresh({force:true}));}
+    if(req.method==='GET'&&pathname==='/api/daily-memory'){
+      const snapshot=dailyMemory.snapshot(validateRole(url.searchParams.get('role')||'miyue').id);
+      if(url.searchParams.get('brief')==='1')delete snapshot.chunks;
+      return sendJson(res,200,snapshot);
+    }
+    if(req.method==='POST'&&pathname==='/api/daily-memory/settings')return sendJson(res,200,dailyMemory.configure(await readJsonBody(req)));
+    if(req.method==='POST'&&pathname==='/api/daily-memory/compress'){
+      const body=await readJsonBody(req);const role=validateRole(body.role||'miyue');
+      return sendJson(res,200,await dailyMemory.run(role.id,{force:true,signal:AbortSignal.timeout(120000)}));
+    }
+    if(req.method==='POST'&&pathname==='/api/character-growth/reflect'){
+      const body=await readJsonBody(req);const role=validateRole(body.role||'miyue');
+      if(characterGrowth.pending||activeRoles.has(role.id)||chatQueue.busy(role.id))throw fail(409,'请等当前对话完成再整理反思','REFLECTION_BUSY');
+      return sendJson(res,200,await characterGrowth.reflect(role.id,{force:true,signal:AbortSignal.timeout(30000)}));
+    }
+    if(req.method==='POST'&&pathname==='/api/character-growth/reassess'){
+      const body=await readJsonBody(req);const role=validateRole(body.role||'miyue');
+      if(characterGrowth.pending||activeRoles.has(role.id)||chatQueue.busy(role.id))throw fail(409,'请等当前对话完成再复核成长','REFLECTION_BUSY');
+      return sendJson(res,200,await characterGrowth.reassess(role.id,{signal:AbortSignal.timeout(30000)}));
+    }
     if(req.method==='GET'&&pathname==='/api/dialogue-traces')return sendJson(res,200,{enabled:dialogueMemory,traces:dialogueTraces.list({roleId:validateRole(url.searchParams.get('role')||'miyue').id,limit:Math.max(1,Math.min(100,Number(url.searchParams.get('limit'))||20))})});
     if (req.method === 'GET' && pathname === '/api/health') return sendJson(res, 200, { ok: true, modelConfigured: model.publicConfig().configured, dynamicCompanion:dynamicEnabled(), sessionDialogue:sessionEnabled(), semanticUnderstanding:!sessionEnabled()&&Boolean(semanticPlanner), dialogueMemory, discussionTopics:discussionEnabled, turnReaction:!sessionEnabled()&&dialogueMemory&&options.turnReaction!==false, sourceRelevance:!sessionEnabled()&&Boolean(sourceRelevance) });
     if (req.method === 'GET' && pathname === '/api/bootstrap') return sendJson(res, 200, {
@@ -1413,6 +1629,7 @@ export async function createApp(options = {}) {
         return sendJson(res, 200, preferences.setReplyPace(body.replyPace));
       }
       if (keys.length && keys.every(key => ['historyWindowDays', 'historyMaxTokens'].includes(key))) {
+        if(dailyMemory.settings().enabled&&body.historyWindowDays!==undefined&&body.historyWindowDays!==1)throw fail(400,'按日整理模式只保留当日原文；如需滚动窗口请先关闭按日整理','DAILY_RAW_WINDOW');
         return sendJson(res, 200, preferences.setHistoryWindow({
           ...(body.historyWindowDays !== undefined ? { days: body.historyWindowDays } : {}),
           ...(body.historyMaxTokens !== undefined ? { maxTokens: body.historyMaxTokens } : {}),
@@ -1482,6 +1699,13 @@ export async function createApp(options = {}) {
       return sendJson(res,200,{items:topicSnapshot()});
     }
     if (req.method === 'GET' && pathname === '/api/usage') return sendJson(res, 200, usage.snapshot());
+    if(req.method==='POST'&&pathname==='/api/life/travel'){
+      const body=await readJsonBody(req,16000);
+      if(activeRoles.has('miyue')||chatQueue.busy('miyue')||replyDelivery.pending('miyue')||proactive.thinking)throw fail(409,'林晓薇正在回复，请等这一轮结束后再安排行程');
+      life.planTravel({homeCity:'苏州',departAt:body.departAt,returnAt:body.returnAt,stops:body.stops});
+      companionRuntime.advance();
+      return sendJson(res,200,{life:lifeSnapshot()});
+    }
     if (req.method === 'GET' && pathname === '/api/life') return sendJson(res, 200, lifeSnapshot());
     if (req.method === 'GET' && pathname === '/api/wardrobe') return sendJson(res, 200, wardrobe.snapshot());
     if (req.method === 'GET' && pathname === '/api/appearance') return sendJson(res, 200, appearance.snapshot());
@@ -1527,7 +1751,7 @@ export async function createApp(options = {}) {
     }
     if (req.method === 'GET' && pathname === '/api/recall/miyue/review') {
       const scope='miyue',suppressed=new Set(episodes.suppressedSourceIds(scope));
-      const window=recallRepo.dialogueWindow(scope),raw=window.rows;
+      const window=dailyMemory.settings().enabled?dailyMemory.history(scope):recallRepo.dialogueWindow(scope),raw=window.rows;
       const review=recallRepo.consolidated.review(scope);
       const canonical=id=>suppressed.has(id)?null:store.db.prepare("SELECT id,speaker,text,created_at AS createdAt FROM recall_messages WHERE role=? AND id=? AND kind<>'story' AND (speaker='user' OR rowid>COALESCE((SELECT CAST(value AS INTEGER) FROM metadata WHERE key='persona_cutoff:'||recall_messages.role),0))").get(scope,id);
       const runs=review.runs.map(run=>{
@@ -1614,10 +1838,26 @@ export async function createApp(options = {}) {
       return sendJson(res, 200, { ok: true });
     }
 
+    if(req.method==='GET'&&pathname==='/api/chat/history'){
+      const role=validateRole(url.searchParams.get('role'));
+      return sendJson(res,200,historyDeletion.list(role.id,{limit:url.searchParams.get('limit')??50,before:url.searchParams.get('before')}));
+    }
+    if(req.method==='POST'&&pathname==='/api/chat/history/delete'){
+      const body=await readJsonBody(req,24000),role=validateRole(body.role);
+      if(activeRoles.size||chatQueue.busy()||roles.some(item=>replyDelivery.pending(item.id))||proactive.thinking)throw fail(409,'正在回复，请等这一轮结束后再删除历史对话','HISTORY_BUSY');
+      const result=historyDeletion.delete(role.id,body.ids);
+      proactiveContinuity.cache.delete(role.id);
+      return sendJson(res,200,result);
+    }
     let match = pathname.match(/^\/api\/conversations\/([^/]+)$/);
     if (req.method === 'GET' && match) {
       const role = decodeURIComponent(match[1]); validateRole(role);
-      return sendJson(res, 200, { messages: historyEdits.project(role,store.getMessages(role)).map(row=>({...row,receipt:interactionPolicy.receipt(row.id)})),pending:{...chatQueue.get(role),remainingChunks:replyDelivery.pending(role)} });
+      // Only the fields the chat views display; the full receipt stays in the
+      // diagnostics. Without ?limit the whole history is returned (exports, old clients).
+      const slimReceipt=receipt=>receipt?{intent:receipt.intent??null,hasAuthoredAnchor:Boolean(receipt.hasAuthoredAnchor),memoryCount:Array.isArray(receipt.memoryIds)?receipt.memoryIds.length:0,repairCount:Array.isArray(receipt.repairs)?receipt.repairs.length:0}:null;
+      const limit=url.searchParams.get('limit'),before=url.searchParams.get('before');
+      const page=limit||before?store.getMessagePage(role,{limit:limit||120,before}):{rows:store.getMessages(role),hasMore:false};
+      return sendJson(res, 200, { messages: historyEdits.project(role,page.rows).map(row=>({...row,receipt:slimReceipt(interactionPolicy.receipt(row.id))})),hasMore:page.hasMore,pending:{...chatQueue.get(role),remainingChunks:replyDelivery.pending(role)} });
     }
     if(req.method==='GET'&&pathname==='/api/chat/pending')return sendJson(res,200,{roles:Object.fromEntries(roles.map(role=>[role.id,{...chatQueue.get(role.id),remainingChunks:replyDelivery.pending(role.id)}]))});
     if(req.method==='POST'&&pathname==='/api/chat/send'){
@@ -1676,7 +1916,7 @@ export async function createApp(options = {}) {
       const body = await readJsonBody(req);
       if (body.quiet !== undefined && typeof body.quiet !== 'boolean') throw fail(400, 'quiet 必须是布尔值', 'INVALID_INPUT');
       const settings = store.setSettings(body);
-      if (!settings.quiet)for(const entry of store.deliverDueReminders((options.clock||(()=>new Date()))(),activeRoleIds))if(entry.message)void onDelivery(entry.message).catch(()=>{});
+      if (!settings.quiet)for(const entry of store.deliverDueReminders((options.clock||(()=>new Date()))(),activeRoleIds,roleReplyBusy))if(entry.message)void onDelivery(entry.message).catch(()=>{});
       return sendJson(res, 200, { settings });
     }
     if (req.method === 'GET' && pathname === '/api/reminders') return sendJson(res, 200, { reminders: store.listReminders().filter(item=>activeRoleIds.has(item.role)) });
@@ -1730,6 +1970,21 @@ export async function createApp(options = {}) {
       await readJsonBody(req); return sendJson(res, 200, await refreshContent());
     }
 
+    if(req.method==='POST'&&pathname==='/api/voice-session/start'){
+      const body=await readJsonBody(req),message=projectCompanionSource(store.getMessage(String(body.messageId||'')));
+      if(!message||message.speaker!=='assistant')throw fail(404,'可朗读的消息不存在','MESSAGE_NOT_FOUND');
+      if(message.text.length>5000)throw fail(400,'消息太长，暂时无法朗读','VOICE_TEXT_TOO_LONG');
+      return sendJson(res,200,segmentedSpeech.start(message,await speechOptions(message.role)));
+    }
+    const voiceSessionMatch=pathname.match(/^\/api\/voice-session\/([^/]+)\/(status|close|advance|audio)(?:\/(\d+))?$/u);
+    if(voiceSessionMatch){
+      const [,id,action,index]=voiceSessionMatch;
+      if(req.method==='GET'&&action==='status')return sendJson(res,200,await segmentedSpeech.status(id));
+      if(req.method==='POST'&&action==='close'){await readJsonBody(req);return sendJson(res,200,await segmentedSpeech.close(id));}
+      if(req.method==='POST'&&action==='advance'){const body=await readJsonBody(req);return sendJson(res,200,await segmentedSpeech.advance(id,body.index));}
+      if(req.method==='GET'&&action==='audio'&&index!==undefined){const result=await segmentedSpeech.audio(id,Number(index));res.writeHead(200,{'content-type':result.contentType,'content-length':result.body.length,'cache-control':'no-store'});return res.end(result.body);}
+      throw fail(404,'语音接口不存在','NOT_FOUND');
+    }
     if(req.method==='GET'&&pathname==='/api/voice/catalog') {
       try{const catalog=await getVoiceCatalog(url.searchParams.get('refresh')==='1');return sendJson(res,200,{available:true,voices:catalog.voices.map(({id,name,description,language})=>({id,name,description,language})),assignments:roleVoices.list()});}
       catch{return sendJson(res,200,{available:false,voices:[],assignments:roleVoices.list(),error:'本地TTS暂不可用，已保存的音色仍保留。'});}
@@ -1745,7 +2000,7 @@ export async function createApp(options = {}) {
     }
     if (req.method === 'GET' && pathname === '/api/voice/health') return sendJson(res, 200, await integrations.probeTts());
     if (req.method === 'POST' && pathname === '/api/voice/start') {
-      const body = await readJsonBody(req); const message = store.getMessage(String(body.messageId || ''));
+      const body = await readJsonBody(req); const message = projectCompanionSource(store.getMessage(String(body.messageId || '')));
       if (!message || message.speaker !== 'assistant') throw fail(404, '可朗读的消息不存在', 'MESSAGE_NOT_FOUND');
       if (message.text.length > 5000) throw fail(400, '消息太长，暂时无法朗读', 'VOICE_TEXT_TOO_LONG');
       const awaitSpeechOptions = await speechOptions(message.role);
@@ -1795,34 +2050,50 @@ export async function createApp(options = {}) {
     try {
       requestGuard(req);
       const url = new URL(req.url, `http://${req.headers.host}`);
+      if (access.enabled) {
+        if (url.pathname === '/login' && ['GET','HEAD'].includes(req.method)) { res.writeHead(200,{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}); return res.end(req.method==='HEAD'?undefined:LOGIN_PAGE); }
+        if (url.pathname === '/api/login' && req.method === 'POST') {
+          const body = await readJsonBody(req), result = access.login(req, body?.token);
+          if (!result.ok) throw fail(result.status, result.status === 429 ? '尝试次数太多，请稍后再试' : '口令不对', result.status === 429 ? 'LOGIN_RATE_LIMITED' : 'AUTH_INVALID');
+          res.setHeader('set-cookie', result.cookie); return sendJson(res, 200, { ok: true });
+        }
+        if (url.pathname === '/api/logout' && req.method === 'POST') { res.setHeader('set-cookie', access.logoutCookie); return sendJson(res, 200, { ok: true }); }
+        if (!access.authorized(req)) {
+          if (url.pathname.startsWith('/api/')) throw fail(401, '需要先登录', 'AUTH_REQUIRED');
+          if (url.pathname === '/icon.svg') return serveStatic(req, res, url);
+          res.writeHead(302, { location: `/login?next=${encodeURIComponent(url.pathname + url.search)}`, 'cache-control': 'no-store' }); return res.end();
+        }
+      }
       if (url.pathname.startsWith('/api/') && ['POST', 'PATCH', 'DELETE'].includes(req.method) && url.pathname !== '/api/transcribe') {
         const contentType = String(req.headers['content-type'] || '').split(';', 1)[0].trim().toLowerCase();
         if (contentType !== 'application/json') throw fail(415, '请求需要使用 application/json', 'CONTENT_TYPE_REQUIRED');
       }
+      if(branchMode&&url.pathname.startsWith('/api/weixin')&&req.method!=='GET')throw fail(403,'隔离分支关闭外部消息发送','BRANCH_EXTERNAL_DISABLED');
       if (url.pathname.startsWith('/api/')) await api(req, res, url); else serveStatic(req, res, url);
     } catch (error) {
       if (res.headersSent) return res.destroy();
       sendJson(res, Number(error?.status) || 500, { error: Number(error?.status) ? error.message : '服务暂时出现问题', ...(error?.code ? { code: error.code } : {}) });
     }
   });
-  const reminderTimer = options.startReminders===false?null:setInterval(() => { try { const delivered = store.deliverDueReminders((options.clock||(()=>new Date()))(),activeRoleIds); for(const entry of delivered)if(entry.message)onDelivery(entry.message).catch(()=>{}); } catch {} }, options.reminderIntervalMs || 10_000);
+  const reminderTimer = options.startReminders===false?null:setInterval(() => { try { const delivered = store.deliverDueReminders((options.clock||(()=>new Date()))(),activeRoleIds,roleReplyBusy); for(const entry of delivered)if(entry.message)onDelivery(entry.message).catch(()=>{}); } catch {} }, options.reminderIntervalMs || 10_000);
   reminderTimer?.unref();
   let lifeThreadTimer=null;
   const tickLifeThreads=()=>{if(!closing&&!activeRoles.has('miyue')&&!chatQueue.busy('miyue')&&!replyDelivery.pending('miyue')){if(options.startLifeThreads!==false)lifeThreads.tick('miyue',life.get('miyue'));pursuits?.tick('miyue');companionAgenda.tick('miyue');}};
 
   return {
-    server, store, dialogueTraces, discussionTopics, historyEdits, companionDynamics, companionSocial, groundedLife, eventMaterials, model, weixin, proactive, proactiveRepo, refreshContent, zhihuClient, zhihuRepo, research, characters, recall, recallRepo, usage, life, lifeTopics, inner, scenarios, dossiers, gentle, preferences, background, roleVoices, chatQueue, replyDelivery, followups, topicTracking, moments, episodes, interactionPolicy, lifeThreads, pursuits, personalExperiences, sourceChanges, companionTuning, companionBehavior, contentInbox, sharedExperiences, companionRelationship, companionAgenda, wardrobe, appearance, sceneImages, imageLibrary, companionRuntime, runtimeScenes, roleContext,
+    server, store, dialogueTraces, hybridRecall, characterGrowth, dailyMemory, dailyInformation, dailyHappenings, userThreads, prepareSessionContext:sessionContext, segmentedSpeech, discussionTopics, historyEdits, historyDeletion, companionDynamics, companionSocial, groundedLife, eventMaterials, model, weixin, proactive, proactiveRepo, refreshContent, zhihuClient, zhihuRepo, research, characters, recall, recallRepo, usage, life, lifeTopics, inner, scenarios, dossiers, gentle, preferences, background, roleVoices, chatQueue, replyDelivery, followups, topicTracking, moments, episodes, interactionPolicy, lifeThreads, pursuits, personalExperiences, sourceChanges, companionTuning, companionBehavior, contentInbox, sharedExperiences, companionRelationship, companionAgenda, wardrobe, appearance, sceneImages, imageLibrary, companionRuntime, runtimeScenes, roleContext,
     listen(port = options.port ?? 8765) {
       return new Promise((resolve, reject) => {
         server.once('error', reject);
-        server.listen(port, network.listenHost, () => { if(options.dynamicCompanion===true&&options.startDiscovery!==false)groundedLife.start(); if(options.startWeixin!==false)weixin.start(); if(options.startRuntime!==false)companionRuntime.start(); if(options.startChatQueue!==false){chatQueue.start();replyDelivery.start();} server.off('error', reject); if (options.startLife !== false && options.startProactive !== false) life.start(); if (options.startRecall !== false && options.startProactive !== false) recall.start(); if (options.startProactive !== false) { tickLifeThreads();lifeThreadTimer=setInterval(tickLifeThreads,options.proactiveIntervalMs||15000);lifeThreadTimer.unref();proactive.start(); scheduleDossiers(); } if (options.startResearch !== false && options.startProactive !== false) research.start(); resolve(server.address()); });
+        server.listen(port, network.listenHost, () => { if(options.dynamicCompanion===true&&options.startDiscovery!==false&&options.startProactive!==false&&options.startDailyInformation!==false)dailyInformation.start(); if(options.dynamicCompanion===true&&options.startDiscovery!==false)groundedLife.start(); if(options.startWeixin!==false)weixin.start(); if(options.startRuntime!==false)companionRuntime.start(); if(options.startChatQueue!==false){chatQueue.start();replyDelivery.start();} server.off('error', reject); if (options.startLife !== false && options.startProactive !== false) life.start(); if (options.startRecall !== false && options.startProactive !== false) recall.start(); if (options.startProactive !== false && options.startDailyHappenings !== false) dailyHappenings.start(); if (options.startProactive !== false) { tickLifeThreads();lifeThreadTimer=setInterval(tickLifeThreads,options.proactiveIntervalMs||15000);lifeThreadTimer.unref();proactive.start(); scheduleDossiers(); } if (options.startResearch !== false && options.startProactive !== false) research.start(); resolve(server.address()); });
       });
     },
     async close() {
       if (closing) return Promise.resolve(); closing = true; clearInterval(reminderTimer);clearInterval(lifeThreadTimer);
-      await groundedLife.stop();await weixin.stop();desktopAttention.interrupt();companionRuntime.stop();life.stop();replyDelivery.stop();await chatQueue.stop();
+      await dailyMemory.stop();await dailyHappenings.stop();await dailyInformation.stop();await characterGrowth.stop();await groundedLife.stop();await weixin.stop();desktopAttention.interrupt();companionRuntime.stop();life.stop();replyDelivery.stop();await chatQueue.stop();
       await Promise.all([proactive.stop(), research.stop(), recall.stop(), quotaPromise?.catch(() => {})]); if (refreshPromise) await refreshPromise; if (dossierJob) await dossierJob;
       await new Promise(resolve=>server.close(resolve));
+      await segmentedSpeech.stop();
       if(typeof integrations.closeSpeech==='function')await Promise.allSettled([...voiceJobs].map(id=>integrations.closeSpeech(id)));voiceJobs.clear();
       store.close();
     },

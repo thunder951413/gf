@@ -1,7 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import {createApp} from '../server.mjs';
+const TEST_ROLES=[
+ {id:'miyue',name:'林晓薇',systemPrompt:'自然回应当前用户。',interaction:{mode:'companion',lifeEvents:true}},
+ {id:'wenxi',name:'闻溪',systemPrompt:'自然回应当前用户。',interaction:{mode:'information'}},
+ {id:'zhixia',name:'知夏',systemPrompt:'自然回应当前用户。',interaction:{mode:'scenario'}},
+];
 async function fixture(t,handler=()=> '这件事确实还有得聊。',extra={}){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'architecture-v09-'));let now=new Date('2026-09-07T03:00:00Z');const calls=[];
- const app=await createApp({startPursuits:false,dataDir:dir,initialFeeds:[],startProactive:false,startRecall:false,replySleep:async()=>{},clock:()=>new Date(now),random:()=>.5,lifeRandom:()=>.99,lifeThreadRandom:()=>0,integrations:{fetchFeed:async()=>({items:[]})},env:{LIFE_MODEL_BASE_URL:'https://fixture.test/v1',LIFE_MODEL_NAME:'fixture'},fetchImpl:async(_u,o)=>{const body=JSON.parse(o.body);calls.push(body);return Response.json({choices:[{message:{content:await handler(body)}}],usage:{prompt_tokens:10,completion_tokens:10}});},...extra});
+ const app=await createApp({startPursuits:false,dataDir:dir,roles:TEST_ROLES,initialFeeds:[],startProactive:false,startRecall:false,replySleep:async()=>{},clock:()=>new Date(now),random:()=>.5,lifeRandom:()=>.99,lifeThreadRandom:()=>0,integrations:{fetchFeed:async()=>({items:[]})},env:{LIFE_MODEL_BASE_URL:'https://fixture.test/v1',LIFE_MODEL_NAME:'fixture'},fetchImpl:async(_u,o)=>{const body=JSON.parse(o.body);calls.push(body);return Response.json({choices:[{message:{content:await handler(body)}}],usage:{prompt_tokens:10,completion_tokens:10}});},...extra});
  const {port}=await app.listen(0);t.after(async()=>{await app.close();fs.rmSync(dir,{recursive:true,force:true});});
  const req=async(url,body)=>{const r=await fetch(`http://127.0.0.1:${port}${url}`,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});return {status:r.status,...await r.json()};};
  return{app,req,calls,advance:hours=>now=new Date(+now+hours*3600000)};
@@ -59,7 +64,7 @@ const openShareSemanticHandler=body=>body.messages.some(message=>String(message.
  : JSON.stringify({reply:'我这会儿正忙着手边的事。',extra:''});
 function conflictingLifeAndRuntimeFixture(){
  const values=[.5,0,.32,.3,0,0];
- return {clock:()=>new Date('2026-09-15T12:30:00Z'),lifeRandom:()=>values.shift()??.99,runtimeRandom:()=>.3,startDailyLife:false,startLifeThreads:false,semanticUnderstanding:true};
+ return {clock:()=>new Date('2026-09-15T12:30:00Z'),lifeRandom:()=>values.shift()??.99,runtimeRandom:()=>.24,startDailyLife:false,startLifeThreads:false,semanticUnderstanding:true};
 }
 test('natural material delivery gives an open self-share the authoritative runtime activity over a conflicting active LifeEvent',async t=>{
  const {app,req,calls}=await fixture(t,openShareSemanticHandler,{naturalMaterialDelivery:true,...conflictingLifeAndRuntimeFixture()});

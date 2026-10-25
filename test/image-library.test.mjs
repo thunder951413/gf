@@ -29,6 +29,18 @@ test('metadata is editable and validation is strict',t=>{
   assert.throws(()=>repo.upload({image:transparent,unknown:true}),{code:'INVALID_IMAGE_LIBRARY'});assert.throws(()=>repo.metadata({id,sceneIds:['missing']}),{code:'INVALID_IMAGE_LIBRARY'});assert.equal(repo.file('../life.sqlite'),null);assert.equal(repo.file('0'.repeat(64)+'.png'),null);
 });
 
+test('street style and pose group survive upload and metadata edits',t=>{
+  const {repo}=fixture(t);
+  const first=repo.upload({image:transparent,streetStyle:'chinese',poseGroup:'walking',background:'transparent'}).items[0];
+  assert.equal(first.streetStyle,'chinese');assert.equal(first.poseGroup,'walking');
+  const edited=repo.metadata({id:first.id,streetStyle:'japanese',poseGroup:'hands'}).items[0];
+  assert.equal(edited.streetStyle,'japanese');assert.equal(edited.poseGroup,'hands');
+  const cleared=repo.metadata({id:first.id,streetStyle:null,poseGroup:null}).items[0];
+  assert.equal(cleared.streetStyle,null);assert.equal(cleared.poseGroup,null);
+  assert.throws(()=>repo.upload({image:opaque,streetStyle:'unknown'}),/街拍风格无效/);
+  assert.throws(()=>repo.metadata({id:first.id,poseGroup:'unknown'}),/姿势类别无效/);
+});
+
 test('multi-activity metadata is canonical, deduplicated, and legacy activity remains available',t=>{
   const {repo}=fixture(t);const id=repo.upload({image:transparent,activity:'读书',activities:['reading','work','reading']}).items[0].id;
   const item=repo.snapshot().items.find(entry=>entry.id===id);

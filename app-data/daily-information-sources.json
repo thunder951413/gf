@@ -1,0 +1,91 @@
+[
+  {
+    "id": "meishichina",
+    "title": "美食天下 · 家常菜谱",
+    "category": "food",
+    "type": "links",
+    "url": "https://home.meishichina.com/recipe.html",
+    "linkPattern": "/recipe-[0-9]+\\.html",
+    "intervalMinutes": 720
+  },
+  {
+    "id": "bonappetit-food",
+    "title": "Bon Appétit · 饮食",
+    "category": "food",
+    "url": "https://www.bonappetit.com/feed/rss",
+    "intervalMinutes": 720
+  },
+  {
+    "id": "deadline-tv",
+    "title": "Deadline · 剧集与电视",
+    "category": "series",
+    "url": "https://deadline.com/v/tv/feed/",
+    "intervalMinutes": 360
+  },
+  {
+    "id": "npr-film",
+    "title": "NPR · 电影",
+    "category": "film",
+    "url": "https://feeds.npr.org/1045/rss.xml",
+    "intervalMinutes": 360
+  },
+  {
+    "id": "douban-cinema",
+    "title": "豆瓣 · 苏州上映电影",
+    "category": "film",
+    "type": "links",
+    "url": "https://movie.douban.com/cinema/nowplaying/suzhou/",
+    "linkPattern": "/subject/[0-9]+/",
+    "intervalMinutes": 720
+  },
+  {
+    "id": "cntraveler-travel",
+    "title": "Condé Nast Traveler · 旅行",
+    "category": "travel",
+    "url": "https://www.cntraveler.com/feed/rss",
+    "intervalMinutes": 720
+  },
+  {
+    "id": "sina-headlines",
+    "title": "新浪 · 公开新闻榜",
+    "category": "news",
+    "type": "headlines",
+    "url": "https://sinanews.sina.cn/h5/top_news_list.d.html",
+    "intervalMinutes": 120
+  },
+  {
+    "id": "ithome-products",
+    "title": "IT之家 · 产品与科技",
+    "category": "products",
+    "url": "https://www.ithome.com/rss/",
+    "intervalMinutes": 180
+  },
+  {
+    "id": "apple-products",
+    "title": "Apple · 官方发布",
+    "category": "products",
+    "url": "https://www.apple.com/newsroom/rss-feed.rss",
+    "intervalMinutes": 360
+  },
+  {
+    "id": "gcores-games",
+    "title": "机核 · 游戏与文化",
+    "category": "games",
+    "url": "https://www.gcores.com/rss",
+    "intervalMinutes": 360
+  },
+  {
+    "id": "lithub-books",
+    "title": "Literary Hub · 阅读",
+    "category": "books",
+    "url": "https://lithub.com/feed/",
+    "intervalMinutes": 720
+  },
+  {
+    "id": "npr-music",
+    "title": "NPR · 音乐",
+    "category": "music",
+    "url": "https://feeds.npr.org/1039/rss.xml",
+    "intervalMinutes": 720
+  }
+]

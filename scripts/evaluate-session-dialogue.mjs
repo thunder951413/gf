@@ -9,13 +9,14 @@ const defaultFixture = path.join(root, 'scripts', 'fixtures', 'session-dialogue-
 const runtimeRoot = path.join(root, '.runtime', 'session-eval');
 const variants = new Set(['session', 'legacy', 'both']);
 const actionTypes = new Set(['chat', 'proactive', 'desktop']);
+const seedMessageKinds = new Set(['chat', 'proactive']);
 const integerOptions = new Set(['--max-calls', '--max-tokens', '--max-request-bytes', '--max-wire-bytes']);
 
 export const DEFAULT_LIMITS = Object.freeze({
-  maxCalls: 150,
-  maxTokens: 10_000_000,
+  maxCalls: 250,
+  maxTokens: 15_000_000,
   maxRequestBytes: 350_000,
-  maxWireBytes: 20_000_000,
+  maxWireBytes: 25_000_000,
 });
 
 const keyFor = name => ({
@@ -26,15 +27,16 @@ const keyFor = name => ({
 })[name];
 
 export function parseArgs(argv) {
-  const options = { live: false, variant: 'both', scenario: null, model: null, label: null, help: false, limits: { ...DEFAULT_LIMITS } };
+  const options = { live: false, jsonOnly: false, reviewFile: null, variant: 'both', scenario: null, model: null, label: null, help: false, limits: { ...DEFAULT_LIMITS } };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--live') options.live = true;
+    else if (arg === '--json-only') options.jsonOnly = true;
     else if (arg === '--help' || arg === '-h') options.help = true;
-    else if (['--variant', '--scenario', '--model', '--label'].includes(arg)) {
+    else if (['--variant', '--scenario', '--model', '--label', '--review-file'].includes(arg)) {
       const value = argv[++index];
       if (!value || value.startsWith('--')) throw new Error(`${arg} requires a value`);
-      options[arg.slice(2)] = value;
+      options[arg === '--review-file' ? 'reviewFile' : arg.slice(2)] = value;
     } else if (integerOptions.has(arg)) {
       const value = Number(argv[++index]);
       if (!Number.isSafeInteger(value) || value < 1) throw new Error(`${arg} must be a positive integer`);
@@ -44,6 +46,8 @@ export function parseArgs(argv) {
   if (!variants.has(options.variant)) throw new Error('--variant must be session, legacy, or both');
   if (options.label && !/^[a-z0-9][a-z0-9-]{0,39}$/u.test(options.label)) throw new Error('--label must be 1-40 lowercase letters, digits, or hyphens');
   if (options.live && !options.label) throw new Error('--live requires a unique --label');
+  if (options.live && options.reviewFile) throw new Error('--review-file cannot be combined with --live');
+  if (options.reviewFile && (options.label || options.model || options.scenario || options.variant !== 'both')) throw new Error('--review-file cannot be combined with run selection options');
   return options;
 }
 
@@ -67,6 +71,7 @@ export function validateSuite(value) {
     const seedIds = new Set();
     for (const row of scenario.seed.history) {
       if (!row?.id || seedIds.has(row.id) || !['user', 'assistant'].includes(row.speaker) || typeof row.text !== 'string' || !row.text.trim() || !Number.isFinite(Date.parse(row.createdAt))) throw new Error(`${scenario.id}: invalid seed history`);
+      if (row.kind !== undefined && (!seedMessageKinds.has(row.kind) || (row.kind === 'proactive' && row.speaker !== 'assistant'))) throw new Error(`${scenario.id}: invalid seed history kind`);
       seedIds.add(row.id);
     }
     for (const row of scenario.seed.memories) {
@@ -76,6 +81,9 @@ export function validateSuite(value) {
     if (!Array.isArray(scenario.actions) || !scenario.actions.length) throw new Error(`${scenario.id}: actions are required`);
     for (const [index, action] of scenario.actions.entries()) {
       if (!action || !actionTypes.has(action.type)) throw new Error(`${scenario.id}: invalid action ${index + 1}`);
+      if (Object.hasOwn(action, 'assistant') || Object.hasOwn(action, 'reply')) throw new Error(`${scenario.id}: actions cannot contain canned assistant replies`);
+      if (action.requiresPreviousDelivery !== undefined && typeof action.requiresPreviousDelivery !== 'boolean') throw new Error(`${scenario.id}: requiresPreviousDelivery must be boolean at action ${index + 1}`);
+      if (action.requiresPreviousDelivery === true && index === 0) throw new Error(`${scenario.id}: first action cannot require a previous delivery`);
       if (action.advanceMinutes !== undefined && (!Number.isSafeInteger(action.advanceMinutes) || action.advanceMinutes < 0 || action.advanceMinutes > 14 * 24 * 60)) throw new Error(`${scenario.id}: invalid advanceMinutes at action ${index + 1}`);
       if (action.type === 'chat' && (typeof action.text !== 'string' || !action.text.trim())) throw new Error(`${scenario.id}: chat action ${index + 1} needs text`);
       if (action.type === 'desktop' && !['care', 'affection'].includes(action.level)) throw new Error(`${scenario.id}: desktop action ${index + 1} needs care or affection`);
@@ -93,13 +101,14 @@ export function loadSuite(file = defaultFixture) {
 const selectedVariants = value => value === 'both' ? ['session', 'legacy'] : [value];
 // This is a planning estimate for the bundled scenarios. The transport budget
 // remains the hard stop because repairs and bounded tool loops can vary.
-const nominalCalls = action => action.type === 'chat' ? 3 : 2;
+const nominalCalls = (action, variant) => (action.type === 'chat' ? 3 : 2) + (variant === 'session' ? 3 : 0);
 
 export function buildPlan(suite, options) {
   const picked = options.scenario ? suite.scenarios.filter(row => row.id === options.scenario) : suite.scenarios;
   if (!picked.length) throw new Error(`Unknown scenario: ${options.scenario}`);
   const runVariants = selectedVariants(options.variant);
-  const calls = picked.reduce((sum, scenario) => sum + scenario.actions.reduce((count, action) => count + nominalCalls(action), 0), 0) * runVariants.length;
+  const calls = runVariants.reduce((total, variant) => total + picked.reduce((sum, scenario) => sum
+    + scenario.actions.reduce((count, action) => count + nominalCalls(action, variant), 0), 0), 0);
   const conservativeTokens = calls * 60_000;
   const conservativeWireBytes = calls * 100_000;
   if (options.limits.maxRequestBytes < 100_000) throw new Error(`planned request size 100000 exceeds --max-request-bytes ${options.limits.maxRequestBytes}`);
@@ -138,6 +147,7 @@ export class HardBudget {
     this.reservedTokens = 0;
     this.reportedInputTokens = 0;
     this.reportedOutputTokens = 0;
+    this.cachedInputTokens = 0;
   }
   reserve(payload, bytes) {
     if (bytes > this.limits.maxRequestBytes) throw Object.assign(new Error(`request body ${bytes} bytes exceeds --max-request-bytes ${this.limits.maxRequestBytes}`), { code: 'SESSION_EVAL_REQUEST_BYTES' });
@@ -151,8 +161,11 @@ export class HardBudget {
     return { call: this.calls, bytes, reservedTokens: tokens };
   }
   observeUsage(usage = {}) {
-    this.reportedInputTokens += Number(usage.prompt_tokens || usage.input_tokens || 0);
-    this.reportedOutputTokens += Number(usage.completion_tokens || usage.output_tokens || 0);
+    if (!usage || typeof usage !== 'object') return;
+    const count = value => Number.isFinite(Number(value)) && Number(value) > 0 ? Math.trunc(Number(value)) : 0;
+    this.reportedInputTokens += count(usage.prompt_tokens ?? usage.input_tokens);
+    this.reportedOutputTokens += count(usage.completion_tokens ?? usage.output_tokens);
+    this.cachedInputTokens += count(usage.prompt_tokens_details?.cached_tokens ?? usage.input_tokens_details?.cached_tokens ?? usage.prompt_cache_hit_tokens);
   }
   snapshot() {
     return {
@@ -161,6 +174,7 @@ export class HardBudget {
       reservedTokens: this.reservedTokens,
       reportedInputTokens: this.reportedInputTokens,
       reportedOutputTokens: this.reportedOutputTokens,
+      cachedInputTokens: this.cachedInputTokens,
       limits: this.limits,
     };
   }
@@ -168,6 +182,10 @@ export class HardBudget {
 
 export function classifyModelCall(payload) {
   const text = (payload.messages || []).map(row => String(row.content || '')).join('\n');
+  if (text.includes('【本轮提示生成】')) return 'session-guidance';
+  if (text.includes('【本轮草稿检查】')) return 'session-review';
+  if (text.includes('【本轮模型修改意见】')) return 'session-revision';
+  if (/你只判断一段对话现在能否另起话题/u.test(text)) return 'proactive-continuity';
   if (/Classify the current Chinese companion-dialogue turn\.|判断当前中文陪伴对话/u.test(text)) return 'semantic';
   if (/你整理林晓薇|MEMORY CANDIDATES/u.test(text)) return 'memory';
   if (/【(?:只读|外部)工具回执/u.test(text)) return 'tool-followup';
@@ -224,12 +242,14 @@ const providerMetadata = config => ({
 
 const seedEvidence = (app, scenario) => app.store.transaction(() => {
   const insertMessage = app.store.db.prepare('INSERT INTO messages(id,role,speaker,text,kind,created_at,reply_channel) VALUES(?,?,?,?,?,?,?)');
-  for (const row of scenario.seed.history) insertMessage.run(row.id, 'miyue', row.speaker, row.text, 'chat', row.createdAt, 'desktop');
+  for (const row of scenario.seed.history) insertMessage.run(row.id, 'miyue', row.speaker, row.text, row.kind || 'chat', row.createdAt, 'desktop');
   const insertMemory = app.store.db.prepare('INSERT INTO memories(id,scope,text,created_at) VALUES(?,?,?,?)');
   for (const row of scenario.seed.memories) insertMemory.run(row.id, row.scope, row.text, row.createdAt);
 });
 
 const assistantText = body => (body?.messages || []).filter(row => row.speaker === 'assistant').map(row => row.text).join('\n');
+
+export const shouldExerciseAction = (action, previousAction) => action?.requiresPreviousDelivery !== true || previousAction?.outcome === 'delivered';
 
 const disabledIntegrations = Object.freeze({
   fetchFeed: async () => { throw new Error('network discovery disabled during session evaluation'); },
@@ -291,8 +311,10 @@ async function runVariantScenario({ scenario, variant, blindLabel, directory, co
     scenarioId: scenario.id,
     title: scenario.title,
     blindLabel,
+    expectedActionCount: scenario.actions.length,
     reviewFocus: scenario.reviewFocus,
-    review: { continuity: 'pending', factualGrounding: 'pending', naturalness: 'pending', notes: '' },
+    reviewLimitations: [],
+    review: { originalTurnsRead: false, continuity: { verdict: 'pending', evidence: [] }, factualGrounding: { verdict: 'pending', evidence: [] }, naturalness: { verdict: 'pending', evidence: [] }, notes: '' },
     actions: [],
   };
   const captureMechanisms = () => {
@@ -355,6 +377,29 @@ async function runVariantScenario({ scenario, variant, blindLabel, directory, co
     for (const [index, action] of scenario.actions.entries()) {
       now = new Date(+now + Number(action.advanceMinutes || 0) * 60_000);
       const historyBefore = await inspectConversation(base);
+      if (!shouldExerciseAction(action, result.actions.at(-1))) {
+        const reviewerLimitation = `Turn ${index + 1} was not exercised because its required previous turn did not deliver. The planned input was not sent, no model call was made, and this turn cannot be reviewed.`;
+        result.reviewLimitations.push(reviewerLimitation);
+        result.actions.push({
+          index: index + 1,
+          type: action.type,
+          at: now.toISOString(),
+          input: null,
+          plannedInput: action.type === 'chat' ? action.text : null,
+          status: null,
+          outcome: 'not_exercised',
+          reply: '',
+          durationMs: 0,
+          modelCalls: 0,
+          modelCallKinds: {},
+          usageRecords: [],
+          nativeHistory: { beforeCount: historyBefore.length, afterCount: historyBefore.length, appended: [] },
+          error: null,
+          reviewerLimitation,
+        });
+        writePrivateJson(path.join(directory, 'partial-result.json'), result);
+        continue;
+      }
       const remindersBefore = app.store.listReminders().filter(row => row.role === 'miyue');
       const callsBefore = wire.length, usageBefore = app.usage.snapshot().allTime.requests;
       const started = performance.now();
@@ -375,7 +420,9 @@ async function runVariantScenario({ scenario, variant, blindLabel, directory, co
       const callRows = wire.slice(callsBefore);
       const intentionalSkip = action.type === 'proactive' && !body?.delivered
         && (body?.code === 'model_skip' || body?.outcome === 'model_skip' || modelRequestedSkip(callRows));
-      if (action.type === 'proactive' && !body?.delivered && !intentionalSkip) status = 409;
+      const policySkip = action.type === 'proactive' && !body?.delivered
+        && ['conversation_unfinished', 'continuity_unavailable'].includes(body?.code);
+      if (action.type === 'proactive' && !body?.delivered && !intentionalSkip && !policySkip) status = 409;
       const reminderState = action.expectReminder ? compareReminderTransition(action.expectReminder, remindersBefore, remindersAfter) : null;
       const actionResult = {
         index: index + 1,
@@ -383,7 +430,7 @@ async function runVariantScenario({ scenario, variant, blindLabel, directory, co
         at: now.toISOString(),
         input: action.type === 'chat' ? action.text : action.type === 'desktop' ? { level: action.level } : null,
         status,
-        outcome: intentionalSkip ? 'model_skip' : status === 200 ? 'delivered' : 'failed',
+        outcome: policySkip ? 'policy_skip' : intentionalSkip ? 'model_skip' : status === 200 ? 'delivered' : 'failed',
         reply,
         durationMs: Math.round(performance.now() - started),
         modelCalls: callRows.length,
@@ -392,12 +439,12 @@ async function runVariantScenario({ scenario, variant, blindLabel, directory, co
         nativeHistory: { beforeCount: historyBefore.length, afterCount: historyAfter.length, appended },
         ...(reminderState ? { reminderState } : {}),
         error: status === 200 ? null : body?.error || body?.reason || 'action did not deliver',
-        ...(intentionalSkip ? { skipReason: body?.reason || 'model_skip' } : {}),
+        ...(intentionalSkip || policySkip ? { skipReason: body?.reason || body?.code, skipCode: body?.code || 'model_skip' } : {}),
       };
       result.actions.push(actionResult);
       writePrivateJson(path.join(directory, 'partial-result.json'), result);
-      if (status !== 200 || (!reply && !intentionalSkip)) throw new Error(`${scenario.id} ${action.type} action ${index + 1} did not produce a reply or intentional skip`);
-      if (intentionalSkip) continue;
+      if (status !== 200 || (!reply && !intentionalSkip && !policySkip)) throw new Error(`${scenario.id} ${action.type} action ${index + 1} did not produce a reply or intentional skip`);
+      if (intentionalSkip || policySkip) continue;
       const storedAssistant = appended.filter(row => row.speaker === 'assistant').at(-1);
       if (!storedAssistant || storedAssistant.text !== reply) throw new Error(`${scenario.id} action ${index + 1} reply was not preserved in native history`);
     }
@@ -428,7 +475,7 @@ const shuffledVariantMap = (label, runVariants) => {
   return createHash('sha256').update(label).digest()[0] % 2 ? { A: 'session', B: 'legacy' } : { A: 'legacy', B: 'session' };
 };
 
-function markdownReport(report) {
+export function markdownReport(report) {
   const lines = [
     '# Session dialogue paired review',
     '',
@@ -445,9 +492,14 @@ function markdownReport(report) {
       if (run.failed) lines.push(`Run error: ${run.error?.code || run.error?.name || 'error'} — ${run.error?.message || 'scenario run failed'}`, '');
       for (const action of run.actions) {
         lines.push(`#### Turn ${action.index}: ${action.type}`, '');
+        if (action.outcome === 'not_exercised') {
+          if (action.plannedInput) lines.push(`Planned dependent user input (not sent): ${action.plannedInput}`, '');
+          lines.push(`Outcome: not exercised.`, '', `Reviewer limitation: ${action.reviewerLimitation}`, '', `Mechanism: 0 model calls; native history ${action.nativeHistory.beforeCount} → ${action.nativeHistory.afterCount}.`, '');
+          continue;
+        }
         if (action.type === 'chat') lines.push(`User: ${action.input}`, '');
         else lines.push(`Trigger: ${action.type === 'proactive' ? 'manual proactive runNow' : `desktop ${action.input.level} invitation`}`, '');
-        const companion = action.outcome === 'model_skip' ? `[model chose not to send: ${action.skipReason}]` : action.reply || `[no delivered reply: ${action.error || 'unknown'}]`;
+        const companion = ['model_skip', 'policy_skip'].includes(action.outcome) ? `[${action.outcome}: ${action.skipReason}]` : action.reply || `[no delivered reply: ${action.error || 'unknown'}]`;
         lines.push(`Companion: ${companion}`, '', `Mechanism: ${action.modelCalls} model call(s) (${Object.entries(action.modelCallKinds).map(([kind, count]) => `${kind}=${count}`).join(', ') || 'none'}); native history ${action.nativeHistory.beforeCount} → ${action.nativeHistory.afterCount}; ${action.durationMs} ms.`, '');
         if (action.reminderState) lines.push(`Reminder state (${action.reminderState.expected}): ${action.reminderState.pass ? 'observed' : 'not observed'}; pending ${action.reminderState.before.length} → ${action.reminderState.after.length}.`, '');
       }
@@ -475,6 +527,7 @@ export async function runLive({ suite, plan, options, config }) {
     reviewStatus: 'pending-human-review',
     reviewPolicy: 'No regex or automated naturalness verdict is produced. Read the original turns and fill the pending review slots.',
     scenarios: [],
+    expectedRuns: plan.scenarios.length * plan.variants.length,
     budget: budget.snapshot(),
   };
   writePrivateJson(path.join(output, 'variant-key.json'), { labels: mapping });
@@ -503,7 +556,7 @@ export async function runLive({ suite, plan, options, config }) {
     report.runFailures = report.scenarios.flatMap(row => row.runs).filter(row => row.failed).length;
     marker.status = report.runFailures ? 'complete-with-run-errors' : 'complete'; marker.completedAt = report.completedAt;
     writePrivateJson(path.join(output, 'report.json'), report);
-    writePrivateText(path.join(output, 'transcript.md'), markdownReport(report));
+    if (!options.jsonOnly) writePrivateText(path.join(output, 'transcript.md'), markdownReport(report));
     writePrivateJson(path.join(output, 'attempt.json'), marker);
     return { output, report };
   } catch (error) {
@@ -511,16 +564,64 @@ export async function runLive({ suite, plan, options, config }) {
     report.failed = true; report.error = marker.error; report.completedAt = marker.completedAt; report.budget = budget.snapshot();
     writePrivateJson(path.join(output, 'attempt.json'), marker);
     writePrivateJson(path.join(output, 'report.json'), report);
-    writePrivateText(path.join(output, 'transcript.md'), markdownReport(report));
+    if (!options.jsonOnly) writePrivateText(path.join(output, 'transcript.md'), markdownReport(report));
     throw error;
   }
 }
 
-export const usage = `Session dialogue evaluation\n\nDry run (default; no config read and no network):\n  node scripts/evaluate-session-dialogue.mjs [--variant session|legacy|both] [--scenario id]\n\nLive run (paid, isolated, one attempt per label):\n  node scripts/evaluate-session-dialogue.mjs --live --label <unique-label> [--variant ...] [--scenario id] [--model name]\n\nBudgets:\n  --max-calls N --max-tokens N --max-request-bytes N --max-wire-bytes N`;
+// Delivery and storage checks are mechanical. Quality verdicts require a reader
+// to inspect the original turns and attach quotes to each review dimension.
+export function summarizeAcceptance(report) {
+  const dimensions = ['continuity', 'factualGrounding', 'naturalness'];
+  const runs = [];
+  for (const scenario of report.scenarios || []) {
+    for (const run of scenario.runs || []) {
+      const actions = run.actions || [];
+      const issues = [];
+      let incomplete = !actions.length || !Number.isSafeInteger(run.expectedActionCount) || actions.length !== run.expectedActionCount, reviewPending = false;
+      if (run.failed) issues.push(run.error?.message || 'run failed');
+      for (const action of actions) {
+        if (['not_exercised', 'model_skip', 'policy_skip'].includes(action.outcome)) { incomplete = true; continue; }
+        if (action.outcome !== 'delivered' || action.status !== 200 || !action.reply) issues.push(`turn ${action.index}: delivery failed`);
+        const stored = action.nativeHistory?.appended?.filter(row => row.speaker === 'assistant').at(-1);
+        if (!stored || stored.text !== action.reply) issues.push(`turn ${action.index}: native history does not preserve the reply`);
+        if (action.reminderState?.pass === false) issues.push(`turn ${action.index}: reminder ${action.reminderState.expected} was not observed`);
+      }
+      const review = run.review || {};
+      if (review.originalTurnsRead !== true) reviewPending = true;
+      for (const dimension of dimensions) {
+        const entry = review[dimension];
+        if (entry?.verdict === 'fail') issues.push(`${dimension}: review failed`);
+        else if (entry?.verdict !== 'pass') reviewPending = true;
+        const evidence = entry?.evidence;
+        if (!Array.isArray(evidence) || !evidence.length || evidence.some(item => {
+          const turn = actions.find(action => action.index === item?.turn && action.outcome === 'delivered');
+          return !turn || typeof item.quote !== 'string' || !item.quote.trim()
+            || ![turn.reply, typeof turn.input === 'string' ? turn.input : ''].some(text => text?.includes(item.quote))
+            || typeof item.reason !== 'string' || !item.reason.trim();
+        })) reviewPending = true;
+      }
+      const status = issues.length ? 'failed' : incomplete ? 'incomplete' : reviewPending ? 'pending-review' : 'accepted';
+      runs.push({ scenarioId: scenario.id, blindLabel: run.blindLabel, status, exercisedTurns: actions.filter(row => !['not_exercised', 'model_skip', 'policy_skip'].includes(row.outcome)).length, issues });
+    }
+  }
+  const status = report.failed || runs.some(row => row.status === 'failed') ? 'failed'
+    : !runs.length || !Number.isSafeInteger(report.expectedRuns) || runs.length !== report.expectedRuns || runs.some(row => row.status === 'incomplete') ? 'incomplete'
+      : runs.some(row => row.status === 'pending-review') ? 'pending-review' : 'accepted';
+  return { status, accepted: status === 'accepted', runs, networkCalls: 0, providerConfigRead: false };
+}
+
+export const usage = `Session dialogue evaluation\n\nDry run (default; no config read and no network):\n  node scripts/evaluate-session-dialogue.mjs [--variant session|legacy|both] [--scenario id]\n\nLive run (paid, isolated, one attempt per label):\n  node scripts/evaluate-session-dialogue.mjs --live --label <unique-label> [--variant ...] [--scenario id] [--model name]\n\nBudgets:\n  --max-calls N --max-tokens N --max-request-bytes N --max-wire-bytes N\n\nOutput and review:\n  --json-only  Skip Markdown transcript generation\n  --review-file report.json  Check reviewed acceptance without network or provider config`;
 
 export async function main(argv = process.argv.slice(2)) {
   const options = parseArgs(argv);
   if (options.help) { console.log(usage); return; }
+  if (options.reviewFile) {
+    const summary = summarizeAcceptance(JSON.parse(fs.readFileSync(path.resolve(options.reviewFile), 'utf8')));
+    console.log(JSON.stringify(summary, null, 2));
+    if (!summary.accepted) process.exitCode = 1;
+    return summary;
+  }
   const suite = loadSuite(), plan = buildPlan(suite, options);
   if (!options.live) {
     console.log(JSON.stringify({ mode: 'dry-run', networkCalls: 0, providerConfigRead: false, suiteVersion: plan.suiteVersion, scenarios: plan.scenarios.map(row => row.id), variants: plan.variants, planningEstimate: plan.planningEstimate, limits: plan.limits }, null, 2));
@@ -529,6 +630,7 @@ export async function main(argv = process.argv.slice(2)) {
   const config = providerConfig(options.model);
   const result = await runLive({ suite, plan, options, config });
   console.log(JSON.stringify({ status: result.report.runFailures ? 'complete-with-run-errors' : 'complete', output: result.output, scenarios: result.report.scenarios.length, runFailures: result.report.runFailures, budget: result.report.budget }));
+  if (result.report.runFailures) process.exitCode = 1;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

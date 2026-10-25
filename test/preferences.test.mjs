@@ -75,15 +75,15 @@ test('preferences default to natural, persist avatars, and reject invalid images
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'life-preferences-persist-'));
   const first = await start(t, { dataDir, keepData: true, replySleep: async () => {} });
   assert.deepEqual((await request(first.base, '/api/preferences')).body, { replyPace: 'natural', avatars: {}, historyWindowDays: 7, historyMaxTokens: 60000 });
-  assert.deepEqual((await request(first.base, '/api/preferences', json({ roleId: 'wenxi', avatar: png }))).body, { replyPace: 'natural', avatars: { wenxi: png }, historyWindowDays: 7, historyMaxTokens: 60000 });
-  const invalid = await request(first.base, '/api/preferences', json({ roleId: 'wenxi', avatar: 'data:image/svg+xml;base64,PHN2Zy8+' }));
+  assert.deepEqual((await request(first.base, '/api/preferences', json({ roleId: 'miyue', avatar: png }))).body, { replyPace: 'natural', avatars: { miyue: png }, historyWindowDays: 7, historyMaxTokens: 60000 });
+  const invalid = await request(first.base, '/api/preferences', json({ roleId: 'miyue', avatar: 'data:image/svg+xml;base64,PHN2Zy8+' }));
   assert.equal(invalid.status, 400);
   assert.equal((await request(first.base, '/api/preferences', json({ roleId: 'unknown', avatar: png }))).status, 400);
-  assert.equal((await request(first.base, '/api/preferences', json({ roleId: 'wenxi', avatar: `data:image/png;base64,${Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(400 * 1024)]).toString('base64')}` }))).status, 400);
-  assert.equal((await request(first.base, '/api/preferences', json({ roleId: 'wenxi', avatar: png.replace('image/png', 'image/jpeg') }))).status, 400);
-  assert.deepEqual((await request(first.base, '/api/preferences')).body, { replyPace: 'natural', avatars: { wenxi: png }, historyWindowDays: 7, historyMaxTokens: 60000 });
-  assert.deepEqual((await request(first.base, '/api/preferences', json({ replyPace: 'instant' }))).body, { replyPace: 'instant', avatars: { wenxi: png }, historyWindowDays: 7, historyMaxTokens: 60000 });
-  assert.deepEqual((await request(first.base, '/api/preferences', json({ roleId: 'wenxi', avatar: null }))).body, { replyPace: 'instant', avatars: {}, historyWindowDays: 7, historyMaxTokens: 60000 });
+  assert.equal((await request(first.base, '/api/preferences', json({ roleId: 'miyue', avatar: `data:image/png;base64,${Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(400 * 1024)]).toString('base64')}` }))).status, 400);
+  assert.equal((await request(first.base, '/api/preferences', json({ roleId: 'miyue', avatar: png.replace('image/png', 'image/jpeg') }))).status, 400);
+  assert.deepEqual((await request(first.base, '/api/preferences')).body, { replyPace: 'natural', avatars: { miyue: png }, historyWindowDays: 7, historyMaxTokens: 60000 });
+  assert.deepEqual((await request(first.base, '/api/preferences', json({ replyPace: 'instant' }))).body, { replyPace: 'instant', avatars: { miyue: png }, historyWindowDays: 7, historyMaxTokens: 60000 });
+  assert.deepEqual((await request(first.base, '/api/preferences', json({ roleId: 'miyue', avatar: null }))).body, { replyPace: 'instant', avatars: {}, historyWindowDays: 7, historyMaxTokens: 60000 });
   await first.app.close();
   const second = await createApp({ appDataDir, dataDir, initialFeeds: [], startProactive: false, startRecall: false, replySleep: async () => {} });
   const address = await second.listen(0);
@@ -104,30 +104,36 @@ test('natural pacing counts model time and instant pacing never sleeps', async t
       return Response.json({ choices: [{ message: { content: '回复' } }] });
     },
   });
-  assert.equal((await request(base, '/api/chat', json({ role: 'wenxi', text: '你好' }))).status, 200);
+  assert.equal((await request(base, '/api/chat', json({ role: 'miyue', text: '你好' }))).status, 200);
   assert.deepEqual(sleeps, [500]);
   assert.equal((await request(base, '/api/preferences', json({ replyPace: 'instant' }))).status, 200);
   now = 0;
-  assert.equal((await request(base, '/api/chat', json({ role: 'wenxi', text: '再见' }))).status, 200);
+  assert.equal((await request(base, '/api/chat', json({ role: 'miyue', text: '再见' }))).status, 200);
   assert.deepEqual(sleeps, [500]);
   await request(base, '/api/preferences', json({ replyPace: 'natural' }));
   now = 0;
-  assert.equal((await request(base, '/api/chat', json({ role: 'wenxi', text: '模型很慢' }))).status, 200);
+  assert.equal((await request(base, '/api/chat', json({ role: 'miyue', text: '模型很慢' }))).status, 200);
   assert.deepEqual(sleeps, [500]);
   now = 0;
-  assert.equal((await request(base, '/api/chat', json({ role: 'wenxi', text: '模型失败' }))).status, 502);
+  assert.equal((await request(base, '/api/chat', json({ role: 'miyue', text: '模型失败' }))).status, 502);
   assert.deepEqual(sleeps, [500]);
 });
 
-test('a paced reply remains busy and hidden until its turn commits', async t => {
+test('a paced reply remains busy and hidden until its turn commits', { timeout: 5000 }, async t => {
   let release; let sleeping;
   const sleepStarted = new Promise(resolve => { sleeping = resolve; });
-  const { base } = await start(t, { replyRandom: () => 0, replySleep: () => new Promise(resolve => { release = resolve; sleeping(); }) });
-  const pending = request(base, '/api/chat', json({ role: 'zhixia', text: '等一下' }));
+  const { base } = await start(t, { replyRandom: () => 0, replySleep: (_ms, signal) => new Promise((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal?.addEventListener('abort', abort, { once: true });
+    release = () => { signal?.removeEventListener('abort', abort); resolve(); };
+    sleeping();
+  }) });
+  const pending = request(base, '/api/chat', json({ role: 'miyue', text: '等一下' }));
   await sleepStarted;
-  assert.equal((await request(base, '/api/chat', json({ role: 'zhixia', text: '第二句' }))).status, 409);
-  assert.deepEqual((await request(base, '/api/conversations/zhixia')).body.messages, []);
-  release();
+  try {
+    assert.equal((await request(base, '/api/chat', json({ role: 'miyue', text: '第二句' }))).status, 409);
+    assert.deepEqual((await request(base, '/api/conversations/miyue')).body.messages, []);
+  } finally { release(); }
   assert.equal((await pending).status, 200);
-  assert.equal((await request(base, '/api/conversations/zhixia')).body.messages.length, 2);
+  assert.equal((await request(base, '/api/conversations/miyue')).body.messages.length, 2);
 });

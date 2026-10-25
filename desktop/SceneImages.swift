@@ -126,7 +126,7 @@ final class SceneImageStudioController: NSObject, NSWindowDelegate {
     init(baseURL:URL,defaults:UserDefaults,cacheDirectory: URL? = nil,
          imageLoader: @escaping (URL) async throws -> NSImage = { url in
              var request = URLRequest(url: url); request.timeoutInterval = 15
-             let (data, response) = try await URLSession.shared.data(for: request)
+             let (data, response) = try await CompanionServer.session.data(for: request)
              try SceneImageStudioController.check(data, response)
              guard data.count <= 12 * 1024 * 1024, let image = SceneImageStudioController.decode(data) else {
                  throw SceneImageError(message: "图片无法读取，请选择 PNG、JPEG 或 WebP 图片。")
@@ -154,7 +154,7 @@ final class SceneImageStudioController: NSObject, NSWindowDelegate {
         Task { @MainActor in
             defer{refreshing=false}
             do { var request=URLRequest(url:baseURL.appendingPathComponent("api/scene-images"));request.timeoutInterval=8;request.cachePolicy = .reloadIgnoringLocalCacheData
-                let(data,response)=try await URLSession.shared.data(for:request);try Self.check(data,response)
+                let(data,response)=try await CompanionServer.session.data(for:request);try Self.check(data,response)
                 await accept(try JSONDecoder().decode(SceneImageSnapshot.self,from:data))
             }catch{ if window?.isVisible==true { message="暂时无法同步；已保存的图片仍可使用。";rebuild() } }
         }
@@ -195,7 +195,7 @@ final class SceneImageStudioController: NSObject, NSWindowDelegate {
         Task { @MainActor in
             defer{busy=false;rebuild()}
             do {var request=URLRequest(url:baseURL.appendingPathComponent("api/scene-images"));request.httpMethod="POST";request.timeoutInterval=45;request.setValue("application/json",forHTTPHeaderField:"Content-Type");request.httpBody=try JSONSerialization.data(withJSONObject:patch)
-                let(data,response)=try await URLSession.shared.data(for:request);try Self.check(data,response)
+                let(data,response)=try await CompanionServer.session.data(for:request);try Self.check(data,response)
                 let value=try JSONDecoder().decode(SceneImageSnapshot.self,from:data)
                 await accept(value);pendingData=nil;pendingMIME=nil;pendingImage=nil;dirty=false;fit=value.scenes.first{$0.id==selectedID}?.fit ?? "contain";message=value.enabled ? "已保存，桌面正在显示你指定的图片。":"已保存。选择有图片的场景即可应用。"
             }catch{message="保存失败：\(error.localizedDescription)；选择的图片已保留，可重试。"}

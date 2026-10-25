@@ -60,7 +60,7 @@ test('real timer collects and delivers without any chat or run request, inbox th
   assert.equal((await request('/api/conversations/wenxi')).body.messages[0].kind, 'proactive');
   assert.equal((await request('/api/inbox')).body.unreadByRole.wenxi, 1, 'GET does not mark read');
   assert.equal((await request('/api/chat', { role: 'wenxi', text: '这个时间感还挺有意思' })).status, 200);
-  assert.match(JSON.stringify(calls[1]), /城市里的时间/); assert.equal(app.proactiveRepo.unansweredCount('wenxi',localDayStart(at)), 0);
+  assert.match(JSON.stringify(calls[1]), /城市里的时间/); assert.equal(app.proactiveRepo.unansweredCount('wenxi'), 1, 'the ordinary answer starts the next unanswered sequence');
 });
 
 test('missing model still collects, persists the plan across restart, and stores no fake opener', async t => {

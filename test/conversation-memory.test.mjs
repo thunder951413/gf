@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { collectConversationMemory, retrieveConversationMemory, prepareConversationMemoryCandidates, focusMemoryAnswerMessages } from '../lib/conversation-memory.mjs';
+import { collectConversationMemory, retrieveConversationMemory, prepareConversationMemoryCandidates, focusMemoryAnswerMessages, promptBlockStats } from '../lib/conversation-memory.mjs';
 
 function fixture() {
   const db = new DatabaseSync(':memory:');
@@ -56,6 +56,23 @@ test('factual recall keeps history and boundaries while omitting unrelated creat
   for(const content of ['她之前说不要亲昵','日期与更正','最近原话','当前明确保持朋友距离'])assert.ok(JSON.stringify(result).includes(content));
   assert.equal(result.at(-1).content,messages.at(-1).content);
   assert.equal(messages[0].content,'可以创作新的虚构经历。');
+});
+
+test('prompt block stats classify system history, scope, and current background before generic persona', () => {
+  const messages = [
+    { role: 'system', content: '固定人物设定。' },
+    { role: 'system', content: '【历史窗口范围】最近七天，不是当前发言。' },
+    { role: 'system', content: '【历史原文记录】\n[{"speaker":"assistant","text":"先前原话"}]' },
+    { role: 'system', content: '【本轮背景证据】\n当前关系与状态。' },
+    { role: 'user', content: '这次实际发言。' },
+  ];
+  assert.deepEqual(promptBlockStats(messages), [
+    { index: 0, role: 'system', kind: 'persona', chars: messages[0].content.length },
+    { index: 1, role: 'system', kind: 'history-scope', chars: messages[1].content.length },
+    { index: 2, role: 'system', kind: 'history', chars: messages[2].content.length },
+    { index: 3, role: 'system', kind: 'state', chars: messages[3].content.length },
+    { index: 4, role: 'user', kind: 'current', chars: messages[4].content.length },
+  ]);
 });
 
 test('semantic catalogue includes related newer state even when only the older wording matches the question',t=>{

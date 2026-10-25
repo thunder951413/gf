@@ -107,6 +107,15 @@ test('projection budgets the serialized evidence and reply wrapper, preserves co
   assert.equal(messages.at(-1).content, current);
 });
 
+test('recall and stored history share chronological order when a delayed input commits after another record',async t=>{
+  const f=await fixture(t);
+  const rows=[...exchange('first','2026-09-19T09:00:00Z'),...exchange('second','2026-09-19T10:00:00Z')];
+  f.seed([rows[2],rows[0],rows[3],rows[1]]);
+  const projection=f.app.recallRepo.dialogueWindow('miyue',{now:now()});
+  assert.deepEqual(projection.rows.map(m=>m.id),rows.map(m=>m.id));
+  assert.deepEqual(f.app.store.getMessages('miyue').map(m=>m.id),rows.map(m=>m.id));
+});
+
 test('oversized latest exchanges never bypass the budget and empty or stale windows are described truthfully', () => {
   const rows = [...exchange('earlier', now().toISOString()), ...exchange('large', now().toISOString(), '字'.repeat(5000))];
   const projection = prepareDialogueHistory(rows, { now: now(), maxTokens: 1000 });

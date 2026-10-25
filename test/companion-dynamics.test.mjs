@@ -41,10 +41,16 @@ test('settings validate strictly and use optimistic revisions', () => {
   assert.throws(() => repo.saveSettings({ city: '' }, 1), err => err.status === 400); assert.throws(() => repo.saveSettings({ city: '杭州' }, 0), err => err.status === 409); store.close();
 });
 
-test('resolved threads retain their stable id, progress, cause metadata, and context record', () => {
+test('resolved threads retain their stable id, progress and cause metadata but leave the prompt context', () => {
   const store = new TestStore(), repo = new CompanionDynamics(store, { clock: () => new Date('2026-09-20T00:00:00Z') });
   const rows = [store.add('a-thread', 'assistant', '那本书已经聊完第三章，我想把这个问题先放下。')];
   const proposal = { dynamics: { threads: [{ id: 'book-thread', subject: '那本书', progress: '已经聊完第三章', openQuestion: '', status: 'resolved', evidence: '聊完第三章' }], feelings: [{ id: 'settled', label: '释然', intensity: 40, description: '这件事暂时放下了', cause: '聊完第三章', evidence: '先放下' }] } };
   assert.equal(repo.commit('miyue', proposal, { rows, expectedRevision: 0 }).revision, 1); const saved = repo.get();
-  assert.equal(saved.threads[0].id, 'book-thread'); assert.equal(saved.threads[0].status, 'resolved'); assert.equal(saved.threads[0].progress, '已经聊完第三章'); assert.equal(saved.feelings[0].cause, '聊完第三章'); assert.match(repo.context(), /book-thread/); assert.match(repo.context(), /resolved/); store.close();
+  assert.equal(saved.threads[0].id, 'book-thread'); assert.equal(saved.threads[0].status, 'resolved'); assert.equal(saved.threads[0].progress, '已经聊完第三章'); assert.equal(saved.feelings[0].cause, '聊完第三章'); assert.doesNotMatch(repo.context(), /book-thread/, 'a resolved thread is history, not a cue'); assert.match(repo.context(), /释然/); store.close();
+});
+
+
+test('a user first-person feeling is not persisted as the character own feeling',()=>{
+  const store=new TestStore(),repo=new CompanionDynamics(store);const rows=[store.add('u-own','user','我有点想和你多待一会儿。'),store.add('a-own','assistant','我听到了。')];
+  const receipt=repo.commit('miyue',change('想和你多待一会儿'),{rows,expectedRevision:0});assert.equal(receipt.accepted.length,0);assert.equal(receipt.rejected[0].reason,'invalid_evidence');assert.equal(repo.get().feelings.length,0);store.close();
 });

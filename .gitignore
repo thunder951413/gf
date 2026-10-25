@@ -31,6 +31,12 @@ __pycache__/
 /table_cheek_rest_expressions/
 /winter_*/
 
+# Generated media collections and scratch images stay local.
+/pic/
+/output/
+/1376-eyes-open.png
+/1376-eyes-lively.png
+
 # Locally generated experiment transcripts and reports.
 /experiments/**/*results*.json
 /experiments/**/*result-*.json
@@ -38,3 +44,6 @@ __pycache__/
 /experiments/**/scores.json
 /experiments/**/summary*.json
 /experiments/**/production-review.md
+
+# Data export archives (contain the database and keys).
+youjian-data-*.tar.gz

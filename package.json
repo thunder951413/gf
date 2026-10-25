@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node start.mjs",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test --test-timeout=15000 test/*.test.mjs",
     "service:install": "node scripts/service.mjs install",
     "service:status": "node scripts/service.mjs status",
     "service:remove": "node scripts/service.mjs remove",
@@ -18,6 +18,8 @@
     "desktop:build": "node desktop/build.mjs",
     "desktop:start": "node desktop/build.mjs --open",
     "desktop:test": "node desktop/test.mjs",
-    "evaluate:session": "node scripts/evaluate-session-dialogue.mjs"
+    "evaluate:session": "node scripts/evaluate-session-dialogue.mjs",
+    "clean:runtime": "node scripts/clean-runtime.mjs",
+    "export:data": "node scripts/export-data.mjs"
   }
 }

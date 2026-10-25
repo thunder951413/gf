@@ -1,3 +1,4 @@
+import { testRoles } from './support/role-fixtures.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -11,7 +12,7 @@ const at = new Date('2026-09-07T12:00:00');
 const article = {title:'城市图书馆开始延长周末开放时间',url:'https://example.org/library',summary:'城市图书馆宣布从本周起延长周末开放时间，周六和周日由下午五点延长到晚上八点。首批安排覆盖三家分馆，读者仍需提前预约，公告说明借阅规则暂时保持原样。',publishedAt:at.toISOString()};
 async function setup(t, generate) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'news-brief-')), calls=[];
-  const app=await createApp({dataDir:dir,initialFeeds:[],startProactive:false,startLifeThreads:false,startPursuits:false,startRecall:false,clock:()=>at,random:()=>.5,replySleep:async()=>{},env:{LIFE_MODEL_BASE_URL:'https://fixture.test/v1',LIFE_MODEL_NAME:'fixture'},fetchImpl:async(u,o)=>{
+  const app=await createApp({roles:testRoles(),dataDir:dir,initialFeeds:[],startProactive:false,startLifeThreads:false,startPursuits:false,startRecall:false,clock:()=>at,random:()=>.5,replySleep:async()=>{},env:{LIFE_MODEL_BASE_URL:'https://fixture.test/v1',LIFE_MODEL_NAME:'fixture'},fetchImpl:async(u,o)=>{
     const request=JSON.parse(o.body);calls.push(request);
     const id=request.messages.map(m=>m.content).join('\n').match(/ID:([^\n]+)/)?.[1];
     const content=generate?await generate(request,id):request.max_tokens===1800?JSON.stringify({skip:false,contentId:id,reason:'周末开放安排有具体变化',message:'有条新闻想分享。',brief:{event:'城市图书馆宣布从本周开始延长周末开放时间，首批包括三家分馆。',details:['周六和周日从下午五点延长到晚上八点，读者仍需提前预约。'],comment:'下班后想多待一会儿的人，应该会喜欢这个安排。'}}):'仍需提前预约，借阅规则暂时保持原样。';

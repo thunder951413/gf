@@ -5,6 +5,7 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const state = { roles: [], role: 'miyue', view: 'chat', settings: {}, provider: {}, memories: [], episodes: { roleId: null, items: [], preferences: null }, feeds: [], items: [], contentInbox: { status: 'unread', query: '', page: 1, pageSize: 20, total: 0, pages: 1, counts: { unread: 0, read: 0, archived: 0, expired: 0, all: 0 }, selectedId: null, selectedItem: null, request: 0 }, reminders: [], conversations: {}, pending: new Map(), lifeChoice: null, content: null, memoryEdit: null, voice: null, audioJob: null, audioEpoch: 0, recorder: null, recordStream: null, character: {}, characterRenderKey: '', recall: {}, recallRequest: 0, usage: null, usageError: '', life: null, lifeError: '', proactive: { settings: {}, runtime: {}, recent: [], inbox: { items: [], unreadByRole: {} }, formDirty: false, inboxReady: false, notified: new Set(), readIds: new Set(), typingTimer: null }, zhihu: { config: {}, runtime: {}, recent: [], formDirty: false }, companionTuning: { revision: null, saved: null, draft: null, fields: [], presets: [], preview: null, dirty: false, loading: null, saving: false, previewTimer: null, previewRequest: 0, conflict: false }, chatScroll: { following: true, unseen: false, epoch: 0, tail: '' } };
 let toastTimer;
+const chatHistory = { role: 'miyue', items: [], selected: new Set(), nextBefore: null, loading: false, deleting: false, request: 0, mutation: 0, deletedIds: new Set() };
 function node(tag, className, text) { const n = document.createElement(tag); if (className) n.className = className; if (text !== undefined) n.textContent = text; return n; }
 function button(text, className, onClick) { const n = node('button', className, text); n.type = 'button'; n.addEventListener('click', onClick); return n; }
 function toast(text, duration = 5500, onClick) { const n = $('#toast'); n.textContent = text; n.hidden = false; n.onclick = onClick || null; n.onkeydown = onClick ? event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClick(); } } : null; n.tabIndex = onClick ? 0 : -1; n.classList.toggle('clickable', Boolean(onClick)); clearTimeout(toastTimer); toastTimer = setTimeout(() => { n.hidden = true; n.onclick = null; n.onkeydown = null; }, duration); }
@@ -12,6 +13,7 @@ async function api(path, options = {}) {
   const { method = 'GET', body, raw = false, headers = {}, timeout = 95000 } = options;
   const response = await fetch(path, { method, headers: { ...(method !== 'GET' && !raw ? { 'Content-Type': 'application/json' } : {}), ...headers }, body: body === undefined ? (method === 'GET' ? undefined : '{}') : raw ? body : JSON.stringify(body), signal: AbortSignal.timeout(timeout) });
   let result; try { result = await response.json(); } catch { throw Object.assign(new Error('本地服务返回了无法读取的响应，请稍后重试。'),{code:'LOCAL_RESPONSE_INVALID',status:response.status}); }
+  if (response.status === 401 && result?.code === 'AUTH_REQUIRED') { location.replace(`/login?next=${encodeURIComponent(location.pathname + location.search)}`); throw Object.assign(new Error('需要先登录'), { code: 'AUTH_REQUIRED', status: 401 }); }
   if (!response.ok) { const error = new Error(result.error || '操作未完成，请稍后重试。'); error.code = result.code; error.status = response.status; throw error; }
   return result;
 }
@@ -52,6 +54,26 @@ async function loadPreferences() {
     if (historyMaxTokens !== undefined) $('#history-max-tokens').value = historyMaxTokens;
   }
   renderAvatarEditors(); refreshAvatars();
+  await loadDailyMemory();
+}
+let dailyMemoryDirty=false;
+let dailyMemoryEnabled=false;
+async function loadDailyMemory() {
+  const value=await api('/api/daily-memory?brief=1',{timeout:15000});
+  dailyMemoryEnabled=value.settings.enabled;
+  if(!dailyMemoryDirty){$('#daily-memory-enabled').checked=value.settings.enabled;$('#daily-memory-time').value=value.settings.time;}
+  $('#history-window-days').readOnly=value.settings.enabled;
+  $('#daily-memory-status').textContent=`${value.settings.enabled?'已开启，每天 '+value.settings.time+'（北京时间）由配置的 AI 模型整理，02:00后交互前自动补齐':'按日整理已关闭'}。已整理 ${value.sourceMessages} 条原话，${value.days.length} 天；待整理 ${value.pendingMessages} 条。${value.lastError||''}`;
+}
+async function saveDailyMemory() {
+  await api('/api/daily-memory/settings',{method:'POST',body:{enabled:$('#daily-memory-enabled').checked,time:$('#daily-memory-time').value}});
+  dailyMemoryDirty=false;await loadPreferences();
+}
+async function runDailyMemory() {
+  $('#daily-memory-status').textContent='配置的 AI 模型正在整理较早对话并检查核心内容…';
+  const value=await api('/api/daily-memory/compress',{method:'POST',body:{role:'miyue'},timeout:130000});await loadDailyMemory();
+  if(value.status==='failed')throw new Error('压缩未通过检查或模型暂不可用，原文保留，稍后重试。');
+  toast(value.status==='partial'?`已整理 ${value.sourceCount} 条，后台会继续处理余下内容。`:value.status==='updated'?`已整理 ${value.sourceCount} 条原话，保留 ${value.items} 项核心记录。`:'当前正在对话、未开启整理或模型尚未配置，请稍后重试。');
 }
 async function saveHistoryWindow() {
   if (historyWindowSaving) return;
@@ -73,7 +95,7 @@ async function saveHistoryWindow() {
     daysInput.value = appearance.historyWindowDays;
     tokensInput.value = appearance.historyMaxTokens;
     historyWindowDirty = false;
-    status.textContent = `已保存：林晓薇从下一条日常聊天起使用最近 ${appearance.historyWindowDays} 天，最多 ${appearance.historyMaxTokens.toLocaleString()} token 的历史窗口。`;
+    status.textContent = `已保存：林晓薇从下一条日常聊天起使用${dailyMemoryEnabled?'当日00:00起的原文＋历史核心记录':`最近 ${appearance.historyWindowDays} 天的原文`}，原文历史预算最多 ${appearance.historyMaxTokens.toLocaleString()} token。`;
   } catch (error) { status.textContent = error.message || '保存失败，请稍后重试。'; }
   finally { historyWindowSaving = false; button.disabled = false; daysInput.disabled = false; tokensInput.disabled = false; }
 }
@@ -288,6 +310,7 @@ function renderNavigation() {
   $('#setup-shortcut').hidden = Boolean(state.provider.configured) || state.view === 'settings';
   document.documentElement.style.setProperty('--accent', role?.color || '#a56675');
   $('#open-character').hidden = state.view !== 'chat';
+  $('#open-chat-history').hidden = state.view !== 'chat' || state.role !== 'miyue';
   renderAside();
 }
 async function selectRole(id) { if (!roleById(id)) return; state.role = id; state.chatScroll.following = true; state.chatScroll.unseen = false; state.chatScroll.tail = ''; state.chatScroll.epoch++; updateChatScrollButton(); state.lifeChoice = null; state.content = null; renderContext(); await showView('chat'); }
@@ -344,18 +367,104 @@ async function saveZhihu(event) { event.preventDefault(); const body = { enabled
 async function testZhihuQuota() { const button = $('#zhihu-test'); button.disabled = true; $('#zhihu-result').textContent = '正在查询官方额度…'; try { const result = await api('/api/zhihu/test', { method: 'POST', timeout: 30000 }); state.zhihu.runtime = { ...state.zhihu.runtime, quota: result.quota || state.zhihu.runtime.quota, quotaCheckedAt: new Date().toISOString() }; renderZhihu(false); } finally { button.disabled = false; } }
 async function refreshZhihu() { const button = $('#zhihu-refresh'); button.disabled = true; button.textContent = '正在研究…'; try { const result = await api('/api/zhihu/refresh', { method: 'POST', body: {}, timeout: 450000 }); state.zhihu.config = result.config || state.zhihu.config; state.zhihu.runtime = { ...state.zhihu.runtime, ...(result.runtime || {}) }; state.zhihu.recent = result.recent || state.zhihu.recent; renderZhihu(false); await loadContent(); toast(result.added ? `已加入 ${result.added} 份知乎资料。` : result.reason || zhihuStatusText()); } finally { button.disabled = false; button.textContent = '立即研究'; } }
 
+// Only the newest part of a long conversation is fetched and rendered; the
+// window grows when the reader asks for earlier messages.
+const CHAT_PAGE = 120, CHAT_PAGE_STEP = 200;
+state.chatWindow = {}; state.chatHasMore = {};
 async function loadChat(silent = false) {
   const role = state.role;
-  const { messages,pending } = await api(`/api/conversations/${role}`);
+  const mutation = chatHistory.mutation;
+  const limit = state.chatWindow[role] || CHAT_PAGE;
+  const { messages,pending,hasMore } = await api(`/api/conversations/${role}?limit=${limit}`);
+  if (mutation !== chatHistory.mutation || state.role !== role) return;
+  const hadMore = state.chatHasMore[role]; state.chatHasMore[role] = Boolean(hasMore);
   const oldPending=JSON.stringify(state.pending.get(role));
   if(pending){if(pending.phase!=='idle'||pending.remainingChunks)state.pending.set(role,pending);else state.pending.delete(role);}
-  const previous = state.conversations[role] || [];
-  const changed = oldPending!==JSON.stringify(state.pending.get(role)) || previous.length !== messages.length || previous.at(-1)?.id !== messages.at(-1)?.id;
-  state.conversations[role] = messages;
+  const visibleMessages = messages.filter(message => !chatHistory.deletedIds.has(String(message.id))), previous = state.conversations[role] || [];
+  const changed = hadMore !== state.chatHasMore[role] || oldPending!==JSON.stringify(state.pending.get(role)) || previous.length !== visibleMessages.length || previous.at(-1)?.id !== visibleMessages.at(-1)?.id || previous.at(-1)?.text !== visibleMessages.at(-1)?.text;
+  state.conversations[role] = visibleMessages;
   if (state.role === role && state.view === 'chat' && (!silent || changed)) renderChat(silent);
 }
+async function loadEarlierChat() {
+  const role = state.role, scroll = $('#chat-scroll'), fromBottom = scroll.scrollHeight - scroll.scrollTop;
+  state.chatWindow[role] = (state.chatWindow[role] || CHAT_PAGE) + CHAT_PAGE_STEP;
+  state.chatScroll.following = false;
+  await loadChat(true);
+  if (state.role !== role) return;
+  renderChat(true);
+  // Keep the message the reader was looking at in place.
+  requestAnimationFrame(() => { scroll.scrollTop = scroll.scrollHeight - fromBottom; });
+}
+function renderChatHistory() {
+  const box = $('#chat-history-items'), selectedCount = chatHistory.selected.size;
+  box.replaceChildren();
+  if (!chatHistory.items.length && !chatHistory.loading) box.append(empty('还没有历史对话。', '发送的消息会按时间保存在这里。'));
+  for (const message of chatHistory.items) {
+    const id = String(message.id), label = node('label', `chat-history-item ${chatHistory.selected.has(id) ? 'selected' : ''}`), checkbox = node('input');
+    checkbox.type = 'checkbox'; checkbox.checked = chatHistory.selected.has(id); checkbox.disabled = chatHistory.loading || chatHistory.deleting || (!checkbox.checked && selectedCount >= 100); checkbox.setAttribute('aria-label', `选择${message.speaker === 'user' ? '你的' : '林晓薇的'}这条消息`);
+    checkbox.addEventListener('change', () => { if (checkbox.checked) chatHistory.selected.add(id); else chatHistory.selected.delete(id); renderChatHistory(); });
+    const content = node('span', 'chat-history-content'), meta = node('span', 'chat-history-meta');
+    meta.append(node('strong', '', message.speaker === 'user' ? '你' : '林晓薇'));
+    if (message.kind) meta.append(node('span', 'badge', message.kind));
+    const time = node('time', '', message.createdAt || '时间未提供'); if (message.createdAt) time.dateTime = message.createdAt; meta.append(time);
+    content.append(meta, node('span', 'chat-history-text', message.text || ''));
+    label.append(checkbox, content); box.append(label);
+  }
+  if (chatHistory.loading) box.append(node('p', 'chat-history-loading', '正在读取历史…'));
+  $('#chat-history-selection').textContent = selectedCount ? `已选择 ${selectedCount} 条（每次最多 100 条）` : '尚未选择';
+  $('#delete-chat-history').textContent = `删除所选（${selectedCount}）`;
+  $('#delete-chat-history').disabled = !selectedCount || chatHistory.loading || chatHistory.deleting;
+  const selectAll = $('#select-chat-history-page'), allSelected = Boolean(chatHistory.items.length) && chatHistory.items.every(item => chatHistory.selected.has(String(item.id)));
+  selectAll.checked = allSelected; selectAll.indeterminate = !allSelected && chatHistory.items.some(item => chatHistory.selected.has(String(item.id))); selectAll.disabled = !chatHistory.items.length || chatHistory.loading || chatHistory.deleting;
+  const older = $('#load-older-chat-history'); older.hidden = chatHistory.nextBefore === null && Boolean(chatHistory.items.length); older.disabled = chatHistory.loading || chatHistory.deleting; older.textContent = chatHistory.loading ? '正在读取…' : '加载更早记录';
+}
+async function loadChatHistory({ reset = false } = {}) {
+  if (chatHistory.loading) return;
+  if (reset) { chatHistory.items = []; chatHistory.selected.clear(); chatHistory.nextBefore = null; }
+  chatHistory.loading = true; const request = ++chatHistory.request, before = reset ? null : chatHistory.nextBefore; renderChatHistory();
+  try {
+    const query = new URLSearchParams({ role: chatHistory.role, limit: '50' }); if (before !== null) query.set('before', String(before));
+    const result = await api(`/api/chat/history?${query}`, { timeout: 20000 });
+    if (request !== chatHistory.request) return;
+    const known = new Set(chatHistory.items.map(item => String(item.id)));
+    for (const item of result.messages || []) if (!chatHistory.deletedIds.has(String(item.id)) && !known.has(String(item.id))) { chatHistory.items.push(item); known.add(String(item.id)); }
+    chatHistory.nextBefore = result.nextBefore ?? null; $('#chat-history-status').textContent = chatHistory.nextBefore === null ? '已显示全部历史记录。' : `已加载 ${chatHistory.items.length} 条，可继续查看更早记录。`;
+  } finally { if (request === chatHistory.request) { chatHistory.loading = false; renderChatHistory(); } }
+}
+async function openChatHistory() {
+  const dialog = $('#chat-history-dialog'); if (!dialog.open) dialog.showModal();
+  if (chatHistory.deleting) { renderChatHistory(); return; }
+  $('#chat-history-status').textContent = ''; await loadChatHistory({ reset: true });
+}
+async function deleteSelectedChatHistory() {
+  if (chatHistory.deleting || !chatHistory.selected.size) return;
+  const ids = [...chatHistory.selected], count = ids.length;
+  if (count > 100) { $('#chat-history-status').textContent = '每次最多删除 100 条记录，请减少选择后再试。'; return; }
+  if (!window.confirm(`将彻底删除所选 ${count} 条历史对话。此操作不可恢复，并会清理这些记录直接衍生的回忆与引用；手动独立记忆会保留。\n\n确定继续吗？`)) return;
+  chatHistory.deleting = true; renderChatHistory(); $('#chat-history-status').textContent = `正在删除 ${count} 条记录…`;
+  try {
+    const result = await api('/api/chat/history/delete', { method: 'POST', body: { role: chatHistory.role, ids }, timeout: 30000 });
+    const deleted = new Set((result.deletedIds || []).map(String));
+    for (const id of deleted) { chatHistory.deletedIds.add(id); chatHistory.selected.delete(id); }
+    chatHistory.items = chatHistory.items.filter(item => !deleted.has(String(item.id)));
+    chatHistory.mutation += 1; chatHistory.request += 1;
+    const current = state.conversations[chatHistory.role] || []; state.conversations[chatHistory.role] = current.filter(item => !deleted.has(String(item.id)));
+    if (state.role === chatHistory.role && state.view === 'chat') renderChat(true);
+    $('#chat-history-status').textContent = `已彻底删除 ${result.count ?? deleted.size} 条记录。`;
+    await Promise.allSettled([loadChat(true), loadCharacter(chatHistory.role), loadLife(), loadMemories(), loadEpisodes(chatHistory.role)]);
+    if (state.view === 'memory') renderMemories();
+    if (state.view === 'companionship') await companionshipPage.load();
+    await loadChatHistory({ reset: true });
+    toast(`已彻底删除 ${result.count ?? deleted.size} 条历史对话。`);
+  } catch (error) {
+    $('#chat-history-status').textContent = error.code === 'HISTORY_BUSY' ? '当前回复还在处理，请等这轮完成后再删除；已选记录仍然保留。' : `删除没有完成：${error.message || '请稍后重试。'}`;
+    throw error;
+  } finally { chatHistory.deleting = false; renderChatHistory(); }
+}
 async function loadCharacter(id = state.role) {
+  const mutation = chatHistory.mutation;
   const result = await api(`/api/characters/${id}`, { timeout: 20000 });
+  if (mutation !== chatHistory.mutation) return result;
   state.character[id] = result;
   if (result.recall) state.recall[id] = result.recall;
   if (id === state.role) { renderCharacterProfile(); renderAside(); if (state.view === 'memory' && $('#recall-role').value === id) renderRecall(); }
@@ -392,13 +501,13 @@ function renderCharacterProfile() {
     section.append(button('查看和调整状态 ↗','text-button',action(()=>showView('companionship'))));
     details.append(section);
   }
-  if (state.role === 'miyue') details.append(button('相处与约定','text-button',action(()=>showView('companionship'))),button('调整相处偏好', 'text-button', action(async () => { await showView('settings'); $('#companion-tuning').scrollIntoView({ block: 'start', behavior: 'smooth' }); })));
+  if (state.role === 'miyue') details.append(button('查看历史对话','text-button',action(openChatHistory)),button('相处与约定','text-button',action(()=>showView('companionship'))),button('调整相处偏好', 'text-button', action(async () => { await showView('settings'); $('#companion-tuning').scrollIntoView({ block: 'start', behavior: 'smooth' }); })));
   details.append(fields, node('p', 'profile-simulation-note', '这里展示的是虚构角色的叙事状态，用于互动体验，并非真实人的情绪或健康信息。')); details.open = Boolean(wasOpen); if (hasCurrentState) box.append(brief); box.append(details);
   const life = state.role === 'miyue' ? data.life : null;
   const joint=life?.companionship?.agenda?.plans?.findLast(plan=>plan.owner==='joint'&&['active','paused','awaiting_confirmation'].includes(plan.status));
   if(joint){const activity=node('section','profile-life companionship-current');activity.append(node('small','',joint.status==='paused'?'暂时暂停':joint.status==='awaiting_confirmation'?'等你确认':'正在一起做'),node('strong','',joint.title));if(joint.kind==='quiet'&&joint.status==='active'&&joint.endAt)activity.append(node('p','fine-print',`还剩约 ${Math.max(0,Math.ceil((Date.parse(joint.endAt)-Date.now())/60000))} 分钟 · 不需要一直回复`));if(joint.progress)activity.append(node('p','fine-print',joint.progress));activity.append(button('调整或继续这件事 ↗','text-button',action(()=>showView('companionship'))));box.append(activity);}
 
-  if (life?.active) { const event = life.active, phase = event.phase || {}; const card = node('section', 'profile-life'); card.append(node('small', '', '生活足迹'), node('strong', '', event.title || '')); const copy = [event.location, phase.activity, phase.feeling, phase.wish].filter(Boolean).join(' · '); if (copy) card.append(node('p', '', copy)); card.append(button('查看生活足迹 ↗', 'text-button', action(() => showView('life')))); box.append(card); }
+  if (life?.active) { const event = life.active, phase = event.phase || {}, travel = life.travel; const card = node('section', 'profile-life'); card.append(node('small', '', '生活足迹'), node('strong', '', event.title || '')); const travelCopy = travel ? [travel.location, travel.status === 'staying' ? `这几天住在${travel.currentCity}` : travel.status === 'returning' ? `正在返回${travel.homeCity || '苏州'}` : travel.status === 'returned' ? `已经回到${travel.homeCity || '苏州'}` : travel.status === 'planned' ? `准备前往${travel.stops?.[0]?.city || '下一站'}` : `正在前往${travel.nextCity || '下一站'}`] : null; const copy = (travelCopy || [event.location, phase.activity, phase.feeling, phase.wish]).filter(Boolean).join(' · '); if (copy) card.append(node('p', '', copy)); card.append(button('查看生活足迹 ↗', 'text-button', action(() => showView('life')))); box.append(card); }
   handleChatLayoutChange();
 }
 function chatIsNearBottom(scroll = $('#chat-scroll')) { return scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight < 36; }
@@ -440,18 +549,24 @@ function renderChat(preserveScroll = false, forceFollow = false) {
     const starters = node('div', 'starters'); for (const text of role.starters || []) starters.append(button(text, 'starter', () => { $('#message-input').value = text; $('#message-input').focus(); }));
     welcome.append(starters); box.append(welcome);
   }
-  for (const message of messages) box.append(renderMessage(message));
+  if (state.chatHasMore[state.role]) {
+    const more = button('查看更早的消息', 'text-button chat-load-earlier', action(loadEarlierChat));
+    const row = node('div', 'chat-load-earlier-row'); row.append(more); box.append(row);
+  }
+  const fragment = document.createDocumentFragment();
+  for (const message of messages) fragment.append(renderMessage(message));
+  box.append(fragment);
   const pending = state.pending.get(state.role);
   if (pending) {
-    for (const item of pending.items || []) box.append(renderMessage({ role:state.role, speaker:'user',text:item.text,createdAt:item.createdAt,transient:true }));
+    for (const item of pending.items || []) box.append(renderMessage({ role:state.role, speaker:'user',text:item.text,createdAt:item.createdAt,transient:true,local:Boolean(item.local) }));
     const line = node('div', 'pending-line');
-    line.append(node('i','pending-dot'),node('span','',pending.phase==='failed' ? pending.error : pending.phase==='retrying' ? `${pending.error?.split(' 正在自动重试')[0] || '暂时没有连上模型。'} 将在约${Math.max(1,Math.ceil((Date.parse(pending.nextRetryAt)-Date.now())/1000)||1)}秒后自动重试（${pending.retryCount}/${pending.maxRetries}），不用重新发送。` : pending.remainingChunks ? `${roleName(role)}还在说……` : pending.phase==='queued' ? '收到了，可以继续补充…' : `${roleName(role)}正在回复……`));
+    line.append(node('i','pending-dot'),node('span','',pending.phase==='failed' ? pending.error : pending.phase==='retrying' ? `${pending.error?.split(' 正在自动重试')[0] || '暂时没有连上模型。'} 将在约${Math.max(1,Math.ceil((Date.parse(pending.nextRetryAt)-Date.now())/1000)||1)}秒后自动重试（${pending.retryCount}/${pending.maxRetries}），不用重新发送。` : pending.remainingChunks ? `${roleName(role)}还在说……` : pending.phase==='compressing' ? '正在整理今天以前的对话，完成后继续回复…' : pending.phase==='queued' ? '收到了，可以继续补充…' : `${roleName(role)}正在回复……`));
     if(pending.phase==='failed')line.append(button('重试','text-button',action(()=>queueAction('retry'))),button('取消','text-button',action(()=>queueAction('cancel'))));
     else line.append(button(pending.items?.length?'撤回待回复消息':'停在这里','text-button',action(()=>queueAction('cancel'))));
     box.append(line);
   }
   $('#send-button').disabled = Boolean(state.submitting); $('#send-button').textContent = state.submitting ? '发送中…' : '发送 ↗';
-  $('#compose-note').textContent = state.provider.configured ? '三位均为成年虚构角色。手动记忆优先，自动摘要会按对话范围整理。' : '先在设置里连接模型，就可以开始真实对话。';
+  $('#compose-note').textContent = state.provider.configured ? '角色为成年虚构人物。手动记忆优先，自动摘要会按对话范围整理。' : '先在设置里连接模型，就可以开始真实对话。';
   const tail = chatTailFingerprint(), hasNewTail = Boolean(state.chatScroll.tail && state.chatScroll.tail !== tail); state.chatScroll.tail = tail;
   const shouldFollow = forceFollow || !preserveScroll || state.chatScroll.following || wasNearBottom;
   if (shouldFollow) followChatToBottom({ force: forceFollow || !preserveScroll });
@@ -465,7 +580,7 @@ function renderMessage(message) {
   if (message.kind === 'story') meta.append(node('span', 'badge', '故事场景'));
   if (['reminder','session_reminder'].includes(message.kind)) meta.append(node('span', 'badge', '约好的提醒'));
   if (message.kind === 'proactive') meta.append(node('span', 'badge', message.proactiveKind === 'story' ? '故事邀请' : message.proactiveKind === 'content' ? '主动分享' : '接着聊'));
-  meta.append(node('time', '', message.transient ? '正在发送' : dateText(message.createdAt, true)));
+  meta.append(node('time', '', message.transient ? (message.local ? '正在发送' : '已送达') : dateText(message.createdAt, true)));
   article.append(meta, node('div', 'message-bubble', message.text));
   if (!message.transient) {
     const tools = node('div', 'message-tools');
@@ -476,7 +591,7 @@ function renderMessage(message) {
     if (message.speaker === 'user') tools.append(button('留作记忆', '', action(async () => { await showView('memory'); $('#memory-text').value = message.text; $('#memory-scope').value = message.role; $('#memory-text').focus(); toast('检查内容和分享范围，再点击“记下来”。'); })));
     article.append(tools);
   }
-  if(message.receipt){const receipt=message.receipt,detail=node('details','message-why dialogue-receipt');detail.append(node('summary','','这次接话的依据'));const intents={close:'自然收尾',share:'分享她的近况',listen:'听你说说',discuss:'一起探讨',respond:'接住当前话题'};detail.append(node('p','',[(intents[receipt.intent]||'接住当前话题'),receipt.hasAuthoredAnchor?'包含生活或剧情中已经确定的片段':null,receipt.memoryIds?.length?`参考了 ${receipt.memoryIds.length} 段有原话出处的回忆`:null,receipt.repairs?.length?'已按相处偏好整理表达':null].filter(Boolean).join(' · ')));article.append(detail);}
+  if(message.receipt){const receipt=message.receipt,detail=node('details','message-why dialogue-receipt');detail.append(node('summary','','这次接话的依据'));const intents={close:'自然收尾',share:'分享她的近况',listen:'听你说说',discuss:'一起探讨',respond:'接住当前话题'};detail.append(node('p','',[(intents[receipt.intent]||'接住当前话题'),receipt.hasAuthoredAnchor?'包含生活或剧情中已经确定的片段':null,(receipt.memoryCount??receipt.memoryIds?.length)?`参考了 ${receipt.memoryCount??receipt.memoryIds.length} 段有原话出处的回忆`:null,(receipt.repairCount??receipt.repairs?.length)?'已按相处偏好整理表达':null].filter(Boolean).join(' · ')));article.append(detail);}
   if (message.kind === 'proactive') {
     const extras = node('div', 'proactive-message-details');
     if (message.sourceTitle) extras.append(message.sourceUrl ? safeLink(message.sourceUrl, `来源：${message.sourceTitle}`) : node('span', 'source-note', `来源：${message.sourceTitle}`));
@@ -501,7 +616,9 @@ async function pollPending(force=false) {
       if(pending.phase!=='idle'||pending.remainingChunks)state.pending.set(role,pending);else state.pending.delete(role);
     }
     if(state.view==='chat') {
-      if(force||state.pending.has(state.role)||old!==JSON.stringify([...state.pending]))await loadChat(true);
+      // A queued or generating turn needs no reload until its state changes;
+      // delivered chunks and the final reply change remainingChunks or phase.
+      if(force||old!==JSON.stringify([...state.pending]))await loadChat(true);
       if(force||old!==JSON.stringify([...state.pending]))renderChat(true);
       if(old!==JSON.stringify([...state.pending])) {
         loadCharacter().catch(()=>{});
@@ -536,6 +653,9 @@ async function sendChat(event) {
   const key=[role,text,content?.id||'',lifeChoice?.id||'',lifeChoice?.version??''].join(':');
   const clientId=uncertainSubmissions.get(key)||crypto.randomUUID();uncertainSubmissions.set(key,clientId);
   const body={role,text,clientId,...(content?{contentId:content.id}:{}),...(lifeChoice?{lifeChoiceId:lifeChoice.id,lifeVersion:lifeChoice.version}:{})};
+  // Show the message at once; the server acknowledgement replaces this local copy.
+  const previousPending=state.pending.get(role);
+  state.pending.set(role,{...(previousPending||{}),phase:previousPending&&previousPending.phase!=='idle'?previousPending.phase:'queued',items:[...(previousPending?.items||[]),{text,createdAt:new Date().toISOString(),local:true}]});
   state.submitting=true;$('#message-input').value='';state.chatScroll.following=true;state.chatScroll.unseen=false;renderChat(false,true);
   try {
     const result=await submitChatWithRetry(body);
@@ -543,6 +663,7 @@ async function sendChat(event) {
     uncertainSubmissions.delete(key);state.pending.set(role,result.pending);state.lifeChoice=null;
     if(state.role===role){state.content=null;renderContext();}
   } catch(error) {
+    if(previousPending)state.pending.set(role,previousPending);else state.pending.delete(role);
     if(state.role===role&&!$('#message-input').value)$('#message-input').value=text;
     toast(`${error.message}。可以重试发送；同一条消息不会重复保存。`,8500);
   } finally {state.submitting=false;if(state.role===role&&state.view==='chat')renderChat();await pollPending(true).catch(()=>{});}
@@ -662,7 +783,7 @@ function renderRecall() {
   status.textContent = bits.join(' · ') || '尚未生成自动摘要。点击“重新整理”可根据已有对话生成。';
 }
 function selectRecallRole(id) { const select = $('#recall-role'); if (!select.options.length) for (const role of state.roles) select.append(new Option(roleName(role), role.id)); select.value = id; }
-async function loadRecall(id = state.role) { selectRecallRole(id); const request = ++state.recallRequest, result = await api(`/api/characters/${id}`, { timeout: 20000 }); state.character[id] = result; state.recall[id] = result.recall || {}; if (request === state.recallRequest && $('#recall-role').value === id) renderRecall(); return result.recall; }
+async function loadRecall(id = state.role) { selectRecallRole(id); const request = ++state.recallRequest, mutation = chatHistory.mutation, result = await api(`/api/characters/${id}`, { timeout: 20000 }); if (mutation !== chatHistory.mutation) return result.recall; state.character[id] = result; state.recall[id] = result.recall || {}; if (request === state.recallRequest && $('#recall-role').value === id) renderRecall(); return result.recall; }
 async function saveRecall(summary) {
   const id = $('#recall-role').value, result = await api(`/api/recall/${id}`, { method: 'PATCH', body: { summary } });
   state.recall[id] = result.recall || { ...state.recall[id], summary, updatedAt: new Date().toISOString() }; renderRecall(); toast(summary ? '已保存你修订后的回忆摘要。' : '已清空自动摘要；历史聊天不会删除，也不会再被这份摘要引用。');
@@ -676,7 +797,7 @@ function cacheRateText(value) { return Number.isFinite(value) && value >= 0 && v
 function cacheCoverageText(stats) { return `${tokenText(stats?.cacheObservedRequests)} / ${tokenText(stats?.requests)}`; }
 function usageCells(stats) { const wrap = node('div', 'usage-cells'); for (const [label, value] of [['请求', tokenText(stats?.requests)], ['输入', tokenText(stats?.inputTokens)], ['输出', tokenText(stats?.outputTokens)], ['缓存', tokenText(stats?.cachedTokens)], ['缓存输入占比', cacheRateText(stats?.cacheHitRate)], ['可观测请求', cacheCoverageText(stats)], ['推理', tokenText(stats?.reasoningTokens)], ['已知总计', tokenText(stats?.totalTokens)], ['未返回请求', tokenText(stats?.unknownRequests)], ['失败', tokenText(stats?.failedRequests)], ['已停止', tokenText(stats?.cancelledRequests)]]) { const cell = node('div', 'usage-cell'); cell.append(node('small', '', label), node('strong', '', value)); wrap.append(cell); } return wrap; }
 function recentTokenCells(stats) { const wrap = node('div', 'usage-cells'); for (const [label, value] of [['输入', tokenText(stats?.inputTokens)], ['输出', tokenText(stats?.outputTokens)], ['缓存', tokenText(stats?.cachedTokens)], ['缓存输入占比', cacheRateText(stats?.cacheHitRate)], ['推理', tokenText(stats?.reasoningTokens)], ['已知总计', tokenText(stats?.totalTokens)]]) { const cell = node('div', 'usage-cell'); cell.append(node('small', '', label), node('strong', '', value)); wrap.append(cell); } return wrap; }
-function purposeName(value) { const map = { understanding: '对话语义判断', chat: '对话回复', memory: '回忆整理', 'connection-test': '连接测试', recall: '自动回忆', recall_refresh: '重新整理回忆', proactive: '主动陪伴', life: '生活分享', emotion: '心情分享', research: '资料研究', zhihu: '知乎资料研究', content: '内容整理', story: '双人剧本', system: '系统调用' }; return map[value] || value || '未标注用途'; }
+function purposeName(value) { const map = { understanding: '对话语义判断', 'session-guidance': '本轮提示', 'session-review': '回复检查', 'session-revision': '回复调整', 'character-reflection':'角色反思', 'recall-query':'历史查询展开', 'recall-embedding':'历史语义索引', 'proactive-continuity': '对话接续评估', chat: '对话回复', memory: '回忆整理', 'connection-test': '连接测试', recall: '自动回忆', recall_refresh: '重新整理回忆', proactive: '主动陪伴', life: '生活分享', emotion: '心情分享', research: '资料研究', zhihu: '知乎资料研究', content: '内容整理', story: '双人剧本', system: '系统调用' }; return map[value] || value || '未标注用途'; }
 function usageStatusName(value) { return ({ success: '成功', completed: '完成', failed: '失败', error: '失败', pending: '处理中', cancelled: '补充消息后已停止', skipped: '已跳过', unknown: '状态未提供' })[value] || value || '状态未提供'; }
 function usageRoleName(row) { if (row.roleId) return roleName(row.roleId); return /research|zhihu|content/i.test(row.purpose || '') ? '公共研究' : '系统调用'; }
 function renderUsage() {
@@ -691,10 +812,97 @@ function renderUsage() {
 }
 async function loadUsage() { state.usageError = ''; try { state.usage = await api('/api/usage', { timeout: 25000 }); } catch (error) { state.usage = null; state.usageError = error.message || '读取用量失败。'; } renderUsage(); }
 function phaseTime(event, phase) { const started = new Date(event?.startedAt); if (Number.isNaN(started.valueOf()) || !Number.isFinite(Number(phase?.offsetHours))) return '时间未提供'; started.setTime(started.getTime() + Number(phase.offsetHours) * 3600000); return dateText(started.toISOString(), true); }
+let travelStopSequence = 0;
+function updateTravelStopRows() {
+  const rows = $$('.travel-stop', $('#travel-stops'));
+  rows.forEach((row, index) => {
+    $('.travel-stop-title', row).textContent = `第 ${index + 1} 站`;
+    $('.remove-travel-stop', row).disabled = rows.length === 1;
+  });
+}
+function addTravelStop(values = {}) {
+  const id = ++travelStopSequence, row = node('section', 'travel-stop');
+  row.dataset.stopId = String(id);
+  const heading = node('div', 'travel-stop-heading');
+  heading.append(node('strong', 'travel-stop-title', ''), button('删除', 'text-button remove-travel-stop', () => { row.remove(); updateTravelStopRows(); }));
+  const fields = node('div', 'travel-stop-fields');
+  const definitions = [
+    ['city', '城市', 'text', '例如：扬州', true],
+    ['arriveAt', '到达时间', 'datetime-local', '', true],
+    ['leaveAt', '离开时间', 'datetime-local', '', true],
+    ['lodging', '住处（选填）', 'text', '例如：扬州的住处', false],
+  ];
+  for (const [name, labelText, type, placeholder, required] of definitions) {
+    const label = node('label'), input = node('input');
+    input.type = type; input.className = `travel-stop-${name}`; input.id = `travel-stop-${name}-${id}`;
+    input.placeholder = placeholder; input.required = required; input.value = values[name] || '';
+    label.htmlFor = input.id; label.append(document.createTextNode(labelText), input); fields.append(label);
+  }
+  row.append(heading, fields); $('#travel-stops').append(row); updateTravelStopRows();
+}
+function resetTravelForm() {
+  $('#life-travel-form').reset(); $('#travel-stops').replaceChildren(); addTravelStop();
+}
+function localInstant(input, label) {
+  const value = input.value.trim(), time = Date.parse(value);
+  if (!value || !Number.isFinite(time)) throw new Error(`请填写有效的${label}。`);
+  return { time, iso: new Date(time).toISOString() };
+}
+async function saveTravel(event) {
+  event.preventDefault();
+  const status = $('#travel-form-status'), save = $('#save-travel');
+  try {
+    const depart = localInstant($('#travel-depart-at'), '出发时间');
+    const returning = localInstant($('#travel-return-at'), '回家时间');
+    if (depart.time >= returning.time) throw new Error('回家时间需要晚于出发时间。');
+    const rows = $$('.travel-stop', $('#travel-stops'));
+    if (!rows.length) throw new Error('请至少添加一个停靠城市。');
+    let previousLeave = depart.time;
+    const stops = rows.map((row, index) => {
+      const city = $('.travel-stop-city', row).value.trim();
+      if (!city) throw new Error(`请填写第 ${index + 1} 站的城市。`);
+      const arrive = localInstant($('.travel-stop-arriveAt', row), `第 ${index + 1} 站到达时间`);
+      const leave = localInstant($('.travel-stop-leaveAt', row), `第 ${index + 1} 站离开时间`);
+      if (arrive.time < previousLeave) throw new Error(`第 ${index + 1} 站的到达时间不能早于上一段行程结束时间。`);
+      if (leave.time <= arrive.time) throw new Error(`第 ${index + 1} 站的离开时间需要晚于到达时间。`);
+      if (leave.time > returning.time) throw new Error(`第 ${index + 1} 站的离开时间不能晚于回家时间。`);
+      previousLeave = leave.time;
+      const lodging = $('.travel-stop-lodging', row).value.trim();
+      return { city, arriveAt: arrive.iso, leaveAt: leave.iso, ...(lodging ? { lodging } : {}) };
+    });
+    save.disabled = true; status.textContent = '正在安排行程…';
+    const result = await api('/api/life/travel', { method: 'POST', body: { departAt: depart.iso, returnAt: returning.iso, stops } });
+    if (result.life) state.life = result.life; else await loadLife();
+    renderLife(); resetTravelForm(); status.textContent = '行程已经安排好。'; toast('行程已经安排好，生活足迹会按所在地更新。');
+  } catch (error) {
+    const message = error.code === 'ACTIVE_LIFE_EVENT' ? '现在已有一项生活安排，结束后再安排新的行程。'
+      : error.code === 'INVALID_TRAVEL_PLAN' ? '行程没有保存，请检查城市和各段时间。'
+        : error.message || '行程没有保存，请检查时间后重试。';
+    status.textContent = message; throw new Error(message);
+  }
+  finally { save.disabled = false; }
+}
+function renderTravelState(travel) {
+  const box = $('#life-travel-current'); box.replaceChildren();
+  if (!travel) return;
+  const labels = {
+    planned: `准备前往${travel.stops?.[0]?.city || '下一站'}`,
+    outbound: '正在前往第一站', between_stops: `正在前往${travel.nextCity || '下一站'}`,
+    staying: `正在${travel.currentCity || '目的地'}生活`, returning: `正在返回${travel.homeCity || '苏州'}`,
+    returned: `已经回到${travel.homeCity || '苏州'}`,
+  };
+  const card = node('article', `life-travel-card ${travel.status || ''}`);
+  card.append(node('small', 'eyebrow', '当前行程'), node('h3', '', labels[travel.status] || '旅途中'));
+  if (travel.location) card.append(node('p', 'life-travel-location', travel.location));
+  const cities = [travel.homeCity, ...(travel.stops || []).map(stop => stop.city), travel.homeCity].filter(Boolean);
+  if (cities.length) card.append(node('p', 'life-travel-route', cities.join(' → ')));
+  if (travel.returnAt) card.append(node('p', 'fine-print', `${travel.status === 'returned' ? '回家时间' : '预计回家'}：${dateText(travel.returnAt, true)}`));
+  box.append(card);
+}
 function lifeEventCard(event, { current = false } = {}) {
   const categories = { travel: '旅行', meal: '吃点东西', cooking: '下厨', clothing: '衣着', commute: '路上见闻', hobby: '兴趣', family: '家人', work: '工作', local_walk: '城市散步', reading: '阅读', emotional_need: '心情' };
   const card = node('article', current ? 'life-event active' : 'life-event'); card.append(node('h3', '', event.title || '未命名事件')); const info = [categories[event.category] || event.category, event.location].filter(Boolean).join(' · '); if (info) card.append(node('p', 'life-event-info', info)); if (event.startedAt || event.endsAt) card.append(node('p', 'fine-print', `安排：${event.startedAt ? dateText(event.startedAt, true) : '时间未提供'} 至 ${event.endsAt ? dateText(event.endsAt, true) : '时间未提供'}`));
-  if (current && event.phase) { const detail = node('details', 'life-schedule'); detail.append(node('summary', '', '查看大致行程')); const timeline = node('ol', 'life-timeline'); for (const phase of event.phases || []) { const row = node('li', phase.id === event.phase.id ? 'current' : ''); row.append(node('strong', '', phase.title || '片段'), node('time', '', phaseTime(event, phase))); timeline.append(row); } detail.append(timeline); card.append(detail); }
+  if (current && event.phase && !event.travelPlan) { const detail = node('details', 'life-schedule'); detail.append(node('summary', '', '查看大致行程')); const timeline = node('ol', 'life-timeline'); for (const phase of event.phases || []) { const row = node('li', phase.id === event.phase.id ? 'current' : ''); row.append(node('strong', '', phase.title || '片段'), node('time', '', phaseTime(event, phase))); timeline.append(row); } detail.append(timeline); card.append(detail); }
   if (!current && event.facts?.length) { const facts = node('ul', 'life-facts'); for (const fact of event.facts) facts.append(node('li', '', fact)); card.append(facts); } return card;
 }
 async function lifeThreadChat(thread, choice) {
@@ -728,7 +936,8 @@ function renderLifeThread(thread) {
 }
 function renderLife(fillSettings = false) {
   const data = state.life, status = $('#life-status'), current = $('#life-current'), recent = $('#life-recent'); current.replaceChildren(); recent.replaceChildren(); $('#life-thread').replaceChildren(); $('#life-pursuit').replaceChildren();
-  if (!data) { status.textContent = state.lifeError || '未能读取生活足迹。'; $('#life-settings-status').textContent = '读取失败'; $('#life-settings-note').textContent = state.lifeError || '未能读取生活足迹。'; return; }
+  if (!data) { renderTravelState(null); status.textContent = state.lifeError || '未能读取生活足迹。'; $('#life-settings-status').textContent = '读取失败'; $('#life-settings-note').textContent = state.lifeError || '未能读取生活足迹。'; return; }
+  renderTravelState(data.travel);
   status.textContent = data.enabled ? `本周检查：${data.checkedWeek || '尚未提供'}。下次检查：${data.nextWeeklyCheckAt ? dateText(data.nextWeeklyCheckAt, true) : '尚未安排'}。` : '生活足迹目前未开启。';
   const shares=$('#life-shares');shares.replaceChildren();for(const message of data.shares||[]){const card=node('article','life-event');card.append(node('small','fine-print',dateText(message.createdAt,true)),node('p','',message.text),button('接着聊','text-button',action(async()=>{await selectRole('miyue');$('#message-input').value='你之前说“'+message.text.slice(0,160)+'”，我想接着聊这个。';$('#message-input').focus();})));shares.append(card);}if(!shares.childElementCount)shares.append(node('p','fine-print','她主动聊过的生活片段会出现在这里。'));
   const discussion = data.discussion;
@@ -929,11 +1138,44 @@ async function loadVoiceCatalog(force=false) {
   }
 }
 async function stopAudio() {
-  state.audioEpoch++; const job = state.audioJob; state.audioJob = null;
+  state.audioEpoch++; const session = state.audioSession; state.audioSession = null; const job = state.audioJob; state.audioJob = null;
   const player = $('#audio-player'); player.pause(); player.removeAttribute('src'); player.load(); player.hidden = true; $('#audio-panel').hidden = true;
+  if(session){try{await api(`/api/voice-session/${session}/close`,{method:'POST',timeout:15000});}catch{}}
   if (job) { try { await api(`/api/voice/${job}/close`, { method: 'POST', timeout: 15000 }); } catch { /* A finished or unreachable local job does not block text use. */ } }
 }
-async function speak(messageId) { return playVoiceJob('/api/voice/start',{messageId}); }
+async function speak(messageId) {
+  await stopAudio();const epoch=state.audioEpoch;
+  $('#audio-panel').hidden=false;$('#audio-status').hidden=false;$('#audio-status').textContent='正在准备第一段语音…';
+  let id;
+  try{
+    const result=await api('/api/voice-session/start',{method:'POST',body:{messageId}});id=result.sessionId;
+    if(epoch!==state.audioEpoch){await api(`/api/voice-session/${id}/close`,{method:'POST'});return;}
+    state.audioSession=id;
+    for(let index=0;index<result.segmentCount&&epoch===state.audioEpoch;index++){
+      const deadline=Date.now()+240000;
+      while(epoch===state.audioEpoch){
+        const status=await api(`/api/voice-session/${id}/status`),segment=status.segments.find(s=>s.index===index);
+        if(segment?.state==='finished')break;
+        if(['error','cancelled','closed'].includes(segment?.state))throw new Error(segment.error||'语音生成已停止。');
+        if(Date.now()>deadline)throw new Error('这一段语音等待较久，请稍后重试。');
+        await new Promise(resolve=>setTimeout(resolve,600));
+      }
+      if(epoch!==state.audioEpoch)return;
+      const player=$('#audio-player');player.src=`/api/voice-session/${id}/audio/${index}`;player.hidden=false;
+      $('#audio-panel').hidden=false;$('#audio-status').hidden=false;$('#audio-status').textContent=`第 ${index+1} / ${result.segmentCount} 段`;
+      const ended=new Promise((resolve,reject)=>{
+        const done=()=>{cleanup();resolve();},error=()=>{cleanup();reject(new Error('语音播放失败。'));},stop=()=>{if(epoch!==state.audioEpoch){cleanup();resolve();}};
+        const timer=setInterval(stop,200);
+        function cleanup(){clearInterval(timer);player.removeEventListener('ended',done);player.removeEventListener('error',error);}
+        player.addEventListener('ended',done,{once:true});player.addEventListener('error',error,{once:true});
+      });
+      try{await player.play();}catch{$('#audio-status').textContent='点击播放即可收听';}
+      await ended;if(epoch!==state.audioEpoch)return;
+      await api(`/api/voice-session/${id}/advance`,{method:'POST',body:{index}});
+    }
+    if(epoch===state.audioEpoch){state.audioSession=null;await stopAudio();}
+  }catch(error){if(epoch===state.audioEpoch){await stopAudio();throw error;}}
+}
 async function playVoiceJob(endpoint,body) {
   await stopAudio(); const epoch = state.audioEpoch; $('#audio-panel').hidden = false; $('#audio-status').hidden = false; $('#audio-status').textContent = '本地语音正在生成，可以继续聊天…';
   let job;
@@ -992,24 +1234,33 @@ function wireEvents() {
   $('#clear-recall').addEventListener('click', () => { $('#confirm-clear-recall').hidden = false; $('#recall-status').textContent = '确认后会清空自动摘要；历史聊天仍保留，但不会再由这份摘要提供给后续对话。'; });
   $('#confirm-clear-recall').addEventListener('click', action(async () => { await saveRecall(''); $('#confirm-clear-recall').hidden = true; }));
   $('#refresh-usage').addEventListener('click', action(loadUsage));
-  $('#refresh-life').addEventListener('click', action(loadLife)); $('#life-settings-form').addEventListener('submit', action(saveLifeSettings));
+  $('#refresh-life').addEventListener('click', action(loadLife)); $('#open-chat-history-life').addEventListener('click', action(openChatHistory)); $('#life-settings-form').addEventListener('submit', action(saveLifeSettings));
+  $('#add-travel-stop').addEventListener('click', () => addTravelStop()); $('#life-travel-form').addEventListener('submit', action(saveTravel)); addTravelStop();
   $('#refresh-content').addEventListener('click', action(refreshContent)); $('#news-brief-trigger').addEventListener('click', action(runNewsBrief)); $('#feed-form').addEventListener('submit', action(addFeed));
   $('#content-search').addEventListener('submit', action(async event => { event.preventDefault(); state.contentInbox.query = $('#content-query').value.trim(); state.contentInbox.page = 1; await loadContent(); }));
   $('#content-query').addEventListener('search', action(async () => { state.contentInbox.query = $('#content-query').value.trim(); state.contentInbox.page = 1; await loadContent(); }));
   $('#content-page-read').addEventListener('click', action(() => setContentState(state.items.map(item => item.id), 'read')));
   $('#zhihu-refresh').addEventListener('click', action(refreshZhihu)); $('#zhihu-settings').addEventListener('click', action(() => showView('settings'))); $('#zhihu-form').addEventListener('submit', action(saveZhihu)); $('#zhihu-test').addEventListener('click', action(testZhihuQuota)); $('#zhihu-clear-key').addEventListener('click', action(async () => { const result = await api('/api/zhihu/config', { method: 'POST', body: { clearKey: true } }); state.zhihu.config = result.config || state.zhihu.config; state.zhihu.runtime = { ...state.zhihu.runtime, ...(result.runtime || {}) }; $('#zhihu-secret').value = ''; renderZhihu(false); toast('已清除本地保存的知乎 Access Secret。'); })); $$('#zhihu-form input,#zhihu-form select').forEach(input => input.addEventListener('input', () => { state.zhihu.formDirty = true; }));
+  $('#open-chat-history').addEventListener('click', action(openChatHistory));
   $('#open-character').addEventListener('click', () => { const details = $('#character-profile details'); if (details) { state.chatScroll.following=false;state.chatScroll.epoch++;updateChatScrollButton();details.open = true; $('#chat-scroll').scrollTop = 0; details.querySelector('summary')?.focus(); } });
+  $('#close-chat-history').addEventListener('click', () => $('#chat-history-dialog').close());
+  $('#load-older-chat-history').addEventListener('click', action(() => loadChatHistory()));
+  $('#delete-chat-history').addEventListener('click', action(deleteSelectedChatHistory));
+  $('#select-chat-history-page').addEventListener('change', event => { if (event.target.checked) { for (const item of chatHistory.items) { if (chatHistory.selected.size >= 100) break; chatHistory.selected.add(String(item.id)); } } else chatHistory.selected.clear(); renderChatHistory(); });
   $('#reminder-form').addEventListener('submit', action(addReminder)); $('#provider-form').addEventListener('submit', action(saveProvider)); $('#test-provider').addEventListener('click', testProvider);
   $('#proactive-form').addEventListener('submit', action(saveProactiveSettings)); $('#proactive-run').addEventListener('click', action(runProactiveNow)); $('#enable-notifications').addEventListener('click', action(enableNotifications)); $('#refresh-proactive').addEventListener('click', action(async () => { await loadProactiveStatus(true); await pollInbox(); toast('主动陪伴状态已刷新。'); })); $$('#proactive-form input').forEach(input => input.addEventListener('input', () => { state.proactive.formDirty = true; }));
   $('#clear-provider-key').addEventListener('click', action(async () => { const result = await api('/api/provider', { method: 'POST', body: { clearKey: true } }); state.provider = result.provider; renderProvider(); toast(result.provider.hasKey ? '环境变量中的密钥仍然生效，请在启动配置中调整。' : '已清除本地保存的密钥。'); }));
   $('#refresh-voice').addEventListener('click', action(()=>loadVoice(true))); $('#record-button').addEventListener('click', action(toggleRecording)); $('#stop-audio').addEventListener('click', action(stopAudio));
-  $('#audio-player').addEventListener('ended', () => { const job = state.audioJob; state.audioJob = null; if (job) api(`/api/voice/${job}/close`, { method: 'POST' }).catch(() => {}); $('#audio-status').hidden = false; $('#audio-status').textContent = '已播放完'; });
+  $('#audio-player').addEventListener('ended', () => { if(state.audioSession)return; const job = state.audioJob; state.audioJob = null; if (job) api(`/api/voice/${job}/close`, { method: 'POST' }).catch(() => {}); $('#audio-status').hidden = false; $('#audio-status').textContent = '已播放完'; });
   $('#audio-player').addEventListener('error', () => { if (state.audioJob) { toast('音频未能加载，请稍后重新朗读。'); stopAudio(); } });
   $('#background-file').addEventListener('change',action(chooseBackground));
   for(const id of ['background-mode','background-position','background-veil','background-blur'])$('#'+id).addEventListener('input',editBackground);
   $('#save-background').addEventListener('click',action(()=>saveBackground()));$('#reset-background').addEventListener('click',action(()=>saveBackground(true)));$('#cancel-background').addEventListener('click',cancelBackground);renderBackgroundSettings();
   $('#reply-pace').addEventListener('change',action(saveReplyPace));
   $('#save-history-window').addEventListener('click',action(saveHistoryWindow));
+  $('#save-daily-memory').addEventListener('click',action(saveDailyMemory));
+  $('#run-daily-memory').addEventListener('click',action(runDailyMemory));
+  $$('#daily-memory-enabled,#daily-memory-time').forEach(input=>input.addEventListener('input',()=>{dailyMemoryDirty=true;}));
   $$('#history-window-days,#history-max-tokens').forEach(input => input.addEventListener('input', () => {
     historyWindowDirty = true;
     historyWindowRevision += 1;
@@ -1020,7 +1271,7 @@ function wireEvents() {
   $('#reload-companion-tuning').addEventListener('click', action(async () => { await loadCompanionTuning({ force: true }); toast('已重新读取保存的相处偏好。'); }));
   $('#retry-startup').addEventListener('click', bootstrap);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (state.view === 'settings') desktopControl.load(); markVisibleInboxRead().catch(() => {}); pollProactive(); } });
-  window.addEventListener('pagehide', () => { state.recordStream?.getTracks().forEach(t => t.stop()); if (state.audioJob) fetch(`/api/voice/${state.audioJob}/close`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', keepalive: true }).catch(() => {}); });
+  window.addEventListener('pagehide', () => { if(state.audioSession)fetch(`/api/voice-session/${state.audioSession}/close`,{method:'POST',headers:{'content-type':'application/json'},body:'{}',keepalive:true}).catch(()=>{}); state.recordStream?.getTracks().forEach(t => t.stop()); if (state.audioJob) fetch(`/api/voice/${state.audioJob}/close`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', keepalive: true }).catch(() => {}); });
 }
 async function bootstrap() {
   try {

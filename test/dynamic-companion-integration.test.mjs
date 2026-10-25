@@ -82,9 +82,9 @@ test('an ordinary open turn can share fresh sourced material and persist the sou
 });
 
 test('dynamic chat is one model-led request, saves only reply prose, and carries stable causal state forward', async t => {
-  const dynamics = { feelings: [{ id: 'quiet-miss', label: '想念', intensity: 61, description: '想再多待一会儿', cause: '听到你说晚点见', evidence: '晚点见' }], threads: [{ id: 'book-thread', subject: '那本书', progress: '你说已经读到第三章', openQuestion: '还想听你的感受', status: 'open', evidence: '第三章' }] };
-  const f = await fixture(t, [reply(dynamics), reply(null)]);
-  const first = await f.request('/api/chat', { role: 'miyue', text: '晚点见，我已经读到第三章了。' }); assert.equal(first.status, 200, JSON.stringify(first.body)); assert.equal(first.body.messages.at(-1).text, '嗯。'); assert.equal(f.calls.length, 1); assert.equal(f.calls[0].messages.at(-1).content, '晚点见，我已经读到第三章了。'); assert.doesNotMatch(first.body.messages.at(-1).text, /想念|第三章|dynamics/);
+  const dynamics = { feelings: [{ id: 'quiet-miss', label: '想念', intensity: 61, description: '想再多待一会儿', cause: '听到你说晚点见', evidence: '我也想再多待一会儿' }], threads: [{ id: 'book-thread', subject: '那本书', progress: '你说已经读到第三章', openQuestion: '还想听你的感受', status: 'open', evidence: '第三章' }] };
+  const f = await fixture(t, [{...reply(dynamics),reply:'听你说晚点见，我也想再多待一会儿。'}, reply(null)]);
+  const first = await f.request('/api/chat', { role: 'miyue', text: '晚点见，我已经读到第三章了。' }); assert.equal(first.status, 200, JSON.stringify(first.body)); assert.equal(first.body.messages.at(-1).text, '听你说晚点见，我也想再多待一会儿。'); assert.equal(f.calls.length, 1); assert.equal(f.calls[0].messages.at(-1).content, '晚点见，我已经读到第三章了。'); assert.doesNotMatch(first.body.messages.at(-1).text, /第三章|dynamics/);
   const state = f.app.companionDynamics.get(); assert.equal(state.revision, 1); assert.equal(state.feelings[0].id, 'quiet-miss'); assert.equal(state.feelings[0].cause, '听到你说晚点见');
   const second = await f.request('/api/chat', { role: 'miyue', text: '继续说吧。' }); assert.equal(second.status, 200); assert.equal(f.calls.length, 2); const prompt = f.calls[1].messages.map(row => row.content).join('\n'); assert.match(prompt, /quiet-miss/); assert.match(prompt, /book-thread/); assert.match(prompt, /听到你说晚点见/);
 });
