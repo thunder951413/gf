@@ -26,26 +26,24 @@ const HIS_HABIT = /烘|咖啡豆|豆子|改良|拼配|杯|减肥|夜宵|不爱�
 const NEWS = /游戏|试玩|Steam|新品节|机核|米哈游|绝区零/u;
 const ONE_OFF = /今晚|今天|明天|明晚|今早|当晚|当天|这就|马上|等下|待会|一会儿|20\d\d-\d\d-\d\d|20\d\d年\d{1,2}月\d{1,2}日/u;
 
-// Reviewed by hand on 2026-10-25: the rules that still hold and the plans
-// that are still theirs. Everything else in these two kinds is pruned.
-const KEEP = new Set([
-  // boundaries she has held every time, and what he asked of her
-  '2dec3ea6-:0', '1cada568-:2', '1cada568-:5', '17e51574-:6', '449174d9-:3',
-  // what he told her about himself, and what she needs when she vents
-  'a78d6c1d-:7', '504824a1-:12',
-  // long-running plans and promises
-  'b8090baf-:2', '45c021a9-:3', '45865349-:6', '45865349-:7', '9131aa99-:3', '9131aa99-:7',
-  'c9dfffc8-:8', 'f899d2dc-:5', 'dcefda96-:6', '17e51574-:19', '0243f5e7-:0',
-]);
+// Reviewed by hand on 2026-10-25. He asked for a clean start: no standing
+// boundaries and no old plans carry over. Only what he told her about
+// himself and what she needs when she vents stay; every other boundary and
+// open plan is pruned.
+const KEEP = new Set(['a78d6c1d-:7', '504824a1-:12']);
 // Reviewed leftovers the rules miss: the business trip is over, and these
 // were one evening's words.
 const PRUNE = new Map([
   ['e43d07a9-:4', 'one-off'], ['77e770d5-:1', 'one-off'], ['77e770d5-:8', 'her-routine'], ['95677fd7-:6', 'one-off'], ['9eec350d-:2', 'one-off'],
+  // records that restate an old boundary under another kind
+  ['10bf0d8c-:9', 'boundary-one-scene'], ['a488fc32-:0', 'boundary-one-scene'], ['2dec3ea6-:1', 'boundary-one-scene'], ['77961d8f-:16', 'boundary-one-scene'],
+  ['fc3cceb4-:6', 'boundary-one-scene'], ['9fe9f1f1-:7', 'boundary-one-scene'], ['f253cf77-:9', 'boundary-one-scene'],
+  ['f899d2dc-:12', 'news-share'],
 ]);
 const keyOf = (chunkId, index) => `${chunkId.slice(0, 8)}-:${index}`;
 
-// Growth notes that only restate her meals and work routine.
-const GROWTH_PRUNE = ['habit-color-iterations', 'interest-coffee-for-warmth', 'interest-hot-sweet-soups', 'habit-talking-fragments', 'habit-sex-own-terms', 'view-walk-to-warm-up'];
+// Growth notes that only restate her meals and work routine, or an old boundary.
+const GROWTH_PRUNE = ['habit-color-iterations', 'interest-coffee-for-warmth', 'interest-hot-sweet-soups', 'habit-talking-fragments', 'habit-sex-own-terms', 'view-walk-to-warm-up', 'view-lines-hold-in-private'];
 
 const shanghaiDay = (at = new Date()) => new Date(+at + 8 * 3600000).toISOString().slice(0, 10);
 const addDays = (day, n) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
