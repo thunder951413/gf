@@ -85,7 +85,7 @@ async function settle(timeoutMs = 240000) {
 try {
   app.preferences.setReplyPace('instant');
   if (command === 'init') {
-    if (state.identity === 'ai') app.companionIdentity.set('ai', app.companionIdentity.get().revision);
+    if (state.identity === 'ai') app.companionIdentity.set('ai', app.companionIdentity.get().revision, { now });
     if (state.preset) { const preset = TUNING_PRESETS.find(item => item.id === state.preset); if (!preset) fail('没有这个预设'); app.companionTuning.set(preset.values, app.companionTuning.get().revision); }
     state.firstMessageRowid = lastRowid(); writeState(state);
     out({ ok: true, dir, now: shanghai(now), identity: app.companionIdentity.get().mode, tuning: app.companionTuning.get().values });

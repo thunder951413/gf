@@ -251,3 +251,14 @@ test('the same thing of his is not queued as two follow-up questions', async () 
   assert.equal(threads.add('miyue', [entry('c2:3', '2026-10-25', '那本炼丹小说写到哪啦？男主还炸炉吗？')]).length, 0);
   assert.equal(threads.add('miyue', [{ ...entry('c3:1', '2026-10-25', '面试准备得怎么样了？'), keywords: ['面试'] }]).length, 1);
 });
+
+test('the AI identity reminds every turn where the switch happened, and her pre-switch records stay out of her day', async () => {
+  const { identityTurnNote } = await import('../lib/companion-identity.mjs');
+  assert.equal(identityTurnNote({ mode: 'human' }), '');
+  const note = identityTurnNote({ mode: 'ai', changedAt: '2026-10-26T00:00:00Z' });
+  assert.match(note, /2026-10-26 08:00 起/); assert.match(note, /感觉不到，但你在想象/);
+  const chunks = [{ id: 'c1', day: '2026-10-25', items: [{ subject: 'character', kind: 'event', status: 'past', text: '她出门买了桂花糖藕' }] },
+    { id: 'c2', day: '2026-10-26', items: [{ subject: 'character', kind: 'event', status: 'past', text: '她读到一篇骂AI的帖子' }] }];
+  const input = happeningInputs({ now: new Date('2026-10-27T01:00:00Z'), chunks, identity: 'ai', identitySince: '2026-10-26T00:00:00Z' }).input;
+  assert.deepEqual(input.yesterday.her.map(line => line.slice(11)), ['她读到一篇骂AI的帖子']);
+});

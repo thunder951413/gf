@@ -409,7 +409,7 @@ export async function createApp(options = {}) {
     gather:({roleId,now,recent,knownRefs,openThreads})=>happeningInputs({now,dayPlan:companionRuntime.advance().dayPlan,profile:roleMap.get(roleId)?.profile||{},
       thread:lifeThreads.get(roleId,life.get(roleId)),chunks:dailyMemory.settings().enabled?dailyMemory.chunks(roleId):[],db:store.db,
       cityEvents:groundedLife.candidates(),recent,knownRefs,openThreads,city:groundedLife.location().city||'苏州',
-      identity:companionIdentity.get().mode,weekStory:storyArcs.todayBeats(roleId,{now})})});
+      identity:companionIdentity.get().mode,identitySince:companionIdentity.get().changedAt,weekStory:storyArcs.todayBeats(roleId,{now})})});
   // What is between them (promises, jokes, his views, open debates), read from
   // yesterday's conversation once a day after the morning organisation.
   const relationshipLedger=new RelationshipLedger(store,{model,clock:options.clock,enabled:options.relationshipLedger??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true),
