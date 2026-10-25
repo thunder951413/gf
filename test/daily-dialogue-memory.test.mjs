@@ -11,6 +11,7 @@ import { HistoryEdits, historySourceHash } from '../lib/history-edits.mjs';
 import { HistoryDeletion } from '../lib/history-deletion.mjs';
 import { buildSessionMessages } from '../lib/session-dialogue.mjs';
 import { createApp } from '../server.mjs';
+import { ensurePruneTable, dailyItemRef } from '../lib/history-prunes.mjs';
 
 const NOW = new Date('2026-09-30T15:00:00Z');
 const story={start:'start',nodes:{start:{id:'start',title:'start',body:'',choices:[]}}};
@@ -396,4 +397,21 @@ test('a blocked interaction retries even after the automatic retry limit and bac
   for(let i=0;i<3;i++)await f.memory.run('miyue',{force:true});assert.equal(f.memory.snapshot().failedAttempts,3);
   reject=false;
   assert.equal((await f.memory.ensureBeforeInteraction()).status,'ready');assert.equal(f.memory.snapshot().failedAttempts,0);
+});
+test('a pruned record disappears from every context but keeps the other records at their index',async t=>{
+  const f=fixture(t,{complete:(_messages,options)=>options.purpose==='daily-compression-review'?{ok:true,issues:[]}:
+    {items:[{kind:'preference',status:'current',text:'角色晚饭又想煮汤面。',evidence:['s1']},{kind:'preference',status:'current',text:'用户喜欢山塘街坐船听曲。',evidence:['s2']}],omitted:[]}});
+  f.add('soup','晚上煮汤面吧','assistant','2026-09-29T10:00:00Z');f.add('boat','想去山塘街坐船听曲','user','2026-09-29T10:05:00Z');
+  assert.equal((await f.memory.run()).status,'updated');
+  const [chunk]=f.memory.chunks('miyue');
+  ensurePruneTable(f.store.db);
+  f.store.db.prepare('INSERT INTO history_prunes VALUES(?,?,?,?,?)').run('miyue','daily_item',dailyItemRef(chunk.id,0),'her-routine',NOW.toISOString());
+  const [pruned]=f.memory.chunks('miyue');
+  assert.equal(pruned.items[0],undefined);assert.match(pruned.items[1].text,/山塘街/,'the next record keeps index 1');
+  const stable=f.memory.context('miyue',{mode:'stable'});
+  assert.doesNotMatch(stable,/汤面/);assert.match(stable,/山塘街/);
+  assert.equal(f.memory.context('miyue',{mode:'query',query:'汤面'}),'');
+  assert.ok(f.memory.snapshot('miyue').chunks[0].items.every(Boolean),'the diagnostics view has no holes');
+  f.store.db.prepare('DELETE FROM history_prunes').run();
+  assert.match(f.memory.context('miyue',{mode:'stable'}),/汤面/,'removing the prune restores it');
 });
