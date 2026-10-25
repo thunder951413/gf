@@ -60,6 +60,22 @@ test('the next arc avoids the same part of her life and anything lived in the la
   assert.equal(next.templateId, 'a1', 'after a month every story is fresh again and the order resumes');
 });
 
+test('a step left unshared for a week is replaced by a fresh story from another part of her life', () => {
+  const catalog = { version: 'test', templates: [template('a1', 'friend'), template('a2', 'friend'), template('b1', 'family')] };
+  const clock = clockAt('2026-09-27T00:00:00Z');
+  const repo = new LifeThreadRepository(new TestStore(), { clock, random: () => 0, catalog });
+  const stuck = repo.get('miyue');
+  assert.equal(stuck.templateId, 'a1');
+  clock.addHours(24 * 6);
+  assert.equal(repo.tick('miyue').id, stuck.id, 'six days is still the current story');
+  clock.addHours(24);
+  const fresh = repo.tick('miyue');
+  assert.notEqual(fresh.id, stuck.id);
+  assert.equal(fresh.templateId, 'b1', 'neither the abandoned story nor its category comes straight back');
+  assert.equal(fresh.beat.id, 'b1-a');
+  assert.ok(repo.pending('miyue')?.pendingKey, 'the new first step is ready to share');
+});
+
 test('a short natural reply picks a branch of a new arc', () => {
   const catalog = { version: 'test', templates: defaultLifeThreads.templates.filter(item => item.id === 'neighbor-calico-cat').concat(template('x1', 'craft'), template('x2', 'season')) };
   const clock = clockAt('2026-10-01T00:00:00Z');

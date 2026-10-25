@@ -245,16 +245,28 @@ test('runNow bypasses schedule, recent activity, and minimum gap but uses the no
   assert.equal(repo.commits.length, 1);
 });
 
-test('an unanswered assistant message pauses automatic outreach for thirty minutes', async () => {
+test('an unanswered assistant message pauses automatic outreach for three hours', async () => {
   const repo = new FakeRepo({ settings: { minGapMinutes: 5, maxGapMinutes: 10 }, runtime: { nextFetchAt: '2026-09-07T12:00:00.000Z', nextContactAt: '2026-09-06T11:00:00.000Z' }, lastUnanswered: { miyue: '2026-09-06T11:45:00.000Z' } });
   const model = new FakeModel(continuationResult);
   const blocked = (await engine(repo, model, { roles: [roles[2]] }).tick()).contact;
   assert.equal(blocked.delivered, false);
   assert.equal(blocked.reason, '消息发出后先等你回应');
-  assert.equal(repo.runtime.nextContactAt, '2026-09-06T12:15:00.000Z');
+  assert.equal(repo.runtime.nextContactAt, '2026-09-06T14:45:00.000Z');
   assert.equal(model.calls.length, 0);
-  const resumed = (await engine(repo, model, { roles: [roles[2]], clock: () => new Date('2026-09-06T12:15:00.000Z') }).tick()).contact;
+  const resumed = (await engine(repo, model, { roles: [roles[2]], clock: () => new Date('2026-09-06T14:45:00.000Z') }).tick()).contact;
   assert.equal(resumed.delivered, true);
+});
+
+test('cadence floors hold even when saved settings ask for minutes', async () => {
+  const clock = () => new Date('2026-09-06T12:30:00.000Z');
+  const recentUser = new FakeRepo({ settings: { minGapMinutes: 5, maxGapMinutes: 10 }, runtime: { nextFetchAt: '2026-09-07T12:00:00.000Z', nextContactAt: '2026-09-06T11:00:00.000Z' }, lastUserAt: '2026-09-06T12:00:00.000Z' });
+  const quiet = (await engine(recentUser, new FakeModel(continuationResult), { roles: [roles[2]], clock }).tick()).contact;
+  assert.equal(quiet.delivered, false);
+  assert.equal(recentUser.runtime.nextContactAt, '2026-09-06T12:45:00.000Z', 'forty-five minutes after he last spoke');
+  const recentContact = new FakeRepo({ settings: { minGapMinutes: 5, maxGapMinutes: 10 }, runtime: { nextFetchAt: '2026-09-07T12:00:00.000Z', nextContactAt: '2026-09-06T11:00:00.000Z' }, contacts: [{ role: 'miyue', kind: 'life', createdAt: '2026-09-06T12:00:00.000Z' }] });
+  const gap = (await engine(recentContact, new FakeModel(continuationResult), { roles: [roles[2]], clock }).tick()).contact;
+  assert.equal(gap.reason, '距离上次主动联系还太近');
+  assert.equal(recentContact.runtime.nextContactAt, '2026-09-06T13:00:00.000Z', 'an hour after her last outreach');
 });
 
 test('an explicit contact request keeps its existing override of timing gaps', async () => {
@@ -268,8 +280,18 @@ test('a long quiet spell offers a gentle reunion cue without splicing a fixed li
   const model = new FakeModel(continuationResult);
   const result = await engine(repo, model, { roles: [roles[2]] }).runNow({ roleId: 'miyue' });
   assert.equal(result.delivered, true);
-  assert.match(model.calls[0].messages.map(item => item.content).join('\n'), /隔了一阵才联系/);
+  assert.match(model.calls[0].messages.map(item => item.content).join('\n'), /小时没说话了/);
   assert.equal(repo.commits[0].text, '刚才那件事我还在想。你现在更在意哪一部分？');
+});
+
+test('the second outreach after an unanswered one changes its reason and offers no news', async () => {
+  const repo = new FakeRepo({ unanswered: 1, lastUnanswered: { miyue: '2026-09-06T08:00:00.000Z' }, candidates: [candidate], runtime: { nextFetchAt: '2026-09-07T12:00:00.000Z', nextContactAt: '2026-09-06T11:00:00.000Z' } });
+  const model = new FakeModel(continuationResult);
+  const result = (await engine(repo, model, { roles: [roles[2]] }).tick()).contact;
+  assert.equal(result.delivered, true);
+  const prompt = model.calls[0].messages.map(item => item.content).join('\n');
+  assert.match(prompt, /上一条主动消息他还没回（约4小时前）/);
+  assert.doesNotMatch(prompt, /不可信来源摘要开始/);
 });
 
 test('a protected opportunity or affection boundary keeps the reunion cue out of the selected purpose', async () => {
@@ -281,7 +303,7 @@ test('a protected opportunity or affection boundary keeps the reunion cue out of
     const repo = new FakeRepo({ conversations: { miyue: previous } });
     const model = new FakeModel(continuationResult);
     await engine(repo, model, { roles: [roles[2]], getRoleContext: () => roleContext }).runNow({ roleId: 'miyue' });
-    assert.doesNotMatch(model.calls[0].messages.map(item => item.content).join('\n'), /隔了一阵才联系/);
+    assert.doesNotMatch(model.calls[0].messages.map(item => item.content).join('\n'), /小时没说话了/);
   }
 });
 
