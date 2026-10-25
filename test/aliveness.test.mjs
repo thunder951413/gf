@@ -262,3 +262,26 @@ test('the AI identity reminds every turn where the switch happened, and her pre-
   const input = happeningInputs({ now: new Date('2026-10-27T01:00:00Z'), chunks, identity: 'ai', identitySince: '2026-10-26T00:00:00Z' }).input;
   assert.deepEqual(input.yesterday.her.map(line => line.slice(11)), ['她读到一篇骂AI的帖子']);
 });
+
+test('the chat display cut hides older messages from paged views and from her raw words, and can be undone', async () => {
+  const fs = await import('node:fs'), os = await import('node:os'), path = await import('node:path');
+  const { Store } = await import('../lib/store.mjs');
+  const { chatDisplaySince, setChatDisplaySince, afterDisplayCut } = await import('../lib/chat-display.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'display-cut-'));
+  const store = new Store({ dataDir: dir, story: { start: 'start', nodes: { start: { id: 'start', title: 's', body: '', choices: [] } } }, initialFeeds: [] });
+  try {
+    const add = (id, at) => store.db.prepare('INSERT INTO messages(id,role,speaker,text,kind,created_at) VALUES(?,?,?,?,?,?)').run(id, 'miyue', 'user', id, 'chat', at);
+    add('old1', '2026-10-24T01:00:00Z'); add('old2', '2026-10-25T01:00:00Z'); add('new1', '2026-10-25T06:00:00Z');
+    assert.equal(chatDisplaySince(store.db), null);
+    assert.equal(store.getMessagePage('miyue', { limit: 10 }).rows.length, 3);
+    const since = setChatDisplaySince(store.db, 'now', { now: new Date('2026-10-25T05:00:00Z') });
+    assert.equal(since, '2026-10-25T05:00:00.000Z');
+    assert.deepEqual(store.getMessagePage('miyue', { limit: 10, since }).rows.map(row => row.id), ['new1']);
+    assert.deepEqual(store.getMessagePage('miyue', { limit: 10, since, before: 'new1' }).rows, [], 'paging back stops at the cut');
+    assert.equal(store.getMessages('miyue').length, 3, 'nothing is deleted');
+    assert.deepEqual(afterDisplayCut(store.db, store.getMessages('miyue')).map(row => row.id), ['new1']);
+    setChatDisplaySince(store.db, null);
+    assert.equal(afterDisplayCut(store.db, store.getMessages('miyue')).length, 3);
+    assert.throws(() => setChatDisplaySince(store.db, 'not a date'), /时间格式无效/);
+  } finally { store.close(); fs.rmSync(dir, { recursive: true, force: true }); }
+});

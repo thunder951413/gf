@@ -9,6 +9,7 @@ import { DailyHappenings, happeningInputs, newsCandidates } from './lib/daily-ha
 import { motifCounts } from './lib/novelty-guard.mjs';
 import { workCalendar } from './lib/work-calendar.mjs';
 import { weeklyReport, reportMarkdown, recordFeedback } from './lib/weekly-report.mjs';
+import { chatDisplaySince, setChatDisplaySince } from './lib/chat-display.mjs';
 import { UserThreads } from './lib/user-threads.mjs';
 import { RelationshipLedger } from './lib/relationship-ledger.mjs';
 import { StoryArcs } from './lib/story-arcs.mjs';
@@ -1643,6 +1644,8 @@ export async function createApp(options = {}) {
       const body=await readJsonBody(req,4096);if(!Array.isArray(body.ids)||!body.ids.length||body.ids.length>100)throw fail(400,'请选择要恢复的记录','INVALID_HISTORY_EDIT');
       return sendJson(res,200,historyEdits.remove('miyue',body.ids));
     }
+    if(pathname==='/api/chat-display'&&req.method==='GET')return sendJson(res,200,{since:chatDisplaySince(store.db),archivedCount:chatDisplaySince(store.db)?store.db.prepare("SELECT COUNT(*) n FROM messages WHERE role='miyue' AND created_at<?").get(chatDisplaySince(store.db)).n:0});
+    if(pathname==='/api/chat-display'&&req.method==='POST'){const body=await readJsonBody(req);return sendJson(res,200,{since:setChatDisplaySince(store.db,body.since??null,{now:(options.clock||(()=>new Date()))()})});}
     if(pathname==='/api/relationship-ledger'&&req.method==='GET')return sendJson(res,200,relationshipLedger.snapshot('miyue'));
     if(pathname==='/api/relationship-ledger/run'&&req.method==='POST'){await readJsonBody(req);return sendJson(res,200,await relationshipLedger.ensure('miyue',{force:true}));}
     if(pathname==='/api/story-arcs'&&req.method==='GET')return sendJson(res,200,storyArcs.snapshot('miyue'));
@@ -1891,8 +1894,11 @@ export async function createApp(options = {}) {
       // diagnostics. Without ?limit the whole history is returned (exports, old clients).
       const slimReceipt=receipt=>receipt?{intent:receipt.intent??null,hasAuthoredAnchor:Boolean(receipt.hasAuthoredAnchor),memoryCount:Array.isArray(receipt.memoryIds)?receipt.memoryIds.length:0,repairCount:Array.isArray(receipt.repairs)?receipt.repairs.length:0}:null;
       const limit=url.searchParams.get('limit'),before=url.searchParams.get('before');
-      const page=limit||before?store.getMessagePage(role,{limit:limit||120,before}):{rows:store.getMessages(role),hasMore:false};
-      return sendJson(res, 200, { messages: historyEdits.project(role,page.rows).map(row=>({...row,receipt:slimReceipt(interactionPolicy.receipt(row.id))})),hasMore:page.hasMore,pending:{...chatQueue.get(role),remainingChunks:replyDelivery.pending(role)} });
+      // Paged views (web, desktop) start at the display cut unless ?archived=1; the unpaged export stays complete.
+      const since=url.searchParams.get('archived')==='1'?null:chatDisplaySince(store.db);
+      const page=limit||before?store.getMessagePage(role,{limit:limit||120,before,since}):{rows:store.getMessages(role),hasMore:false};
+      const archivedCount=since?store.db.prepare('SELECT COUNT(*) n FROM messages WHERE role=? AND created_at<?').get(role,since).n:0;
+      return sendJson(res, 200, { messages: historyEdits.project(role,page.rows).map(row=>({...row,receipt:slimReceipt(interactionPolicy.receipt(row.id))})),hasMore:page.hasMore,archivedBefore:since,archivedCount,pending:{...chatQueue.get(role),remainingChunks:replyDelivery.pending(role)} });
     }
     if(req.method==='GET'&&pathname==='/api/chat/pending')return sendJson(res,200,{roles:Object.fromEntries(roles.map(role=>[role.id,{...chatQueue.get(role.id),remainingChunks:replyDelivery.pending(role.id)}]))});
     if(req.method==='POST'&&pathname==='/api/chat/send'){

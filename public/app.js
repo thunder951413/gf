@@ -275,6 +275,15 @@ const aliveness = {
     this.show([`上次整理：${snap.lastThrough ? new Date(snap.lastThrough).toLocaleString() : '还没有'}${snap.lastError ? `（${snap.lastError}）` : ''}`, ...lines].join('\n'));
   },
   async report() { this.show((await api('/api/weekly-report?format=md')).markdown); },
+  async loadDisplay() {
+    const display = await api('/api/chat-display');
+    $('#chat-display-note').textContent = display.since ? `聊天页从 ${new Date(display.since).toLocaleString()} 开始显示，之前的 ${display.archivedCount} 条已归档（没有删除，聊天页顶部可以打开）。她也不再翻读归档里的原话，整理过的记录不受影响。` : '聊天页显示全部历史。';
+  },
+  async setDisplay(since) {
+    if (since === 'now' && !confirm('把现在之前的聊天都收进归档？聊天页从现在开始显示，旧记录不会删除。')) return;
+    await api('/api/chat-display', { method: 'POST', body: { since } });
+    state.chatArchived = {}; await this.loadDisplay(); toast(since ? '已归档，聊天页从现在开始。' : '已恢复显示全部历史。');
+  },
 };
 
 async function loadCompanionTuning({ force = false } = {}) {
@@ -352,7 +361,7 @@ async function showView(view) {
   else if (view === 'usage') await loadUsage();
   else if (view === 'reminders') await Promise.all([loadReminders(),loadFollowups()]);
   else if (view === 'proactive') { await loadProactiveStatus(true); renderProactive(true); }
-  else if (view === 'settings') { await Promise.all([loadPreferences(),loadBackground(),loadCompanionTuning(),companionDynamicsSettings.load(),desktopControl.load(),aliveness.load().catch(() => {})]); renderProvider(); renderZhihu(true); loadZhihu(true).catch(() => {}); loadLife(true).catch(() => {}); await loadVoice(); }
+  else if (view === 'settings') { await Promise.all([loadPreferences(),loadBackground(),loadCompanionTuning(),companionDynamicsSettings.load(),desktopControl.load(),aliveness.load().catch(() => {}),aliveness.loadDisplay().catch(() => {})]); renderProvider(); renderZhihu(true); loadZhihu(true).catch(() => {}); loadLife(true).catch(() => {}); await loadVoice(); }
 }
 function renderQuiet() {
   $('#quiet').checked = Boolean(state.settings.quiet);
@@ -398,18 +407,19 @@ async function refreshZhihu() { const button = $('#zhihu-refresh'); button.disab
 // Only the newest part of a long conversation is fetched and rendered; the
 // window grows when the reader asks for earlier messages.
 const CHAT_PAGE = 120, CHAT_PAGE_STEP = 200;
-state.chatWindow = {}; state.chatHasMore = {};
+state.chatWindow = {}; state.chatHasMore = {}; state.chatArchived = {}; state.chatArchive = {};
 async function loadChat(silent = false) {
   const role = state.role;
   const mutation = chatHistory.mutation;
   const limit = state.chatWindow[role] || CHAT_PAGE;
-  const { messages,pending,hasMore } = await api(`/api/conversations/${role}?limit=${limit}`);
+  const { messages,pending,hasMore,archivedCount } = await api(`/api/conversations/${role}?limit=${limit}${state.chatArchived[role] ? '&archived=1' : ''}`);
   if (mutation !== chatHistory.mutation || state.role !== role) return;
   const hadMore = state.chatHasMore[role]; state.chatHasMore[role] = Boolean(hasMore);
+  const hadArchive = state.chatArchive[role]; state.chatArchive[role] = Number(archivedCount) || 0;
   const oldPending=JSON.stringify(state.pending.get(role));
   if(pending){if(pending.phase!=='idle'||pending.remainingChunks)state.pending.set(role,pending);else state.pending.delete(role);}
   const visibleMessages = messages.filter(message => !chatHistory.deletedIds.has(String(message.id))), previous = state.conversations[role] || [];
-  const changed = hadMore !== state.chatHasMore[role] || oldPending!==JSON.stringify(state.pending.get(role)) || previous.length !== visibleMessages.length || previous.at(-1)?.id !== visibleMessages.at(-1)?.id || previous.at(-1)?.text !== visibleMessages.at(-1)?.text;
+  const changed = hadMore !== state.chatHasMore[role] || hadArchive !== state.chatArchive[role] || oldPending!==JSON.stringify(state.pending.get(role)) || previous.length !== visibleMessages.length || previous.at(-1)?.id !== visibleMessages.at(-1)?.id || previous.at(-1)?.text !== visibleMessages.at(-1)?.text;
   state.conversations[role] = visibleMessages;
   if (state.role === role && state.view === 'chat' && (!silent || changed)) renderChat(silent);
 }
@@ -579,6 +589,10 @@ function renderChat(preserveScroll = false, forceFollow = false) {
   }
   if (state.chatHasMore[state.role]) {
     const more = button('查看更早的消息', 'text-button chat-load-earlier', action(loadEarlierChat));
+    const row = node('div', 'chat-load-earlier-row'); row.append(more); box.append(row);
+  } else if (state.chatArchive[state.role] && !state.chatArchived[state.role]) {
+    // Older chat is archived (设置 → 身份与活人感); it opens on request only.
+    const more = button(`查看归档的旧对话（${state.chatArchive[state.role]} 条）`, 'text-button chat-load-earlier', action(async () => { state.chatArchived[state.role] = true; await loadChat(); }));
     const row = node('div', 'chat-load-earlier-row'); row.append(more); box.append(row);
   }
   const fragment = document.createDocumentFragment();
@@ -1301,6 +1315,8 @@ function wireEvents() {
   $('#show-story-arcs').addEventListener('click', action(() => aliveness.story()));
   $('#show-ledger').addEventListener('click', action(() => aliveness.ledger()));
   $('#show-weekly-report').addEventListener('click', action(() => aliveness.report()));
+  $('#archive-chat-now').addEventListener('click', action(() => aliveness.setDisplay('now')));
+  $('#show-all-chat').addEventListener('click', action(() => aliveness.setDisplay(null)));
   $('#reload-companion-tuning').addEventListener('click', action(async () => { await loadCompanionTuning({ force: true }); toast('已重新读取保存的相处偏好。'); }));
   $('#retry-startup').addEventListener('click', bootstrap);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (state.view === 'settings') desktopControl.load(); markVisibleInboxRead().catch(() => {}); pollProactive(); } });
