@@ -191,3 +191,13 @@ test('the seven emotion sliders have defaults, presets and behaviour bands', () 
   assert.match(profile, /很想他，经常说出来/); assert.match(profile, /常主动说情话/);
   assert.match(voiceProfile({ ...TUNING_DEFAULTS, stubborn: 90 }), /会坚持自己的立场/);
 });
+
+test('telling today\'s beat in a chat reply marks it told so outreach does not repeat it', async () => {
+  const store = memoryStore(), week = weekOf(NOW);
+  const days = Array.from({ length: 7 }, (_, i) => new Date(Date.parse(`${week}T00:00:00Z`) + i * 86400000).toISOString().slice(0, 10));
+  const arcs = new StoryArcs(store, { model: fakeModel(() => arcAnswer(days)), clock: () => NOW, identity: new CompanionIdentity(store), enabled: true });
+  await arcs.ensure('miyue');
+  assert.deepEqual(arcs.observe('miyue', [{ id: 'm1', speaker: 'assistant', text: '小郁昨晚哭了好久' }]), ['a2']);
+  assert.deepEqual(arcs.materials('miyue').map(item => item.title), ['茶叶客户第三次推翻']);
+  assert.deepEqual(arcs.observe('miyue', [{ id: 'm2', speaker: 'assistant', text: '今天天气不错' }]), []);
+});

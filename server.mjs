@@ -627,6 +627,7 @@ export async function createApp(options = {}) {
     const supplied=selected&&context.informationCandidates.find(i=>i.id===selected.id);
     if(supplied)dailyInformation.record(rows.findLast(row=>row.speaker==='assistant'),supplied.id,supplied);
     if(roleId==='miyue'&&context.dailyOffer)dailyHappenings.observe(roleId,{rows,proposal,offer:context.dailyOffer});
+    if(roleId==='miyue')storyArcs.observe(roleId,rows);
   }
   const threadEligibleForTurn = (thread, text = '') => {
     if (!thread || options.naturalMaterialDelivery !== true) return Boolean(thread);
