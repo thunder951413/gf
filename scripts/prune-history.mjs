@@ -39,6 +39,11 @@ const PRUNE = new Map([
   ['10bf0d8c-:9', 'boundary-one-scene'], ['a488fc32-:0', 'boundary-one-scene'], ['2dec3ea6-:1', 'boundary-one-scene'], ['77961d8f-:16', 'boundary-one-scene'],
   ['fc3cceb4-:6', 'boundary-one-scene'], ['9fe9f1f1-:7', 'boundary-one-scene'], ['f253cf77-:9', 'boundary-one-scene'],
   ['f899d2dc-:12', 'news-share'],
+  // 10-20/21 leftovers: the abandoned horror-game evening, and the cold of a
+  // trip that ended around 10-23 (the planned return itself stays)
+  ['e9bb4e02-:1', 'plan-expired'], ['95677fd7-:8', 'plan-expired'], ['a61253c0-:0', 'plan-expired'], ['a61253c0-:1', 'plan-expired'],
+  ['a61253c0-:9', 'news-share'], ['a61253c0-:10', 'news-share'],
+  ['305c20a1-:3', 'one-off'], ['305c20a1-:7', 'his-meal'], ['305c20a1-:10', 'one-off'], ['9eec350d-:0', 'one-off'], ['9eec350d-:1', 'one-off'],
 ]);
 const keyOf = (chunkId, index) => `${chunkId.slice(0, 8)}-:${index}`;
 
