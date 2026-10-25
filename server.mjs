@@ -415,6 +415,7 @@ export async function createApp(options = {}) {
   const relationshipLedger=new RelationshipLedger(store,{model,clock:options.clock,enabled:options.relationshipLedger??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true),
     isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
     isReady:roleId=>!dailyMemory.settings().enabled||!dailyMemory.requiredPending(roleId).length,
+    historyFloor:()=>companionIdentity.get().changedAt,
     listMessages:(roleId,{since,until})=>historyEdits.project(roleId,store.db.prepare("SELECT id,role,speaker,text,kind,created_at AS createdAt FROM messages WHERE role=? AND speaker IN ('user','assistant') AND kind<>'story' AND created_at>=? AND created_at<? ORDER BY created_at,rowid").all(roleId,since,until))
       .filter(row=>!episodes.suppressedSourceIds(roleId).includes(row.id))});
   dailyMemory.onReady=roleId=>{
@@ -627,7 +628,7 @@ export async function createApp(options = {}) {
     const supplied=selected&&context.informationCandidates.find(i=>i.id===selected.id);
     if(supplied)dailyInformation.record(rows.findLast(row=>row.speaker==='assistant'),supplied.id,supplied);
     if(roleId==='miyue'&&context.dailyOffer)dailyHappenings.observe(roleId,{rows,proposal,offer:context.dailyOffer});
-    if(roleId==='miyue')storyArcs.observe(roleId,rows);
+    if(roleId==='miyue'){storyArcs.observe(roleId,rows);relationshipLedger.observe(roleId,rows);}
   }
   const threadEligibleForTurn = (thread, text = '') => {
     if (!thread || options.naturalMaterialDelivery !== true) return Boolean(thread);

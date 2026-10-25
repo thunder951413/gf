@@ -201,3 +201,28 @@ test('telling today\'s beat in a chat reply marks it told so outreach does not r
   assert.deepEqual(arcs.materials('miyue').map(item => item.title), ['茶叶客户第三次推翻']);
   assert.deepEqual(arcs.observe('miyue', [{ id: 'm2', speaker: 'assistant', text: '今天天气不错' }]), []);
 });
+
+test('a shared joke or promise is hinted once a day in chat and marked used when she brings it up', () => {
+  const store = memoryStore(), now = new Date('2026-10-27T02:00:00Z');
+  const ledger = new RelationshipLedger(store, { model: fakeModel({}), clock: () => now, enabled: true });
+  ledger.apply('miyue', { jokes: [{ op: 'add', text: '小品鉴师', meaning: '他叫她的外号', evidence: ['m1'] }], promises: [{ op: 'add', text: '下个月一起去北京看银杏', by: 'both', evidence: ['m1'] }] }, new Map([['m1', 'x']]), { now });
+  assert.match(ledger.turnHint('miyue', { now }), /今天可以用上的/);
+  assert.deepEqual(ledger.observe('miyue', [{ id: 'r1', speaker: 'assistant', text: '小品鉴师今天也在认真闻咖啡' }], { now }).length, 1);
+  assert.equal(ledger.observe('miyue', [{ id: 'r2', speaker: 'assistant', text: '北京的银杏应该黄了吧，下个月去看' }], { now }).length, 1);
+  assert.equal(ledger.turnHint('miyue', { now }), '', 'both used today');
+});
+
+test('the ledger ignores what was said before an identity switch', async () => {
+  const store = memoryStore(), now = new Date('2026-10-27T02:00:00Z');
+  let asked = null;
+  const ledger = new RelationshipLedger(store, { model: fakeModel({}), clock: () => now, enabled: true, historyFloor: () => '2026-10-26T06:00:00Z',
+    listMessages: (_role, { since }) => { asked = since; return []; } });
+  await ledger.ensure('miyue');
+  assert.equal(asked, '2026-10-26T06:00:00Z');
+});
+
+test('nearly every message ending on a question earns a note to stop interviewing him', () => {
+  const rows = Array.from({ length: 8 }, (_, i) => ({ speaker: 'assistant', text: i < 6 ? `那你呢？${i}`.replace(/\d$/, '') : '嗯 我也是', createdAt: '2026-10-25T00:00:00Z' }));
+  assert.match(noveltyContext(rows, { now: new Date('2026-10-25T01:00:00Z') }), /少用问句收尾/);
+  assert.doesNotMatch(noveltyContext(rows.slice(4), { now: new Date('2026-10-25T01:00:00Z') }), /少用问句收尾/);
+});
