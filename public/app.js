@@ -249,6 +249,34 @@ function renderCompanionTuningControls() {
   $('#reload-companion-tuning').hidden = !tuning.conflict;
   $('#reload-companion-tuning').disabled = tuning.saving;
 }
+// Identity switch and read-only views of her week, the ledger and the weekly report.
+const aliveness = {
+  identity: null,
+  async load() {
+    this.identity = await api('/api/companion-identity');
+    for (const input of document.querySelectorAll('input[name="companion-identity"]')) input.checked = input.value === this.identity.mode;
+    $('#identity-badge').textContent = this.identity.mode === 'ai' ? 'AI' : '真人';
+  },
+  async set(mode) {
+    if (!this.identity || mode === this.identity.mode) return;
+    if (!confirm(mode === 'ai' ? '切换成 AI 身份？她会以住在你 Mac 里的 AI 的身份和你聊天。' : '切换回真人身份？')) { await this.load(); return; }
+    this.identity = await api('/api/companion-identity', { method: 'POST', body: { mode, revision: this.identity.revision } });
+    await this.load(); toast(mode === 'ai' ? '已切换为 AI 身份，这周的故事会重写。' : '已切换回真人身份。');
+  },
+  show(text) { const out = $('#aliveness-output'); out.hidden = false; out.textContent = text; },
+  async story() {
+    const snap = await api('/api/story-arcs'), progress = snap.progress;
+    if (!progress) return this.show(snap.status === 'failed' ? `这周的故事生成失败：${snap.lastError || ''}` : '这周的故事还没写好，凌晨两点后会自动生成。');
+    this.show([`${progress.week} 这一周（${snap.identity === 'ai' ? 'AI' : '真人'}）`, ...progress.arcs.map(arc => [`· ${arc.title}：${arc.setup}`, ...arc.happened.map(b => `  ${b.day.slice(5)} ${b.text}`), ...arc.today.map(b => `  今天 ${b.text}（${b.feeling}）`), arc.choice ? `  拿不定：${arc.choice.question}` : '', arc.ending ? `  结果：${arc.ending}` : ''].filter(Boolean).join('\n')), progress.questions.length ? `在琢磨：${progress.questions.join('；')}` : ''].filter(Boolean).join('\n\n'));
+  },
+  async ledger() {
+    const snap = await api('/api/relationship-ledger'), open = snap.open || {};
+    const lines = [['promise', '说好的事'], ['joke', '梗'], ['debate', '没聊完的分歧'], ['view', '他的看法']].map(([kind, label]) => `${label}：${(open[kind] || []).map(item => item.kind === 'debate' ? `${item.topic}（她：${item.her}；他：${item.his}）` : item.topic ? `${item.topic}：${item.text}` : item.text).join('；') || '暂无'}`);
+    this.show([`上次整理：${snap.lastThrough ? new Date(snap.lastThrough).toLocaleString() : '还没有'}${snap.lastError ? `（${snap.lastError}）` : ''}`, ...lines].join('\n'));
+  },
+  async report() { this.show((await api('/api/weekly-report?format=md')).markdown); },
+};
+
 async function loadCompanionTuning({ force = false } = {}) {
   const tuning = state.companionTuning;
   if (tuning.saving) return;
@@ -324,7 +352,7 @@ async function showView(view) {
   else if (view === 'usage') await loadUsage();
   else if (view === 'reminders') await Promise.all([loadReminders(),loadFollowups()]);
   else if (view === 'proactive') { await loadProactiveStatus(true); renderProactive(true); }
-  else if (view === 'settings') { await Promise.all([loadPreferences(),loadBackground(),loadCompanionTuning(),companionDynamicsSettings.load(),desktopControl.load()]); renderProvider(); renderZhihu(true); loadZhihu(true).catch(() => {}); loadLife(true).catch(() => {}); await loadVoice(); }
+  else if (view === 'settings') { await Promise.all([loadPreferences(),loadBackground(),loadCompanionTuning(),companionDynamicsSettings.load(),desktopControl.load(),aliveness.load().catch(() => {})]); renderProvider(); renderZhihu(true); loadZhihu(true).catch(() => {}); loadLife(true).catch(() => {}); await loadVoice(); }
 }
 function renderQuiet() {
   $('#quiet').checked = Boolean(state.settings.quiet);
@@ -585,6 +613,7 @@ function renderMessage(message) {
   if (!message.transient) {
     const tools = node('div', 'message-tools');
     if (message.speaker === 'assistant') tools.append(button('◖ 朗读', '', action(() => speak(message.id))));
+    if (message.speaker === 'assistant' && message.role === 'miyue') for (const [verdict, label] of [['alive', '有活人感'], ['repeat', '又重复了']]) tools.append(button(label, '', action(async () => { await api('/api/message-feedback', { method: 'POST', body: { messageId: message.id, verdict } }); toast(verdict === 'alive' ? '记下了：这条有活人感。' : '记下了：这条在重复，会进每周报告。'); })));
     tools.append(button('收藏片段','',action(async()=>{await api('/api/moments',{method:'POST',body:{action:'save',messageId:message.id}});toast('已收进生活足迹，可以在那里配图、写备注。');})));
     if (message.kind !== 'story') tools.append(button('记住这段', '', action(() => rememberEpisode(message))));
     tools.append(button('复制', '', action(async () => { await navigator.clipboard.writeText(message.text); toast('已复制。'); })));
@@ -1268,6 +1297,10 @@ function wireEvents() {
   }));
   $('#save-companion-tuning').addEventListener('click', action(saveCompanionTuning));
   $('#restore-companion-defaults').addEventListener('click', () => { const preset = state.companionTuning.presets.find(item => item.id === 'default'); if (preset) applyTuningPreset(preset); });
+  for (const input of document.querySelectorAll('input[name="companion-identity"]')) input.addEventListener('change', action(() => aliveness.set(input.value)));
+  $('#show-story-arcs').addEventListener('click', action(() => aliveness.story()));
+  $('#show-ledger').addEventListener('click', action(() => aliveness.ledger()));
+  $('#show-weekly-report').addEventListener('click', action(() => aliveness.report()));
   $('#reload-companion-tuning').addEventListener('click', action(async () => { await loadCompanionTuning({ force: true }); toast('已重新读取保存的相处偏好。'); }));
   $('#retry-startup').addEventListener('click', bootstrap);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { if (state.view === 'settings') desktopControl.load(); markVisibleInboxRead().catch(() => {}); pollProactive(); } });

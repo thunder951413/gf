@@ -5,8 +5,14 @@ import { HybridRecall } from './lib/hybrid-recall.mjs';
 import { CharacterGrowth } from './lib/character-growth.mjs';
 import { DailyDialogueMemory } from './lib/daily-dialogue-memory.mjs';
 import { DailyInformation, INFORMATION_CATEGORIES } from './lib/daily-information.mjs';
-import { DailyHappenings, happeningInputs } from './lib/daily-happenings.mjs';
+import { DailyHappenings, happeningInputs, newsCandidates } from './lib/daily-happenings.mjs';
+import { motifCounts } from './lib/novelty-guard.mjs';
+import { workCalendar } from './lib/work-calendar.mjs';
+import { weeklyReport, reportMarkdown, recordFeedback } from './lib/weekly-report.mjs';
 import { UserThreads } from './lib/user-threads.mjs';
+import { RelationshipLedger } from './lib/relationship-ledger.mjs';
+import { StoryArcs } from './lib/story-arcs.mjs';
+import { CompanionIdentity } from './lib/companion-identity.mjs';
 import { sessionHistoryRecord } from './lib/session-history.mjs';
 import { expressionHistory } from './lib/expression-history.mjs';
 import { collectConversationMemory, retrieveConversationMemory, prepareConversationMemoryCandidates, focusMemoryAnswerMessages, promptBlockStats } from './lib/conversation-memory.mjs';
@@ -385,6 +391,14 @@ export async function createApp(options = {}) {
   store.materialMetadata=row=>({...proactiveMaterials.metadata(row.id),...dailyInformation.metadata(row.id)});
   // Things he mentioned that are worth asking about later; each refers to one
   // of his day records and disappears when that record is edited away.
+  const companionIdentity=new CompanionIdentity(store);
+  // Her week as 2–3 story lines with causes, beats and endings, written once a week.
+  const storyArcs=new StoryArcs(store,{model,clock:options.clock,identity:companionIdentity,enabled:options.storyArcs??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true),
+    isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
+    gather:({roleId,now})=>({season:workCalendar(now),
+      recentHappenings:dailyHappenings.recent(roleId,{now,days:7}).flatMap(entry=>entry.items.map(item=>`${entry.day} ${item.text}`)).slice(-14),
+      avoid:motifCounts(store.getMessages(roleId,300),{now}).filter(m=>m.count>=Math.ceil(m.perWeek/2)).map(m=>m.label),
+      news:newsCandidates(store.db,now,{limit:4}).map(item=>item.title)})});
   const userThreads=new UserThreads(store,{clock:options.clock,isSourceValid:(roleId,ref)=>{const at=ref.lastIndexOf(':');const chunk=dailyMemory.chunks(roleId).find(item=>item.id===ref.slice(0,at));return Boolean(chunk?.items?.[Number(ref.slice(at+1))]);}});
   // One call a day after the morning organisation: her small happenings,
   // the day's mood and what is on her mind, plus his threads to ask about.
@@ -394,7 +408,15 @@ export async function createApp(options = {}) {
     isReady:roleId=>!dailyMemory.settings().enabled||!dailyMemory.requiredPending(roleId).length,
     gather:({roleId,now,recent,knownRefs,openThreads})=>happeningInputs({now,dayPlan:companionRuntime.advance().dayPlan,profile:roleMap.get(roleId)?.profile||{},
       thread:lifeThreads.get(roleId,life.get(roleId)),chunks:dailyMemory.settings().enabled?dailyMemory.chunks(roleId):[],db:store.db,
-      cityEvents:groundedLife.candidates(),recent,knownRefs,openThreads,city:groundedLife.location().city||'苏州'})});
+      cityEvents:groundedLife.candidates(),recent,knownRefs,openThreads,city:groundedLife.location().city||'苏州',
+      identity:companionIdentity.get().mode,weekStory:storyArcs.todayBeats(roleId,{now})})});
+  // What is between them (promises, jokes, his views, open debates), read from
+  // yesterday's conversation once a day after the morning organisation.
+  const relationshipLedger=new RelationshipLedger(store,{model,clock:options.clock,enabled:options.relationshipLedger??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true),
+    isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
+    isReady:roleId=>!dailyMemory.settings().enabled||!dailyMemory.requiredPending(roleId).length,
+    listMessages:(roleId,{since,until})=>historyEdits.project(roleId,store.db.prepare("SELECT id,role,speaker,text,kind,created_at AS createdAt FROM messages WHERE role=? AND speaker IN ('user','assistant') AND kind<>'story' AND created_at>=? AND created_at<? ORDER BY created_at,rowid").all(roleId,since,until))
+      .filter(row=>!episodes.suppressedSourceIds(roleId).includes(row.id))});
   dailyMemory.onReady=roleId=>{
     if(closing)return;
     const pending=chatQueue.get(roleId);
@@ -579,6 +601,7 @@ export async function createApp(options = {}) {
     eventMaterials, proactiveMaterials, pursuits, discussionTopics, companionTuning,
     interactionPolicy, life, sceneImages, appearance, preferences, characterGrowth, dailyMemory, dailyInformation, dailyHappenings,
     lifeThreads: options.startLifeThreads===false?null:lifeThreads, interestTopics: () => proactiveRepo.getSettings().topics || '',
+    relationshipLedger, storyArcs, companionIdentity,
   });
   async function exploreSessionInformation(context,query,settings){
     const result=await dailyInformation.explore(query,settings);
@@ -952,6 +975,8 @@ export async function createApp(options = {}) {
             if(selected.kind==='discussion'&&!discussionTopics?.recordDelivery({roleId:role.id,topicId:selected.id.slice('discussion:'.length),messageId:message.id,trigger:context.trigger.type,quote:selection.quote}))throw fail(409,'讨论材料已变化，稍后再分享','STALE_DISCUSSION');
             proactiveMaterials.record(message,selection);
             if(selected.kind==='daily_info')dailyInformation.record(message,selected.id,selected);
+            if(['promise','debate'].includes(selected.kind))relationshipLedger.markUsed(selected.id,message.id);
+            if(['arc_beat','arc_choice'].includes(selected.kind))storyArcs.markShared(role.id,selected.id,message.id);
           }
           recordSessionTurn(role.id,[message],context,result);
         }};
@@ -1616,6 +1641,14 @@ export async function createApp(options = {}) {
       const body=await readJsonBody(req,4096);if(!Array.isArray(body.ids)||!body.ids.length||body.ids.length>100)throw fail(400,'请选择要恢复的记录','INVALID_HISTORY_EDIT');
       return sendJson(res,200,historyEdits.remove('miyue',body.ids));
     }
+    if(pathname==='/api/relationship-ledger'&&req.method==='GET')return sendJson(res,200,relationshipLedger.snapshot('miyue'));
+    if(pathname==='/api/relationship-ledger/run'&&req.method==='POST'){await readJsonBody(req);return sendJson(res,200,await relationshipLedger.ensure('miyue',{force:true}));}
+    if(pathname==='/api/story-arcs'&&req.method==='GET')return sendJson(res,200,storyArcs.snapshot('miyue'));
+    if(pathname==='/api/story-arcs/run'&&req.method==='POST'){await readJsonBody(req);return sendJson(res,200,await storyArcs.ensure('miyue',{force:true}));}
+    if(pathname==='/api/companion-identity'&&req.method==='GET')return sendJson(res,200,companionIdentity.get());
+    if(pathname==='/api/companion-identity'&&req.method==='POST'){const body=await readJsonBody(req);const before=companionIdentity.get().mode;const result=companionIdentity.set(body.mode,body.revision);if(result.mode!==before)void storyArcs.ensure('miyue',{force:true}).catch(()=>{});return sendJson(res,200,result);}
+    if(pathname==='/api/message-feedback'&&req.method==='POST'){const body=await readJsonBody(req);return sendJson(res,200,recordFeedback(store.db,{messageId:body.messageId,verdict:body.verdict??null}));}
+    if(pathname==='/api/weekly-report'&&req.method==='GET'){const days=Math.min(30,Math.max(1,Number(url.searchParams.get('days'))||7));const report=weeklyReport(store.db,{days,now:(options.clock||(()=>new Date()))()});return sendJson(res,200,url.searchParams.get('format')==='md'?{markdown:reportMarkdown(report)}:report);}
     if(pathname==='/api/companion-tuning'&&req.method==='GET')return sendJson(res,200,companionTuning.get());
     if(pathname==='/api/companion-tuning'&&req.method==='POST'){const body=await readJsonBody(req);return sendJson(res,200,companionTuning.set(body.values,body.revision));}
     if(pathname==='/api/companion-tuning/preview'&&req.method==='POST'){const body=await readJsonBody(req);return sendJson(res,200,tuningPreview(body.values));}
@@ -2081,16 +2114,16 @@ export async function createApp(options = {}) {
   const tickLifeThreads=()=>{if(!closing&&!activeRoles.has('miyue')&&!chatQueue.busy('miyue')&&!replyDelivery.pending('miyue')){if(options.startLifeThreads!==false)lifeThreads.tick('miyue',life.get('miyue'));pursuits?.tick('miyue');companionAgenda.tick('miyue');}};
 
   return {
-    server, store, dialogueTraces, hybridRecall, characterGrowth, dailyMemory, dailyInformation, dailyHappenings, userThreads, prepareSessionContext:sessionContext, segmentedSpeech, discussionTopics, historyEdits, historyDeletion, companionDynamics, companionSocial, groundedLife, eventMaterials, model, weixin, proactive, proactiveRepo, refreshContent, zhihuClient, zhihuRepo, research, characters, recall, recallRepo, usage, life, lifeTopics, inner, scenarios, dossiers, gentle, preferences, background, roleVoices, chatQueue, replyDelivery, followups, topicTracking, moments, episodes, interactionPolicy, lifeThreads, pursuits, personalExperiences, sourceChanges, companionTuning, companionBehavior, contentInbox, sharedExperiences, companionRelationship, companionAgenda, wardrobe, appearance, sceneImages, imageLibrary, companionRuntime, runtimeScenes, roleContext,
+    server, store, dialogueTraces, hybridRecall, characterGrowth, dailyMemory, dailyInformation, dailyHappenings, userThreads, relationshipLedger, storyArcs, companionIdentity, prepareSessionContext:sessionContext, segmentedSpeech, discussionTopics, historyEdits, historyDeletion, companionDynamics, companionSocial, groundedLife, eventMaterials, model, weixin, proactive, proactiveRepo, refreshContent, zhihuClient, zhihuRepo, research, characters, recall, recallRepo, usage, life, lifeTopics, inner, scenarios, dossiers, gentle, preferences, background, roleVoices, chatQueue, replyDelivery, followups, topicTracking, moments, episodes, interactionPolicy, lifeThreads, pursuits, personalExperiences, sourceChanges, companionTuning, companionBehavior, contentInbox, sharedExperiences, companionRelationship, companionAgenda, wardrobe, appearance, sceneImages, imageLibrary, companionRuntime, runtimeScenes, roleContext,
     listen(port = options.port ?? 8765) {
       return new Promise((resolve, reject) => {
         server.once('error', reject);
-        server.listen(port, network.listenHost, () => { if(options.dynamicCompanion===true&&options.startDiscovery!==false&&options.startProactive!==false&&options.startDailyInformation!==false)dailyInformation.start(); if(options.dynamicCompanion===true&&options.startDiscovery!==false)groundedLife.start(); if(options.startWeixin!==false)weixin.start(); if(options.startRuntime!==false)companionRuntime.start(); if(options.startChatQueue!==false){chatQueue.start();replyDelivery.start();} server.off('error', reject); if (options.startLife !== false && options.startProactive !== false) life.start(); if (options.startRecall !== false && options.startProactive !== false) recall.start(); if (options.startProactive !== false && options.startDailyHappenings !== false) { tickLifeThreads(); dailyHappenings.start(); } if (options.startProactive !== false) { tickLifeThreads();lifeThreadTimer=setInterval(tickLifeThreads,options.proactiveIntervalMs||15000);lifeThreadTimer.unref();proactive.start(); scheduleDossiers(); } if (options.startResearch !== false && options.startProactive !== false) research.start(); resolve(server.address()); });
+        server.listen(port, network.listenHost, () => { if(options.dynamicCompanion===true&&options.startDiscovery!==false&&options.startProactive!==false&&options.startDailyInformation!==false)dailyInformation.start(); if(options.dynamicCompanion===true&&options.startDiscovery!==false)groundedLife.start(); if(options.startWeixin!==false)weixin.start(); if(options.startRuntime!==false)companionRuntime.start(); if(options.startChatQueue!==false){chatQueue.start();replyDelivery.start();} server.off('error', reject); if (options.startLife !== false && options.startProactive !== false) life.start(); if (options.startRecall !== false && options.startProactive !== false) recall.start(); if (options.startProactive !== false && options.startDailyHappenings !== false) { tickLifeThreads(); storyArcs.start(); dailyHappenings.start(); relationshipLedger.start(); } if (options.startProactive !== false) { tickLifeThreads();lifeThreadTimer=setInterval(tickLifeThreads,options.proactiveIntervalMs||15000);lifeThreadTimer.unref();proactive.start(); scheduleDossiers(); } if (options.startResearch !== false && options.startProactive !== false) research.start(); resolve(server.address()); });
       });
     },
     async close() {
       if (closing) return Promise.resolve(); closing = true; clearInterval(reminderTimer);clearInterval(lifeThreadTimer);
-      await dailyMemory.stop();await dailyHappenings.stop();await dailyInformation.stop();await characterGrowth.stop();await groundedLife.stop();await weixin.stop();desktopAttention.interrupt();companionRuntime.stop();life.stop();replyDelivery.stop();await chatQueue.stop();
+      await dailyMemory.stop();await dailyHappenings.stop();await relationshipLedger.stop();await storyArcs.stop();await dailyInformation.stop();await characterGrowth.stop();await groundedLife.stop();await weixin.stop();desktopAttention.interrupt();companionRuntime.stop();life.stop();replyDelivery.stop();await chatQueue.stop();
       await Promise.all([proactive.stop(), research.stop(), recall.stop(), quotaPromise?.catch(() => {})]); if (refreshPromise) await refreshPromise; if (dossierJob) await dossierJob;
       await new Promise(resolve=>server.close(resolve));
       await segmentedSpeech.stop();
