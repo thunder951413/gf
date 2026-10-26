@@ -125,3 +125,20 @@ test('the preparer can mark a turn where he is really telling her something, so 
   const result = await prepareSessionGuidance({ model, messages, roleId: 'miyue' });
   assert.equal(result.catch, true); assert.equal(result.reviewEffort, 'fast');
 });
+
+test('a day of small happenings written for another identity or persona is rewritten, an old unsigned day stays', async () => {
+  const { DailyHappenings } = await import('../lib/daily-happenings.mjs');
+  const store = memoryStore(); let signature = 'human|';
+  const answer = { mood: '还行', onMind: [], items: [{ slot: 'morning', kind: 'home', text: '把窗台的多肉挪到了阳光下', detail: '它们有点徒长。', mood: '平静', canShare: true, keywords: ['多肉'] }], followUps: [] };
+  const happenings = new DailyHappenings(store, { model: fakeModel(answer), clock: () => NOW, enabled: true, signature: () => signature,
+    gather: () => ({ input: {}, refs: new Map(), news: [], identity: 'human' }) });
+  store.db.prepare("INSERT INTO daily_happenings(role_id,day,status,payload,updated_at) VALUES('miyue','2026-10-26','ready',?,?)").run(JSON.stringify({ day: '2026-10-26', mood: '旧', onMind: [], items: [] }), NOW.toISOString());
+  assert.equal(happenings.due('miyue'), 'ready', 'unsigned legacy day is kept');
+  store.db.prepare("DELETE FROM daily_happenings").run();
+  assert.equal((await happenings.ensure('miyue')).status, 'ready');
+  happenings.share('miyue', '2026-10-26', 'h1', 'msg1', 'id');
+  signature = 'ai|';
+  assert.equal(happenings.record('miyue'), null); assert.equal(happenings.due('miyue'), 'due');
+  assert.equal((await happenings.ensure('miyue')).status, 'ready');
+  assert.equal(happenings.shares('miyue', '2026-10-26').length, 0, 'what was told from the old day is cleared');
+});

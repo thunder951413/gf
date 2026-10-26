@@ -414,6 +414,7 @@ export async function createApp(options = {}) {
     enabled:options.dailyHappenings??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true),
     isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
     isReady:roleId=>!dailyMemory.settings().enabled||!dailyMemory.requiredPending(roleId).length,
+    signature:()=>`${companionIdentity.get().mode}|${readPersona(store.db).savedAt||''}`,
     gather:({roleId,now,recent,knownRefs,openThreads})=>happeningInputs({now,dayPlan:companionRuntime.advance().dayPlan,profile:roleMap.get(roleId)?.profile||{},
       thread:lifeThreads.get(roleId,life.get(roleId)),chunks:dailyMemory.settings().enabled?dailyMemory.chunks(roleId):[],db:store.db,
       cityEvents:groundedLife.candidates(),recent,knownRefs,openThreads,city:groundedLife.location().city||'苏州',
