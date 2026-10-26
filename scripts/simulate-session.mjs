@@ -46,7 +46,7 @@ if (command === 'init') {
   let provider; try { provider = JSON.parse(fs.readFileSync(path.join(root, 'data', 'provider.json'), 'utf8')); } catch {}
   try { await forkSession({ db }, { targetDir: dir, sourceDir: null, provider }); } finally { db.close(); }
   const start = value('--start') ? new Date(value('--start')) : new Date();
-  writeState({ now: start.toISOString(), identity: value('--identity') || 'human', preset: value('--preset') || null, createdAt: new Date().toISOString(), firstMessageRowid: null });
+  writeState({ now: start.toISOString(), identity: value('--identity') || null, preset: value('--preset') || null, createdAt: new Date().toISOString(), firstMessageRowid: null });
 }
 
 const state = readState();
@@ -88,7 +88,8 @@ async function settle(timeoutMs = 240000) {
 try {
   app.preferences.setReplyPace('instant');
   if (command === 'init') {
-    if (state.identity === 'ai') app.companionIdentity.set('ai', app.companionIdentity.get().revision, { now });
+    // Without --identity the fork keeps whatever identity the source had.
+    if (state.identity && state.identity !== app.companionIdentity.get().mode) app.companionIdentity.set(state.identity, app.companionIdentity.get().revision, { now });
     if (state.preset) { const preset = TUNING_PRESETS.find(item => item.id === state.preset); if (!preset) fail('没有这个预设'); app.companionTuning.set(preset.values, app.companionTuning.get().revision); }
     state.firstMessageRowid = lastRowid(); writeState(state);
     out({ ok: true, dir, now: shanghai(now), identity: app.companionIdentity.get().mode, tuning: app.companionTuning.get().values });
