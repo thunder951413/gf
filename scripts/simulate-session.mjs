@@ -10,6 +10,7 @@
 //   node scripts/simulate-session.mjs show --label x
 //   node scripts/simulate-session.mjs log --label x
 //   node scripts/simulate-session.mjs persona --label x --json '{"background":"...","temperament":"..."}'
+//   node scripts/simulate-session.mjs affect --label x   (her current feelings and recent appraisals)
 //   node scripts/simulate-session.mjs ledger --label x   (relationship ledger snapshot, incl. learned interests)
 // Each command prints one JSON object. Everything stays in .runtime/simulations/<label>/.
 import fs from 'node:fs';
@@ -133,6 +134,10 @@ try {
     const snap = app.relationshipLedger.snapshot('miyue');
     out({ open: Object.fromEntries(Object.entries(snap.open).map(([kind, items]) => [kind, items.map(({ text, topic, area, about, her, his, mood, appliedArc }) => Object.fromEntries(Object.entries({ text, topic, area, about, her, his, mood, appliedArc }).filter(([, v]) => v !== undefined)))])),
       interests: snap.interests, week: app.storyArcs.stableContext('miyue') });
+  } else if (command === 'affect') {
+    const snap = app.affect.snapshot('miyue', { now });
+    out({ at: shanghai(now), state: Object.fromEntries(Object.entries(snap.state).filter(([key]) => ['warmth', 'hurt', 'desire', 'security'].includes(key)).map(([k, v]) => [k, Math.round(v)])),
+      causes: snap.state.causes, feeling: app.affect.context('miyue', { now }), recent: snap.recent.slice(0, 6) });
   } else if (command === 'log') {
     const rows = app.store.db.prepare("SELECT speaker,text,kind,created_at FROM messages WHERE role='miyue' AND rowid>? ORDER BY rowid").all(state.firstMessageRowid || 0);
     out(rows.map(row => `${shanghai(row.created_at)} ${row.speaker === 'user' ? '他' : row.kind === 'proactive' ? '她（主动）' : '她'}：${row.text}`));
