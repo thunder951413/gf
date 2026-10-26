@@ -248,9 +248,9 @@ export async function createApp(options = {}) {
   // "她是谁": his choices laid over the default persona, re-applied on save.
   const defaultMiyueProfile = roleMap.get('miyue')?.profile ? structuredClone(roleMap.get('miyue').profile) : null;
   const refreshPersona = () => { const role = roleMap.get('miyue'); if (role && defaultMiyueProfile) role.profile = applyPersona(defaultMiyueProfile, readPersona(store.db)); };
-  refreshPersona();
   const activeRoleIds = new Set(roleMap.keys());
   const store = new Store({ dataDir, story, initialFeeds, clock: options.clock });
+  refreshPersona();
   const dialogueTraces = new DialogueTraceRepository(store, {clock:options.clock});
   const recordDialogueTrace=trace=>{if(dialogueMemory){try{dialogueTraces.record(trace);}catch{/* Diagnostics must never roll back an otherwise saved reply. */}}};
   const desktopControl = options.desktopControl || new DesktopControl();
