@@ -426,7 +426,12 @@ export async function createApp(options = {}) {
     isReady:roleId=>!dailyMemory.settings().enabled||!dailyMemory.requiredPending(roleId).length,
     historyFloor:()=>companionIdentity.get().changedAt,
     // His advice from yesterday changes the rest of her week.
-    onUpdated:async({roleId})=>{const pending=relationshipLedger.pendingAdvice(roleId);if(!pending.length)return;const result=await storyArcs.reviseWithAdvice(roleId,pending);for(const entry of result.applied||[])relationshipLedger.markAdviceApplied(entry.adviceId,entry.arcRef);},
+    onUpdated:async({roleId})=>{
+      const pending=relationshipLedger.pendingAdvice(roleId);
+      if(pending.length){const result=await storyArcs.reviseWithAdvice(roleId,pending);for(const entry of result.applied||[])relationshipLedger.markAdviceApplied(entry.adviceId,entry.arcRef);}
+      // Once she knows what lights him up, the week gets its new thing.
+      await storyArcs.ensureDiscovery(roleId,{interests:relationshipLedger.learnedInterests(roleId),fading:relationshipLedger.fadingInterests(roleId),skills:relationshipLedger.skills(roleId)});
+    },
     listMessages:(roleId,{since,until})=>historyEdits.project(roleId,store.db.prepare("SELECT id,role,speaker,text,kind,created_at AS createdAt FROM messages WHERE role=? AND speaker IN ('user','assistant') AND kind<>'story' AND created_at>=? AND created_at<? ORDER BY created_at,rowid").all(roleId,since,until))
       .filter(row=>!episodes.suppressedSourceIds(roleId).includes(row.id))});
   dailyMemory.onReady=roleId=>{
