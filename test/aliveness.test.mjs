@@ -261,6 +261,14 @@ test('the AI identity reminds every turn where the switch happened, and her pre-
     { id: 'c2', day: '2026-10-26', items: [{ subject: 'character', kind: 'event', status: 'past', text: '她读到一篇骂AI的帖子' }] }];
   const input = happeningInputs({ now: new Date('2026-10-27T01:00:00Z'), chunks, identity: 'ai', identitySince: '2026-10-26T00:00:00Z' }).input;
   assert.deepEqual(input.yesterday.her.map(line => line.slice(11)), ['她读到一篇骂AI的帖子']);
+  // Switched in the evening: same-day records count only if said after the switch.
+  const store = memoryStore();
+  store.db.prepare("INSERT INTO messages(id,role,speaker,text,created_at) VALUES('m-am','miyue','assistant','茶叶客户又改了','2026-10-26T05:00:00Z'),('m-pm','miyue','assistant','我住在你Mac里','2026-10-26T13:00:00Z')").run();
+  const sameDay = [{ id: 'c3', day: '2026-10-26', items: [
+    { subject: 'character', kind: 'event', status: 'past', text: '她卡在茶叶客户的稿子', evidence: [{ messageId: 'm-am' }] },
+    { subject: 'character', kind: 'fact', status: 'current', text: '她说自己住在他的Mac里', evidence: [{ messageId: 'm-pm' }] }] }];
+  const evening = happeningInputs({ now: new Date('2026-10-27T01:00:00Z'), chunks: sameDay, db: store.db, identity: 'ai', identitySince: '2026-10-26T12:50:00Z' }).input;
+  assert.deepEqual(evening.yesterday.her.map(line => line.slice(11)), ['她说自己住在他的Mac里']);
 });
 
 test('the chat display cut hides older messages from paged views and from her raw words, and can be undone', async () => {
