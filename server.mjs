@@ -10,6 +10,7 @@ import { motifCounts } from './lib/novelty-guard.mjs';
 import { workCalendar } from './lib/work-calendar.mjs';
 import { weeklyReport, reportMarkdown, recordFeedback } from './lib/weekly-report.mjs';
 import { chatDisplaySince, setChatDisplaySince } from './lib/chat-display.mjs';
+import { PERSONA_FIELDS, readPersona, savePersona, applyPersona } from './lib/persona-overrides.mjs';
 import { UserThreads } from './lib/user-threads.mjs';
 import { RelationshipLedger } from './lib/relationship-ledger.mjs';
 import { StoryArcs } from './lib/story-arcs.mjs';
@@ -244,6 +245,10 @@ export async function createApp(options = {}) {
   const initialFeeds = options.initialFeeds || readJson(path.join(appDataDir, 'feeds.json'), []);
   const integrations = options.integrations || await import('./lib/integrations.mjs');
   const roleMap = new Map(roles.map((role) => [role.id, role]));
+  // "她是谁": his choices laid over the default persona, re-applied on save.
+  const defaultMiyueProfile = roleMap.get('miyue')?.profile ? structuredClone(roleMap.get('miyue').profile) : null;
+  const refreshPersona = () => { const role = roleMap.get('miyue'); if (role && defaultMiyueProfile) role.profile = applyPersona(defaultMiyueProfile, readPersona(store.db)); };
+  refreshPersona();
   const activeRoleIds = new Set(roleMap.keys());
   const store = new Store({ dataDir, story, initialFeeds, clock: options.clock });
   const dialogueTraces = new DialogueTraceRepository(store, {clock:options.clock});
@@ -399,6 +404,8 @@ export async function createApp(options = {}) {
     gather:({roleId,now})=>({season:workCalendar(now),
       recentHappenings:dailyHappenings.recent(roleId,{now,days:7}).flatMap(entry=>entry.items.map(item=>`${entry.day} ${item.text}`)).slice(-14),
       avoid:motifCounts(store.getMessages(roleId,300),{now}).filter(m=>m.count>=Math.ceil(m.perWeek/2)).map(m=>m.label),
+      customBackground:roleMap.get(roleId)?.profile?.customBackground||null,
+      hisSkills:relationshipLedger.skills(roleId),hisInterests:relationshipLedger.learnedInterests(roleId),fadingInterests:relationshipLedger.fadingInterests(roleId),
       news:newsCandidates(store.db,now,{limit:4}).map(item=>item.title)})});
   const userThreads=new UserThreads(store,{clock:options.clock,isSourceValid:(roleId,ref)=>{const at=ref.lastIndexOf(':');const chunk=dailyMemory.chunks(roleId).find(item=>item.id===ref.slice(0,at));return Boolean(chunk?.items?.[Number(ref.slice(at+1))]);}});
   // One call a day after the morning organisation: her small happenings,
@@ -417,6 +424,8 @@ export async function createApp(options = {}) {
     isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
     isReady:roleId=>!dailyMemory.settings().enabled||!dailyMemory.requiredPending(roleId).length,
     historyFloor:()=>companionIdentity.get().changedAt,
+    // His advice from yesterday changes the rest of her week.
+    onUpdated:async({roleId})=>{const pending=relationshipLedger.pendingAdvice(roleId);if(!pending.length)return;const result=await storyArcs.reviseWithAdvice(roleId,pending);for(const entry of result.applied||[])relationshipLedger.markAdviceApplied(entry.adviceId,entry.arcRef);},
     listMessages:(roleId,{since,until})=>historyEdits.project(roleId,store.db.prepare("SELECT id,role,speaker,text,kind,created_at AS createdAt FROM messages WHERE role=? AND speaker IN ('user','assistant') AND kind<>'story' AND created_at>=? AND created_at<? ORDER BY created_at,rowid").all(roleId,since,until))
       .filter(row=>!episodes.suppressedSourceIds(roleId).includes(row.id))});
   dailyMemory.onReady=roleId=>{
@@ -602,7 +611,9 @@ export async function createApp(options = {}) {
     historyEdits, companionRelationship, companionDynamics, companionAgenda, dueFollowup,
     eventMaterials, proactiveMaterials, pursuits, discussionTopics, companionTuning,
     interactionPolicy, life, sceneImages, appearance, preferences, characterGrowth, dailyMemory, dailyInformation, dailyHappenings,
-    lifeThreads: options.startLifeThreads===false?null:lifeThreads, interestTopics: () => proactiveRepo.getSettings().topics || '',
+    lifeThreads: options.startLifeThreads===false?null:lifeThreads,
+    // Interest directions he set, plus what he has actually been lighting up about.
+    interestTopics: () => [proactiveRepo.getSettings().topics || '', ...relationshipLedger.learnedInterests('miyue')].filter(Boolean).join(','),
     relationshipLedger, storyArcs, companionIdentity,
   });
   async function exploreSessionInformation(context,query,settings){
@@ -978,8 +989,8 @@ export async function createApp(options = {}) {
             if(selected.kind==='discussion'&&!discussionTopics?.recordDelivery({roleId:role.id,topicId:selected.id.slice('discussion:'.length),messageId:message.id,trigger:context.trigger.type,quote:selection.quote}))throw fail(409,'讨论材料已变化，稍后再分享','STALE_DISCUSSION');
             proactiveMaterials.record(message,selection);
             if(selected.kind==='daily_info')dailyInformation.record(message,selected.id,selected);
-            if(['promise','debate'].includes(selected.kind))relationshipLedger.markUsed(selected.id,message.id);
-            if(['arc_beat','arc_choice'].includes(selected.kind))storyArcs.markShared(role.id,selected.id,message.id);
+            if(['promise','debate','invite'].includes(selected.kind))relationshipLedger.markUsed(selected.id,message.id);
+            if(['arc_beat','arc_choice','advice_outcome','discovery'].includes(selected.kind))storyArcs.markShared(role.id,selected.id,message.id);
           }
           recordSessionTurn(role.id,[message],context,result);
         }};
@@ -1181,7 +1192,8 @@ export async function createApp(options = {}) {
       try {
         refined=options.sessionGuidance===false||options.sessionReview===false?null:await refineSessionReply({model:trackedModel,messages:generated.messages,raw:generated.raw,roleId:role.id,signal:control.signal,
           reviewEffort:guidance.reviewEffort,publicEvidence:context.informationCandidates.length>0,validateFinal:value=>parseEmotionEnvelope(value,savedText),options:{maxTokens:2400},
-          risky:generated.toolCalls.length>0||Boolean(generated.parsed?.informationId)||Boolean(generated.parsed?.companionship||generated.parsed?.dynamics)||options.sessionReview==='always'});
+          // Turns where he is really telling her something get a review against 【接住他】.
+          risky:generated.toolCalls.length>0||Boolean(generated.parsed?.informationId)||Boolean(generated.parsed?.companionship||generated.parsed?.dynamics)||guidance.catch===true||options.sessionReview==='always'});
       } finally { trace.stageTimings.review=performance.now()-reviewStarted; }
       if(refined)trace.review=refined.review;
       let raw=refined?.raw??generated.raw;
@@ -1644,6 +1656,8 @@ export async function createApp(options = {}) {
       const body=await readJsonBody(req,4096);if(!Array.isArray(body.ids)||!body.ids.length||body.ids.length>100)throw fail(400,'请选择要恢复的记录','INVALID_HISTORY_EDIT');
       return sendJson(res,200,historyEdits.remove('miyue',body.ids));
     }
+    if(pathname==='/api/persona'&&req.method==='GET'){const {savedAt,...values}=readPersona(store.db);return sendJson(res,200,{fields:PERSONA_FIELDS,values,savedAt:savedAt||null,defaults:Object.fromEntries(Object.keys(PERSONA_FIELDS).map(key=>[key,defaultMiyueProfile?.[key==='speech'?'_none':key]??null]))});}
+    if(pathname==='/api/persona'&&req.method==='POST'){const body=await readJsonBody(req);const values=savePersona(store.db,body.values,{now:(options.clock||(()=>new Date()))()});refreshPersona();return sendJson(res,200,{values});}
     if(pathname==='/api/chat-display'&&req.method==='GET')return sendJson(res,200,{since:chatDisplaySince(store.db),archivedCount:chatDisplaySince(store.db)?store.db.prepare("SELECT COUNT(*) n FROM messages WHERE role='miyue' AND created_at<?").get(chatDisplaySince(store.db)).n:0});
     if(pathname==='/api/chat-display'&&req.method==='POST'){const body=await readJsonBody(req);return sendJson(res,200,{since:setChatDisplaySince(store.db,body.since??null,{now:(options.clock||(()=>new Date()))()})});}
     if(pathname==='/api/relationship-ledger'&&req.method==='GET')return sendJson(res,200,relationshipLedger.snapshot('miyue'));

@@ -249,6 +249,26 @@ function renderCompanionTuningControls() {
   $('#reload-companion-tuning').hidden = !tuning.conflict;
   $('#reload-companion-tuning').disabled = tuning.saving;
 }
+// "她是谁": fields come from the server, list fields are one item per line.
+const persona = {
+  fields: {},
+  async load() {
+    const data = await api('/api/persona'); this.fields = data.fields;
+    const box = $('#persona-fields'); box.replaceChildren();
+    for (const [key, field] of Object.entries(data.fields)) {
+      const label = node('label', 'full', field.label);
+      const input = document.createElement('textarea'); input.id = `persona-${key}`; input.rows = field.list ? 4 : 2; input.placeholder = field.hint;
+      const value = data.values[key]; input.value = Array.isArray(value) ? value.join('\n') : value || '';
+      label.append(input); box.append(label);
+    }
+    $('#persona-badge').textContent = data.savedAt ? '已自定义' : '默认设定';
+  },
+  async save() {
+    const values = Object.fromEntries(Object.keys(this.fields).map(key => [key, $(`#persona-${key}`).value]));
+    await api('/api/persona', { method: 'POST', body: { values } }); await this.load(); toast('她的设定已保存，下一条回复开始生效。');
+  },
+};
+
 // Identity switch and read-only views of her week, the ledger and the weekly report.
 const aliveness = {
   identity: null,
@@ -271,8 +291,9 @@ const aliveness = {
   },
   async ledger() {
     const snap = await api('/api/relationship-ledger'), open = snap.open || {};
-    const lines = [['promise', '说好的事'], ['joke', '梗'], ['debate', '没聊完的分歧'], ['view', '他的看法']].map(([kind, label]) => `${label}：${(open[kind] || []).map(item => item.kind === 'debate' ? `${item.topic}（她：${item.her}；他：${item.his}）` : item.topic ? `${item.topic}：${item.text}` : item.text).join('；') || '暂无'}`);
-    this.show([`上次整理：${snap.lastThrough ? new Date(snap.lastThrough).toLocaleString() : '还没有'}${snap.lastError ? `（${snap.lastError}）` : ''}`, ...lines].join('\n'));
+    const lines = [['state', '他这几天'], ['skill', '他擅长的'], ['advice', '他出过的主意'], ['promise', '说好的事'], ['joke', '梗'], ['debate', '没聊完的分歧'], ['view', '他的看法'], ['curiosity', '她想知道的'], ['invite', '想邀他做的小事']].map(([kind, label]) => `${label}：${(open[kind] || []).map(item => item.kind === 'debate' ? `${item.topic}（她：${item.her}；他：${item.his}）` : item.area ? `${item.area}：${item.text}` : item.about ? `${item.about}：${item.text}${item.appliedArc && item.appliedArc !== 'none' ? '（已用进她的故事）' : ''}` : item.topic ? `${item.topic}：${item.text}` : item.text).join('；') || '暂无'}`);
+    const interests = (snap.interests || []).map(item => `${item.topic}${item.score >= 0 ? '+' : ''}${Math.round(item.score * 10) / 10}`).join('、');
+    this.show([`上次整理：${snap.lastThrough ? new Date(snap.lastThrough).toLocaleString() : '还没有'}${snap.lastError ? `（${snap.lastError}）` : ''}`, ...lines, `他来劲的话题（越大越来劲）：${interests || '还在学'}`].join('\n'));
   },
   async report() { this.show((await api('/api/weekly-report?format=md')).markdown); },
   async loadDisplay() {
@@ -361,7 +382,7 @@ async function showView(view) {
   else if (view === 'usage') await loadUsage();
   else if (view === 'reminders') await Promise.all([loadReminders(),loadFollowups()]);
   else if (view === 'proactive') { await loadProactiveStatus(true); renderProactive(true); }
-  else if (view === 'settings') { await Promise.all([loadPreferences(),loadBackground(),loadCompanionTuning(),companionDynamicsSettings.load(),desktopControl.load(),aliveness.load().catch(() => {}),aliveness.loadDisplay().catch(() => {})]); renderProvider(); renderZhihu(true); loadZhihu(true).catch(() => {}); loadLife(true).catch(() => {}); await loadVoice(); }
+  else if (view === 'settings') { await Promise.all([loadPreferences(),loadBackground(),loadCompanionTuning(),companionDynamicsSettings.load(),desktopControl.load(),aliveness.load().catch(() => {}),aliveness.loadDisplay().catch(() => {}),persona.load().catch(() => {})]); renderProvider(); renderZhihu(true); loadZhihu(true).catch(() => {}); loadLife(true).catch(() => {}); await loadVoice(); }
 }
 function renderQuiet() {
   $('#quiet').checked = Boolean(state.settings.quiet);
@@ -1315,6 +1336,7 @@ function wireEvents() {
   $('#show-story-arcs').addEventListener('click', action(() => aliveness.story()));
   $('#show-ledger').addEventListener('click', action(() => aliveness.ledger()));
   $('#show-weekly-report').addEventListener('click', action(() => aliveness.report()));
+  $('#save-persona').addEventListener('click', action(() => persona.save()));
   $('#archive-chat-now').addEventListener('click', action(() => aliveness.setDisplay('now')));
   $('#show-all-chat').addEventListener('click', action(() => aliveness.setDisplay(null)));
   $('#reload-companion-tuning').addEventListener('click', action(async () => { await loadCompanionTuning({ force: true }); toast('已重新读取保存的相处偏好。'); }));
