@@ -13,6 +13,7 @@ import { chatDisplaySince, setChatDisplaySince } from './lib/chat-display.mjs';
 import { PERSONA_FIELDS, readPersona, savePersona, applyPersona } from './lib/persona-overrides.mjs';
 import { UserThreads } from './lib/user-threads.mjs';
 import { RelationshipLedger } from './lib/relationship-ledger.mjs';
+import { Affect } from './lib/affect.mjs';
 import { StoryArcs } from './lib/story-arcs.mjs';
 import { CompanionIdentity } from './lib/companion-identity.mjs';
 import { sessionHistoryRecord } from './lib/session-history.mjs';
@@ -267,6 +268,8 @@ export async function createApp(options = {}) {
   const life = new LifeEventRepository(store, { clock: options.clock, random: options.lifeRandom || options.random });
   const lifeTopics = new LifeTopicRepository(store, { clock: options.clock });
   const companionTuning = new CompanionTuningRepository(store);
+  // Her feelings toward him: appraised each turn, drifting back over time, rates from the settings.
+  const affect = new Affect(store, { clock: options.clock, tuning: () => companionTuning.get().values });
   const companionBehavior = new CompanionBehavior(store,companionTuning);
   const companionRelationship=new CompanionRelationship(store,{clock:options.clock});
   const companionAgenda=new CompanionAgenda(store,{clock:options.clock,random:options.agendaRandom||options.random,getSuppressedSourceIds:roleId=>episodes.suppressedSourceIds(roleId),projectSource:row=>projectCompanionSource(row)});
@@ -425,6 +428,7 @@ export async function createApp(options = {}) {
     isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
     isReady:roleId=>!dailyMemory.settings().enabled||!dailyMemory.requiredPending(roleId).length,
     historyFloor:()=>companionIdentity.get().changedAt,
+    togetherSince:()=>store.db.prepare("SELECT valid_from FROM companion_relationship_facts WHERE role_id='miyue' AND kind='status' AND fact_key='relationship' AND value='dating' AND origin<>'tombstone' ORDER BY valid_from DESC LIMIT 1").get()?.valid_from||null,
     // His advice from yesterday changes the rest of her week.
     onUpdated:async({roleId})=>{
       const pending=relationshipLedger.pendingAdvice(roleId);
@@ -620,7 +624,7 @@ export async function createApp(options = {}) {
     lifeThreads: options.startLifeThreads===false?null:lifeThreads,
     // Interest directions he set, plus what he has actually been lighting up about.
     interestTopics: () => [proactiveRepo.getSettings().topics || '', ...relationshipLedger.learnedInterests('miyue')].filter(Boolean).join(','),
-    relationshipLedger, storyArcs, companionIdentity,
+    relationshipLedger, storyArcs, companionIdentity, affect,
   });
   async function exploreSessionInformation(context,query,settings){
     const result=await dailyInformation.explore(query,settings);
@@ -636,6 +640,7 @@ export async function createApp(options = {}) {
     let proposal;try{proposal=typeof raw==='string'?parseEnvelopeJson(raw.trim().replace(/^```(?:json)?\s*|\s*```$/gu,'')):raw;}catch{proposal=null;}
     if(roleId==='miyue'){
       companionDynamics.commit(roleId,proposal,{rows,expectedRevision:context.dynamicsRevision});
+      if(context.appraisal)affect.observe(roleId,context.appraisal,{messageId:rows.findLast(row=>row.speaker==='user')?.id||null});
     }
     episodes.observe(roleId,rows);
     recordCompanionship(roleId,rows,updates,context);
@@ -995,7 +1000,7 @@ export async function createApp(options = {}) {
             if(selected.kind==='discussion'&&!discussionTopics?.recordDelivery({roleId:role.id,topicId:selected.id.slice('discussion:'.length),messageId:message.id,trigger:context.trigger.type,quote:selection.quote}))throw fail(409,'讨论材料已变化，稍后再分享','STALE_DISCUSSION');
             proactiveMaterials.record(message,selection);
             if(selected.kind==='daily_info')dailyInformation.record(message,selected.id,selected);
-            if(['promise','debate','invite'].includes(selected.kind))relationshipLedger.markUsed(selected.id,message.id);
+            if(['promise','debate','invite','moment','milestone'].includes(selected.kind))relationshipLedger.markUsed(selected.id,message.id);
             if(['arc_beat','arc_choice','advice_outcome','discovery'].includes(selected.kind))storyArcs.markShared(role.id,selected.id,message.id);
           }
           recordSessionTurn(role.id,[message],context,result);
@@ -1166,6 +1171,8 @@ export async function createApp(options = {}) {
       const guidance=options.sessionGuidance===false?{status:'disabled'}:await prepareSessionGuidance({model:trackedModel,messages:baseMessages,roleId:role.id,signal:control.signal,informationCategories:dailyInformation.enabled?INFORMATION_CATEGORIES:null});
       trace.stageTimings.guidance=performance.now()-guidanceStarted;
       trace.guidance={...guidance,count:guidance.items?.length||0,items:guidance.items||[]};
+      // Her feelings move after the turn is saved (recordSessionTurn), from this appraisal.
+      context.appraisal=guidance.appraisal||null;
       if(control.signal?.aborted||control.isCurrent&&!control.isCurrent())throw fail(409,'已有更新消息','MODEL_CANCELLED');
       assertSessionContext(context);
       let messages=applySessionGuidance(baseMessages,guidance);
@@ -1666,6 +1673,7 @@ export async function createApp(options = {}) {
     if(pathname==='/api/persona'&&req.method==='POST'){const body=await readJsonBody(req);const values=savePersona(store.db,body.values,{now:(options.clock||(()=>new Date()))()});refreshPersona();return sendJson(res,200,{values});}
     if(pathname==='/api/chat-display'&&req.method==='GET')return sendJson(res,200,{since:chatDisplaySince(store.db),archivedCount:chatDisplaySince(store.db)?store.db.prepare("SELECT COUNT(*) n FROM messages WHERE role='miyue' AND created_at<?").get(chatDisplaySince(store.db)).n:0});
     if(pathname==='/api/chat-display'&&req.method==='POST'){const body=await readJsonBody(req);return sendJson(res,200,{since:setChatDisplaySince(store.db,body.since??null,{now:(options.clock||(()=>new Date()))()})});}
+    if(pathname==='/api/affect'&&req.method==='GET')return sendJson(res,200,affect.snapshot('miyue'));
     if(pathname==='/api/relationship-ledger'&&req.method==='GET')return sendJson(res,200,relationshipLedger.snapshot('miyue'));
     if(pathname==='/api/relationship-ledger/run'&&req.method==='POST'){await readJsonBody(req);return sendJson(res,200,await relationshipLedger.ensure('miyue',{force:true}));}
     if(pathname==='/api/story-arcs'&&req.method==='GET')return sendJson(res,200,storyArcs.snapshot('miyue'));
@@ -2142,7 +2150,7 @@ export async function createApp(options = {}) {
   const tickLifeThreads=()=>{if(!closing&&!activeRoles.has('miyue')&&!chatQueue.busy('miyue')&&!replyDelivery.pending('miyue')){if(options.startLifeThreads!==false)lifeThreads.tick('miyue',life.get('miyue'));pursuits?.tick('miyue');companionAgenda.tick('miyue');}};
 
   return {
-    server, store, dialogueTraces, hybridRecall, characterGrowth, dailyMemory, dailyInformation, dailyHappenings, userThreads, relationshipLedger, storyArcs, companionIdentity, prepareSessionContext:sessionContext, segmentedSpeech, discussionTopics, historyEdits, historyDeletion, companionDynamics, companionSocial, groundedLife, eventMaterials, model, weixin, proactive, proactiveRepo, refreshContent, zhihuClient, zhihuRepo, research, characters, recall, recallRepo, usage, life, lifeTopics, inner, scenarios, dossiers, gentle, preferences, background, roleVoices, chatQueue, replyDelivery, followups, topicTracking, moments, episodes, interactionPolicy, lifeThreads, pursuits, personalExperiences, sourceChanges, companionTuning, companionBehavior, contentInbox, sharedExperiences, companionRelationship, companionAgenda, wardrobe, appearance, sceneImages, imageLibrary, companionRuntime, runtimeScenes, roleContext,
+    server, store, dialogueTraces, hybridRecall, characterGrowth, dailyMemory, dailyInformation, dailyHappenings, userThreads, relationshipLedger, storyArcs, companionIdentity, affect, prepareSessionContext:sessionContext, segmentedSpeech, discussionTopics, historyEdits, historyDeletion, companionDynamics, companionSocial, groundedLife, eventMaterials, model, weixin, proactive, proactiveRepo, refreshContent, zhihuClient, zhihuRepo, research, characters, recall, recallRepo, usage, life, lifeTopics, inner, scenarios, dossiers, gentle, preferences, background, roleVoices, chatQueue, replyDelivery, followups, topicTracking, moments, episodes, interactionPolicy, lifeThreads, pursuits, personalExperiences, sourceChanges, companionTuning, companionBehavior, contentInbox, sharedExperiences, companionRelationship, companionAgenda, wardrobe, appearance, sceneImages, imageLibrary, companionRuntime, runtimeScenes, roleContext,
     listen(port = options.port ?? 8765) {
       return new Promise((resolve, reject) => {
         server.once('error', reject);

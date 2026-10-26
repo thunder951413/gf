@@ -291,11 +291,17 @@ const aliveness = {
   },
   async ledger() {
     const snap = await api('/api/relationship-ledger'), open = snap.open || {};
-    const lines = [['state', '他这几天'], ['skill', '他擅长的'], ['advice', '他出过的主意'], ['promise', '说好的事'], ['joke', '梗'], ['debate', '没聊完的分歧'], ['view', '他的看法'], ['curiosity', '她想知道的'], ['invite', '想邀他做的小事']].map(([kind, label]) => `${label}：${(open[kind] || []).map(item => item.kind === 'debate' ? `${item.topic}（她：${item.her}；他：${item.his}）` : item.area ? `${item.area}：${item.text}` : item.about ? `${item.about}：${item.text}${item.appliedArc && item.appliedArc !== 'none' ? '（已用进她的故事）' : ''}` : item.topic ? `${item.topic}：${item.text}` : item.text).join('；') || '暂无'}`);
+    const lines = [['moment', '值得回味的时刻'], ['ritual', '你们的小习惯'], ['state', '他这几天'], ['skill', '他擅长的'], ['advice', '他出过的主意'], ['promise', '说好的事'], ['joke', '梗'], ['debate', '没聊完的分歧'], ['view', '他的看法'], ['curiosity', '她想知道的'], ['invite', '想邀他做的小事']].map(([kind, label]) => `${label}：${(open[kind] || []).map(item => item.kind === 'debate' ? `${item.topic}（她：${item.her}；他：${item.his}）` : item.area ? `${item.area}：${item.text}` : item.about ? `${item.about}：${item.text}${item.appliedArc && item.appliedArc !== 'none' ? '（已用进她的故事）' : ''}` : item.topic ? `${item.topic}：${item.text}` : item.text).join('；') || '暂无'}`);
     const interests = (snap.interests || []).map(item => `${item.topic}${item.score >= 0 ? '+' : ''}${Math.round(item.score * 10) / 10}`).join('、');
     this.show([`上次整理：${snap.lastThrough ? new Date(snap.lastThrough).toLocaleString() : '还没有'}${snap.lastError ? `（${snap.lastError}）` : ''}`, ...lines, `他来劲的话题（越大越来劲）：${interests || '还在学'}`].join('\n'));
   },
   async report() { this.show((await api('/api/weekly-report?format=md')).markdown); },
+  async affect() {
+    const { state, recent } = await api('/api/affect'), n = value => Math.round(value);
+    const names = { warm: '温暖', tender: '温柔', teasing: '逗她', flirty: '撩她', neutral: '平常', distant: '冷淡', dismissive: '敷衍', apologetic: '道歉', hurtful: '伤到她' };
+    this.show([`被他暖到 ${n(state.warmth)} · 委屈 ${n(state.hurt)} · 想亲近 ${n(state.desire)} · 安全感 ${n(state.security)}（0–100，会随时间回到平常）`,
+      ...(state.causes || []).map(cause => `因为：${cause.why}`), '最近他的消息带给她的：', ...recent.map(item => `${new Date(item.at).toLocaleString()} ${names[item.appraisal.towardHer] || item.appraisal.towardHer}${item.appraisal.intimacy !== 'none' ? ` · 亲密：${item.appraisal.intimacy}` : ''}${item.appraisal.why ? ` · ${item.appraisal.why}` : ''}`)].join('\n'));
+  },
   async loadDisplay() {
     const display = await api('/api/chat-display');
     $('#chat-display-note').textContent = display.since ? `聊天页从 ${new Date(display.since).toLocaleString()} 开始显示，之前的 ${display.archivedCount} 条已归档（没有删除，聊天页顶部可以打开）。她也不再翻读归档里的原话，整理过的记录不受影响。` : '聊天页显示全部历史。';
@@ -1335,6 +1341,7 @@ function wireEvents() {
   for (const input of document.querySelectorAll('input[name="companion-identity"]')) input.addEventListener('change', action(() => aliveness.set(input.value)));
   $('#show-story-arcs').addEventListener('click', action(() => aliveness.story()));
   $('#show-ledger').addEventListener('click', action(() => aliveness.ledger()));
+  $('#show-affect').addEventListener('click', action(() => aliveness.affect()));
   $('#show-weekly-report').addEventListener('click', action(() => aliveness.report()));
   $('#save-persona').addEventListener('click', action(() => persona.save()));
   $('#archive-chat-now').addEventListener('click', action(() => aliveness.setDisplay('now')));
