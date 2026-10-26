@@ -30,7 +30,8 @@ test('model-generated guidance is grounded in provided evidence and leaves the s
   const prepared = await prepareSessionGuidance({ messages, roleId: 'miyue', model: { complete: async (input, options) => {
     assert.equal(options.purpose, 'session-guidance');assert.equal(options.jsonObject, true);
     assert.equal(options.nonThinking,true);assert.equal(options.thinking,undefined);
-    assert.equal(input.at(-1), messages.at(-1));
+    // His message is the last evidence; a closing line keeps the preparer from answering him in character.
+    assert.equal(input.at(-2), messages.at(-1)); assert.match(input.at(-1).content, /你不是角色，不回复他/u);
     assert.match(instructionOf(input).content, /【本轮提示生成】/u);
     // Shared cached prefix: persona and archive come first, then this call's instruction.
     assert.equal(input[0].content,'persona');assert.ok(input.indexOf(instructionOf(input))>0);
