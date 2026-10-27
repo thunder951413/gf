@@ -7,7 +7,7 @@ import { DailyDialogueMemory } from './lib/daily-dialogue-memory.mjs';
 import { DailyInformation, INFORMATION_CATEGORIES } from './lib/daily-information.mjs';
 import { HerPicks } from './lib/her-picks.mjs';
 import { DailyHappenings, happeningInputs, newsCandidates } from './lib/daily-happenings.mjs';
-import { motifCounts } from './lib/novelty-guard.mjs';
+import { motifCounts, repeatedPhrases } from './lib/novelty-guard.mjs';
 import { workCalendar } from './lib/work-calendar.mjs';
 import { weeklyReport, reportMarkdown, recordFeedback } from './lib/weekly-report.mjs';
 import { chatDisplaySince, setChatDisplaySince } from './lib/chat-display.mjs';
@@ -426,7 +426,7 @@ export async function createApp(options = {}) {
     isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
     gather:({roleId,now})=>({season:workCalendar(now),
       recentHappenings:dailyHappenings.recent(roleId,{now,days:7}).flatMap(entry=>entry.items.map(item=>`${entry.day} ${item.text}`)).slice(-14),
-      avoid:motifCounts(store.getMessages(roleId,300),{now}).filter(m=>m.count>=Math.ceil(m.perWeek/2)).map(m=>m.label),
+      avoid:[...motifCounts(store.getMessages(roleId,300),{now}).filter(m=>m.count>=Math.ceil(m.perWeek/2)).map(m=>m.label),...repeatedPhrases(store.getMessages(roleId,300),{now}).map(item=>item.word)],
       customBackground:roleMap.get(roleId)?.profile?.customBackground||null,
       
       news:newsCandidates(store.db,now,{limit:4}).map(item=>item.title)})});
@@ -442,12 +442,14 @@ export async function createApp(options = {}) {
   const dailyHappenings=new DailyHappenings(store,{model,clock:options.clock,userThreads,
     enabled:options.dailyHappenings??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true),
     isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
-    isReady:roleId=>!dailyMemory.settings().enabled||!dailyMemory.requiredPending(roleId).length,
+    // Her day is written after she has been through today's headlines.
+    isReady:roleId=>(!dailyMemory.settings().enabled||!dailyMemory.requiredPending(roleId).length)&&herPicks.due(roleId)!=='due',
     signature:()=>`${companionIdentity.get().mode}|${readPersona(store.db).savedAt||''}`,
     gather:({roleId,now,recent,knownRefs,openThreads})=>happeningInputs({now,dayPlan:companionRuntime.advance().dayPlan,profile:roleMap.get(roleId)?.profile||{},
       thread:lifeThreads.get(roleId,life.get(roleId)),chunks:dailyMemory.settings().enabled?dailyMemory.chunks(roleId):[],db:store.db,
       cityEvents:groundedLife.candidates(),recent,knownRefs,openThreads,city:groundedLife.location().city||'苏州',
-      identity:companionIdentity.get().mode,identitySince:companionIdentity.get().changedAt,weekStory:storyArcs.todayBeats(roleId,{now})})});
+      identity:companionIdentity.get().mode,identitySince:companionIdentity.get().changedAt,weekStory:storyArcs.todayBeats(roleId,{now}),
+      readings:herPicks.recent(roleId,{now,days:2}),avoid:repeatedPhrases(store.getMessages(roleId,300),{now}).map(item=>item.word)})});
   // What is between them (promises, jokes, his views, open debates), read from
   // yesterday's conversation once a day after the morning organisation.
   const relationshipLedger=new RelationshipLedger(store,{model,clock:options.clock,enabled:options.relationshipLedger??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true),
@@ -1024,7 +1026,7 @@ export async function createApp(options = {}) {
             if(selected.kind==='discussion'&&!discussionTopics?.recordDelivery({roleId:role.id,topicId:selected.id.slice('discussion:'.length),messageId:message.id,trigger:context.trigger.type,quote:selection.quote}))throw fail(409,'讨论材料已变化，稍后再分享','STALE_DISCUSSION');
             proactiveMaterials.record(message,selection);
             if(selected.kind==='daily_info')dailyInformation.record(message,selected.id,selected);
-            if(['promise','debate','invite','moment','milestone'].includes(selected.kind))relationshipLedger.markUsed(selected.id,message.id);
+            if(['promise','debate','invite','moment','milestone','changed'].includes(selected.kind))relationshipLedger.markUsed(selected.id,message.id);
             if(['arc_beat','arc_choice','advice_outcome','discovery'].includes(selected.kind))storyArcs.markShared(role.id,selected.id,message.id);
           }
           recordSessionTurn(role.id,[message],context,result);
