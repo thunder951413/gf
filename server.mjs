@@ -433,6 +433,7 @@ export async function createApp(options = {}) {
   // Once a day she goes through the fetched headlines with her own taste.
   const herPicks=new HerPicks(store,{model,information:dailyInformation,clock:options.clock,identity:companionIdentity,enabled:options.herPicks??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true&&options.dailyInformation!==false),
     isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
+    onRead:(roleId,pick,{now})=>affect.read(roleId,{stir:pick.stir,stirWhy:pick.stirWhy,title:pick.title},{now}),
     gather:({roleId,mode})=>{const profile=roleMap.get(roleId)?.profile||{};return {world:worldBible(mode,profile.customBackground),
       tastes:(profile.tastes||[...(profile.likes||[]),...(profile.opinions||[]).slice(0,6)]).slice(0,12),
       shared:[...String(proactiveRepo.getSettings().topics||'').split(/[,，、\s]+/u),...relationshipLedger.learnedInterests(roleId)].map(item=>item.trim()).filter(Boolean)};}});
