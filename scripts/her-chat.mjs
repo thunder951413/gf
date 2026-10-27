@@ -17,6 +17,7 @@ import { conversationTrigger } from '../lib/conversation-plan.mjs';
 import { afterDisplayCut } from '../lib/chat-display.mjs';
 import { validAppraisal } from '../lib/affect.mjs';
 import { readPersona } from '../lib/persona-overrides.mjs';
+import { noveltyContext } from '../lib/novelty-guard.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const [command, ...rest] = process.argv.slice(2);
@@ -46,6 +47,17 @@ function settingsSignature() {
   return JSON.stringify({ identity: identity.mode, persona: readPersona(app.store.db).savedAt || null, tuning: context.sessionTuningRevision ?? null,
     settings: context.sessionSettingsRevision ?? null, policy: context.sessionPolicyRevision ?? null, relationship: context.relationshipRevision ?? null, display: app.store.db.prepare("SELECT value FROM metadata WHERE key='chat_display_since'").get()?.value || null });
 }
+// What she has been wanting to bring up herself: the same slate the app uses
+// when she reaches out (her day, what she read, her week, what is still open
+// between them, his things to ask after), minus the reaching-out-only kinds.
+// Things she has already told him drop out by themselves.
+const OWN = new Set(['daily_happening', 'daily_info', 'arc_beat', 'arc_choice', 'advice_outcome', 'debate', 'changed', 'moment', 'promise', 'user_thread', 'curiosity']);
+function onHerMind() {
+  const context = app.prepareSessionContext(ROLE, { initiating: true, text: '', trigger: conversationTrigger({ type: 'scheduled_opportunity', at: new Date() }) });
+  return (context.sessionOptions.proactiveMaterials || []).filter(item => OWN.has(item.kind) || item.herAngle).slice(0, 4)
+    .map(item => ({ kind: item.kind, id: item.id, title: item.title, ...(item.detail ? { detail: item.detail } : {}), ...(item.herAngle ? { herAngle: item.herAngle } : {}), ...(item.question ? { question: item.question } : {}) }));
+}
+const mindLines = items => items.length ? items.map(item => `- ${item.title}${item.detail ? `：${item.detail}` : ''}${item.herAngle ? `（你的理由：${item.herAngle.why}；你的看法：${item.herAngle.take}）` : ''}`).join('\n') : '（暂时没有）';
 const lines = rows => rows.map(row => `${shanghai(row.created_at || row.createdAt)} ${row.speaker === 'user' ? '他' : '她'}${row.kind === 'proactive' ? '（主动）' : ''}：${row.text}`).join('\n');
 const recentRows = limit => afterDisplayCut(app.store.db, app.store.db.prepare("SELECT id,speaker,text,kind,created_at FROM messages WHERE role=? AND speaker IN ('user','assistant') AND kind<>'story' ORDER BY created_at DESC,rowid DESC LIMIT ?").all(ROLE, limit).reverse());
 
@@ -67,6 +79,7 @@ try {
       `【现在】${shanghai(now)}（北京时间），她的身份：${app.companionIdentity.get().mode === 'ai' ? 'AI，住在他 Mac 里' : '真人设定'}`,
       '【她是谁】', persona,
       background,
+      '【你心里惦记、想跟他说的】（话头停了的时候拿一件讲；讲过的下次自然不在这里）', mindLines(onHerMind()),
       '【最近的聊天】', lines(recentRows(40)),
     ].filter(Boolean).join('\n\n') + '\n');
   } else {
@@ -80,11 +93,16 @@ try {
     app.followups.observe(ROLE, he, user.id);
     app.storyArcs.observe(ROLE, rows);
     const used = app.relationshipLedger.observe(ROLE, rows);
-    const info = value('--info');
-    if (info && app.dailyInformation.material(info)) app.dailyInformation.record(assistant, info);
+    app.dailyHappenings.observe(ROLE, { rows, offer: app.dailyHappenings.offer(ROLE) });
+    // What she read and told him counts as told, whether or not --info was given.
+    const pairs = text => { const chars = [...String(text).replace(/[^\p{Script=Han}A-Za-z0-9]/gu, '')]; return chars.slice(1).map((char, i) => chars[i] + char); };
+    const told = [value('--info'), ...app.herPicks.materials(ROLE).filter(item => pairs([item.title, item.herAngle?.why, item.herAngle?.take].join(' ')).filter(term => she.includes(term)).length >= 4).map(item => item.id)].filter(Boolean);
+    for (const id of new Set(told)) if (app.dailyInformation.material(id)) app.dailyInformation.record(assistant, id);
     let last = null; try { last = JSON.parse(fs.readFileSync(statePath, 'utf8')); } catch {}
     const settingsChanged = Boolean(last?.signature && last.signature !== settingsSignature());
+    const notes = noveltyContext(app.store.getMessages(ROLE, 300), { now: new Date() });
     process.stdout.write(JSON.stringify({ saved: [user.id, assistant.id], at: shanghai(assistant.createdAt), feeling: app.affect.context(ROLE), ledgerUsed: used.length,
+      onHerMind: onHerMind().map(item => item.title + (item.herAngle ? `（${item.herAngle.take}）` : item.detail ? `：${item.detail}` : '')), ...(notes ? { notes } : {}),
       ...(settingsChanged ? { settingsChanged: '他在设置里改了她（身份、性格、相处参数或关系）。下一轮回复之前重新运行 context，按新的她说话。' } : {}) }) + '\n');
   }
 } finally { await app.close(); }

@@ -72,3 +72,10 @@ test('as an AI her day can come from what she read today, and only from that', (
   assert.equal(validateHappenings(value, withReadings).items.length, 1);
   assert.throws(() => validateHappenings(value, happeningInputs(base)), /没有可用的小事/, 'nothing read, nothing to react to');
 });
+
+test('a reply that only agrees is read as the topic running out, which is when she brings something of her own', async () => {
+  const { isLull, lullNote } = await import('../lib/novelty-guard.mjs');
+  for (const text of ['你说得对哦', '是呢', '哈哈哈', '嗯嗯', '可不么', '确实', '好呀😊']) assert.ok(isLull(text), text);
+  for (const text of ['教人认账？', '没有呢，只是时候到了就觉得应该喝两杯', '我也是，我也想你。我还想你黏我呢。', '你这个小调皮。']) assert.ok(!isLull(text), text);
+  assert.match(lullNote('是呢'), /拿一件你自己的事讲/); assert.equal(lullNote('你最近看了什么'), '');
+});
