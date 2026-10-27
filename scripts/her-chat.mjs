@@ -51,7 +51,7 @@ function settingsSignature() {
 // when she reaches out (her day, what she read, her week, what is still open
 // between them, his things to ask after), minus the reaching-out-only kinds.
 // Things she has already told him drop out by themselves.
-const OWN = new Set(['daily_happening', 'daily_info', 'arc_beat', 'arc_choice', 'advice_outcome', 'debate', 'changed', 'moment', 'promise', 'user_thread', 'curiosity']);
+const OWN = new Set(['daily_happening', 'daily_info', 'arc_beat', 'arc_choice', 'advice_outcome', 'debate', 'changed', 'moment', 'promise', 'user_thread', 'curiosity', 'unease']);
 function onHerMind() {
   const context = app.prepareSessionContext(ROLE, { initiating: true, text: '', trigger: conversationTrigger({ type: 'scheduled_opportunity', at: new Date() }) });
   return (context.sessionOptions.proactiveMaterials || []).filter(item => OWN.has(item.kind) || item.herAngle).slice(0, 4)

@@ -16,13 +16,6 @@
     "intervalMinutes": 720
   },
   {
-    "id": "deadline-tv",
-    "title": "Deadline · 剧集与电视",
-    "category": "series",
-    "url": "https://deadline.com/v/tv/feed/",
-    "intervalMinutes": 360
-  },
-  {
     "id": "npr-film",
     "title": "NPR · 电影",
     "category": "film",
@@ -39,13 +32,6 @@
     "intervalMinutes": 720
   },
   {
-    "id": "cntraveler-travel",
-    "title": "Condé Nast Traveler · 旅行",
-    "category": "travel",
-    "url": "https://www.cntraveler.com/feed/rss",
-    "intervalMinutes": 720
-  },
-  {
     "id": "sina-headlines",
     "title": "新浪 · 公开新闻榜",
     "category": "news",
@@ -59,13 +45,6 @@
     "category": "products",
     "url": "https://www.ithome.com/rss/",
     "intervalMinutes": 180
-  },
-  {
-    "id": "apple-products",
-    "title": "Apple · 官方发布",
-    "category": "products",
-    "url": "https://www.apple.com/newsroom/rss-feed.rss",
-    "intervalMinutes": 360
   },
   {
     "id": "gcores-games",
@@ -87,5 +66,54 @@
     "category": "music",
     "url": "https://feeds.npr.org/1039/rss.xml",
     "intervalMinutes": 720
+  },
+  {
+    "id": "chinanews-culture",
+    "title": "中新网 · 文化",
+    "category": "books",
+    "url": "https://www.chinanews.com.cn/rss/culture.xml",
+    "intervalMinutes": 360
+  },
+  {
+    "id": "smithsonian-history",
+    "title": "Smithsonian · 历史",
+    "category": "books",
+    "url": "https://www.smithsonianmag.com/rss/history/",
+    "intervalMinutes": 720
+  },
+  {
+    "id": "publicdomainreview",
+    "title": "The Public Domain Review · 旧图旧书",
+    "category": "books",
+    "url": "https://publicdomainreview.org/rss.xml",
+    "intervalMinutes": 1440
+  },
+  {
+    "id": "aeon-essays",
+    "title": "Aeon · 随笔",
+    "category": "books",
+    "url": "https://aeon.co/feed.rss",
+    "intervalMinutes": 720
+  },
+  {
+    "id": "atlasobscura",
+    "title": "Atlas Obscura · 老地方与怪地方",
+    "category": "travel",
+    "url": "https://www.atlasobscura.com/feeds/latest",
+    "intervalMinutes": 720
+  },
+  {
+    "id": "toodaylab",
+    "title": "理想生活实验室 · 设计与生活",
+    "category": "products",
+    "url": "https://www.toodaylab.com/feed",
+    "intervalMinutes": 360
+  },
+  {
+    "id": "sspai",
+    "title": "少数派 · 生活与工具",
+    "category": "products",
+    "url": "https://sspai.com/feed",
+    "intervalMinutes": 360
   }
 ]

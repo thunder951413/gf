@@ -30,14 +30,14 @@ test('she goes through today\'s headlines with her own taste; a flood of one cat
   ] }));
   const picks = new HerPicks(store, { model, information: info, clock: () => NOW, gather: () => ({ world: '苏州设计师', tastes: ['汪曾祺'], shared: ['读书', 'AI'] }) });
   const candidates = picks.candidates();
-  assert.equal(candidates.filter(item => item.category === 'products').length, 5, 'at most five per category');
+  assert.equal(candidates.filter(item => item.category === 'products').length, 3, 'at most three per source');
   assert.ok(candidates.some(item => item.category === 'books') && candidates.some(item => item.category === 'food'));
   const result = await picks.ensure('miyue');
   assert.equal(result.status, 'ready');
   assert.deepEqual(result.picks.map(pick => pick.id), [book.id, phone.id], 'ids that were not offered are dropped');
   assert.equal(result.picks[1].shared, null, 'only a real shared topic is kept');
   const input = JSON.parse(model.calls[0].messages[1].content);
-  assert.deepEqual(input.shared, ['读书', 'AI']); assert.deepEqual(input.tastes, ['汪曾祺']);
+  assert.deepEqual(input.shared, ['读书', 'AI']); assert.deepEqual(input.tastes, [{ taste: '汪曾祺', score: 2 }], 'seeded from her history');
   assert.match(HER_PICKS_INSTRUCTION, /不写“因为他喜欢”/);
   assert.equal((await picks.ensure('miyue')).reason, 'ready', 'once a day');
   const materials = picks.materials('miyue');
@@ -68,4 +68,30 @@ test('a fast turn is reviewed only for something the reviewer can check', () => 
   assert.deepEqual(reviewRisk({ ...plain, parsed: { ...plain.parsed, informationId: 'nope' } }, {}, context), [], 'an id that was never offered is not public evidence');
   assert.deepEqual(reviewRisk({ ...plain, toolCalls: [{ name: 'state' }] }, { catch: true }, context), ['tools', 'catch']);
   assert.deepEqual(reviewRisk({ ...plain, parsed: { dynamics: { needs: [{ id: 'n' }] } } }, {}, context), ['records']);
+});
+
+test('her tastes grow from what she picks, sink when she stops, and what she reads can leave her unsure of them', async () => {
+  const { Affect } = await import('../lib/affect.mjs');
+  const store = memoryStore(), info = information(store); let now = NOW;
+  const book = info.list({ category: 'books' })[0], soup = info.list({ category: 'food' })[0];
+  const affect = new Affect(store, { clock: () => now });
+  let answer = { picks: [{ id: book.id, why: '大学买的第一本就是他的', take: '未刊稿更像他', taste: '汪曾祺', stir: 'calm' },
+    { id: soup.id, why: '桂花糖芋苗没做过', take: '甜汤也能不腻', taste: '甜汤', stir: 'uneasy', stirWhy: '会不会有一天他也觉得我腻' }] };
+  const picks = new HerPicks(store, { model: fakeModel(() => answer), information: info, clock: () => now, gather: () => ({ tastes: ['汪曾祺', '老街'] }),
+    onRead: (roleId, pick, { now }) => affect.read(roleId, { stir: pick.stir, stirWhy: pick.stirWhy, title: pick.title }, { now }) });
+  const before = affect.current('miyue', { now }).security;
+  await picks.ensure('miyue');
+  const tastes = Object.fromEntries(picks.tastes('miyue').map(row => [row.taste, row]));
+  assert.ok(tastes['甜汤'] && !tastes['甜汤'].seed, 'a new interest of her own'); assert.ok(tastes['汪曾祺'].score > tastes['老街'].score);
+  assert.ok(affect.current('miyue', { now }).security < before - 10, 'the story left her unsure');
+  assert.match(affect.context('miyue', { now }), /你心里有点不安：会不会有一天他也觉得我腻/);
+  assert.equal(affect.materials('miyue', { now: new Date('2026-10-27T03:00:00Z') })[0]?.kind, 'unease', 'a reason to reach out to him');
+  // His reassurance settles it faster than her usual drift.
+  const settled = affect.observe('miyue', { towardHer: 'tender', need: 'attention' }, { now });
+  assert.ok(settled.after.security - settled.before.security >= 12);
+  // A month without picking 甜汤 again and it is gone; her seeds stay.
+  answer = { picks: [] };
+  for (let day = 1; day <= 60; day++) { now = new Date(+NOW + day * 86400000); await picks.ensure('miyue'); }
+  const later = picks.tastes('miyue').map(row => row.taste);
+  assert.ok(!later.includes('甜汤') && later.includes('老街') && later.includes('汪曾祺'), JSON.stringify(later));
 });

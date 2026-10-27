@@ -14,7 +14,7 @@ function memoryStore() {
 }
 const ids = new Map([['m1', 'u1']]);
 
-test('what she brought up sinks out of her head and comes back later; the oftener she uses it, the longer it rests', () => {
+test('what she brought up rests a while, and everything sinks as days pass instead of being dug back up', () => {
   const store = memoryStore(); let now = NOW;
   const ledger = new RelationshipLedger(store, { model: {}, clock: () => now, enabled: true });
   ledger.apply('miyue', { jokes: [{ op: 'add', text: '存档搁你这儿', meaning: '记忆在他那', evidence: ['m1'] }, { op: 'add', text: '嫌完还得回来哄我', meaning: '吵嘴账', evidence: ['m1'] }],
@@ -26,15 +26,16 @@ test('what she brought up sinks out of her head and comes back later; the oftene
   assert.equal(used.length, 2);
   const joke = ledger.list('miyue', { kind: 'joke' }).find(item => item.text === '嫌完还得回来哄我');
   assert.equal(joke.useCount, 1); assert.equal(restingUntil(joke, now), new Date(+now + 24 * 3600000).toISOString());
-  assert.doesNotMatch(ledger.stableContext('miyue', { now }), /嫌完还得回来哄我|吃烧鸭/, 'resting things are out of her head');
-  now = new Date(+NOW + 10 * 3600000);
-  assert.doesNotMatch(ledger.stableContext('miyue', { now }), /嫌完还得回来哄我|吃烧鸭/, 'still resting the same day');
-  now = new Date(+NOW + 25 * 3600000);
-  assert.match(ledger.stableContext('miyue', { now }), /嫌完还得回来哄我/, 'a day later the joke is fresh again');
-  ledger.observe('miyue', [{ id: 'r2', speaker: 'assistant', text: '嫌完还得回来哄我' }], { now });
-  assert.equal(ledger.list('miyue', { kind: 'joke' }).find(item => item.text === '嫌完还得回来哄我').useCount, 2);
-  now = new Date(+now + 30 * 3600000);
-  assert.doesNotMatch(ledger.stableContext('miyue', { now }), /嫌完还得回来哄我/, 'the second use rests two days');
+  // The background is judged once a day (it is cached), so the rest shows from the next day.
+  assert.match(ledger.stableContext('miyue', { now }), /嫌完还得回来哄我/, 'unchanged for the rest of today');
+  now = new Date(+NOW + 6 * 3600000);
+  assert.doesNotMatch(ledger.stableContext('miyue', { now }), /嫌完还得回来哄我|吃烧鸭/, 'the next day it is out of her head');
+  now = new Date(+NOW + 2 * DAY);
+  assert.match(ledger.stableContext('miyue', { now }), /嫌完还得回来哄我/, 'once rested, still near the surface');
+  // Nothing is dug back up: a month on, with nothing new said about it, it has sunk.
+  now = new Date(+NOW + 25 * DAY);
+  assert.doesNotMatch(ledger.stableContext('miyue', { now }), /嫌完还得回来哄我|存档搁你这儿/, 'sunk below the horizon');
+  assert.match(ledger.stableContext('miyue', { now }), /吃烧鸭/, 'what she knows about him stays longer');
   // Two days after she changed because of him, it becomes something to tell him.
   now = new Date(+NOW + 3 * DAY);
   const changed = ledger.materials('miyue', { now }).find(item => item.kind === 'changed');
