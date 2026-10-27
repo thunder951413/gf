@@ -297,10 +297,11 @@ const aliveness = {
   },
   async report() { this.show((await api('/api/weekly-report?format=md')).markdown); },
   async affect() {
-    const { state, recent } = await api('/api/affect'), n = value => Math.round(value);
+    const [{ state, recent }, look] = await Promise.all([api('/api/affect'), api('/api/appearance').catch(() => null)]), n = value => Math.round(value);
     const names = { warm: '温暖', tender: '温柔', teasing: '逗她', flirty: '撩她', neutral: '平常', distant: '冷淡', dismissive: '敷衍', apologetic: '道歉', hurtful: '伤到她' };
     this.show([`被他暖到 ${n(state.warmth)} · 委屈 ${n(state.hurt)} · 想亲近 ${n(state.desire)} · 安全感 ${n(state.security)}（0–100，会随时间回到平常）`,
-      ...(state.causes || []).map(cause => `因为：${cause.why}`), '最近他的消息带给她的：', ...recent.map(item => `${new Date(item.at).toLocaleString()} ${names[item.appraisal.towardHer] || item.appraisal.towardHer}${item.appraisal.intimacy !== 'none' ? ` · 亲密：${item.appraisal.intimacy}` : ''}${item.appraisal.why ? ` · ${item.appraisal.why}` : ''}`)].join('\n'));
+      ...(state.causes || []).map(cause => `因为：${cause.why}`),
+      ...(look?.mood ? [`桌面上的她：${look.mood.label}${look.mood.why ? `（${look.mood.why}）` : ''}，${look.current.poseId} / ${look.current.expressionId}`] : []), '最近他的消息带给她的：', ...recent.map(item => `${new Date(item.at).toLocaleString()} ${names[item.appraisal.towardHer] || item.appraisal.towardHer}${item.appraisal.intimacy !== 'none' ? ` · 亲密：${item.appraisal.intimacy}` : ''}${item.appraisal.why ? ` · ${item.appraisal.why}` : ''}`)].join('\n'));
   },
   async loadDisplay() {
     const display = await api('/api/chat-display');

@@ -14,6 +14,7 @@ import { PERSONA_FIELDS, readPersona, savePersona, applyPersona } from './lib/pe
 import { UserThreads } from './lib/user-threads.mjs';
 import { RelationshipLedger } from './lib/relationship-ledger.mjs';
 import { Affect } from './lib/affect.mjs';
+import { missingPulse } from './lib/relationship-pulse.mjs';
 import { StoryArcs } from './lib/story-arcs.mjs';
 import { CompanionIdentity } from './lib/companion-identity.mjs';
 import { sessionHistoryRecord } from './lib/session-history.mjs';
@@ -277,7 +278,10 @@ export async function createApp(options = {}) {
   const characters = new CharacterRepository(store, { clock: options.clock, random: options.random, lifeEvents: life, innerState: inner, getTuning:()=>companionTuning.get() });
   const appearance = new AppearanceRepository(store,{clock:options.clock,random:options.appearanceRandom,
     catalog:options.appearanceCatalog,catalogPath:options.appearanceCatalogPath,wardrobe,
-    getState:()=>{const currentLife=life.get('miyue'),character=characters.get('miyue',{lifeSnapshot:currentLife});return {world:character.world,inner:character.inner};},
+    getState:()=>{const currentLife=life.get('miyue'),character=characters.get('miyue',{lifeSnapshot:currentLife});const now=(options.clock||(()=>new Date()))();
+      const hisLastAt=store.db.prepare("SELECT MAX(created_at) at FROM messages WHERE role='miyue' AND speaker='user'").get()?.at||null;
+      return {world:character.world,inner:character.inner,affect:affect.current('miyue',{now}),pulse:missingPulse({hisLastAt,now,missing:companionTuning.get().values.missing}),
+        sleeping:companionIdentity.get().mode!=='ai'&&Boolean(companionRuntime.advance().availability?.sleeping)};},
     isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(replyDelivery.pending('miyue'))});
   const sceneImages = new SceneImagesRepository(store,{dataDir});
   const imageLibrary = new ImageLibraryRepository(store,{dataDir,sceneImages});
