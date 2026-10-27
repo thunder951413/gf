@@ -143,3 +143,14 @@ test('a day of small happenings written for another identity or persona is rewri
   assert.equal(happenings.shares('miyue', '2026-10-26').length, 0, 'what was told from the old day is cleared');
 });
 
+
+test('how they came together carries into both identities; her human upbringing stays with the human', () => {
+  const profile = { history: ['外婆讲老街'], tastes: ['历史里的人'], occupation: '设计师', together: { met: '在咖啡小组认识', metAsAi: '他第一次在这里说话', since: '2026-09-08', whyHim: ['他认真'] } };
+  const ai = identityProfile('ai', profile), human = identityProfile('human', profile);
+  assert.equal(ai.together.met, '他第一次在这里说话'); assert.equal(ai.history, undefined); assert.deepEqual(ai.tastes, ['历史里的人']);
+  assert.equal(human.together.met, '在咖啡小组认识'); assert.equal(human.together.metAsAi, undefined); assert.deepEqual(human.history, ['外婆讲老街']);
+  assert.equal(applyPersona(profile, { background: '他写的设定' }).history, undefined, 'a background he writes replaces her upbringing');
+  const role = { id: 'miyue', name: '林晓薇', profile };
+  const [aiPersona] = buildSessionMessages({ role, identity: 'ai', history: [], text: '你好', trigger: { type: 'user_message' } });
+  assert.match(aiPersona.content, /together 是你们真实的来路/); assert.doesNotMatch(aiPersona.content, /history 是你的成长经历/);
+});
