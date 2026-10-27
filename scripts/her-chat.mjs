@@ -59,7 +59,8 @@ function onHerMind() {
 }
 const mindLines = items => items.length ? items.map(item => `- ${item.title}${item.detail ? `：${item.detail}` : ''}${item.herAngle ? `（你的理由：${item.herAngle.why}；你的看法：${item.herAngle.take}${item.herAngle.stirred ? `；读完心里那句：${item.herAngle.stirred}` : ''}）` : ''}`).join('\n') : '（暂时没有）';
 const lines = rows => rows.map(row => `${shanghai(row.created_at || row.createdAt)} ${row.speaker === 'user' ? '他' : '她'}${row.kind === 'proactive' ? '（主动）' : ''}：${row.text}`).join('\n');
-const recentRows = limit => afterDisplayCut(app.store.db, app.store.db.prepare("SELECT id,speaker,text,kind,created_at FROM messages WHERE role=? AND speaker IN ('user','assistant') AND kind<>'story' ORDER BY created_at DESC,rowid DESC LIMIT ?").all(ROLE, limit).reverse());
+// What she remembers saying is the corrected history, the same as in the app.
+const recentRows = limit => app.historyEdits.project(ROLE, afterDisplayCut(app.store.db, app.store.db.prepare("SELECT id,role,speaker,text,kind,created_at FROM messages WHERE role=? AND speaker IN ('user','assistant') AND kind<>'story' ORDER BY created_at DESC,rowid DESC LIMIT ?").all(ROLE, limit).reverse()));
 
 try {
   if (command === 'history') {
