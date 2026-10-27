@@ -67,10 +67,10 @@ test('his advice rewrites the rest of her week so she acts on it, and the outcom
     { adviceId: other.id, arcId: null, followed: 'no', why: '', beats: [], ending: '' }] }; };
   const model = fakeModel((messages, options) => options.purpose === 'story-arcs' ? arcAnswer : reviseAnswer(messages));
   const identity = new CompanionIdentity(store);
-  const arcs = new StoryArcs(store, { model, clock: () => now, identity, enabled: true, gather: () => ({ hisSkills: [{ area: '谈客户', text: '跟甲方谈价有经验' }], hisInterests: ['咖啡'] }) });
+  const arcs = new StoryArcs(store, { model, clock: () => now, identity, enabled: true });
   await arcs.ensure('miyue');
-  const input = JSON.parse(model.calls[0].messages[1].content);
-  assert.deepEqual(input.hisSkills, [{ area: '谈客户', text: '跟甲方谈价有经验' }]); assert.deepEqual(input.hisInterests, ['咖啡']);
+  // Her week is not written backwards from what he is good at.
+  assert.doesNotMatch(model.calls[0].messages[0].content, /hisSkills|hisInterests|discovery/);
   assert.equal(arcs.record('miyue').discovery.field, '发酵风味');
   // His advice arrives the next morning through the ledger; the ledger hands it to the story.
   now = new Date(`${days[1]}T00:30:00Z`);
@@ -143,18 +143,3 @@ test('a day of small happenings written for another identity or persona is rewri
   assert.equal(happenings.shares('miyue', '2026-10-26').length, 0, 'what was told from the old day is cleared');
 });
 
-test('a week written before she knew his interests gets its new thing once the ledger has learned them', async () => {
-  const store = memoryStore(), week = weekOf(NOW), days = weekDays(week);
-  const arcs0 = { arcs: [{ line: 'work', title: 'a', ending: 'e', beats: [{ day: days[0], text: 'x' }, { day: days[2], text: 'y' }] }, { line: 'self', title: 'b', ending: 'e', beats: [{ day: days[0], text: 'x' }, { day: days[3], text: 'y' }] }], questions: [], discovery: null };
-  const model = fakeModel((messages, options) => options.purpose === 'story-arcs' ? arcs0 : { discovery: { day: days[1], field: '发酵处理法', hook: '读到日晒和水洗会让同一支豆子喝起来像两种', link: '他自己烘豆', question: '你喝得出日晒和水洗吗' } });
-  let now = NOW;
-  const arcs = new StoryArcs(store, { model, clock: () => now, identity: new CompanionIdentity(store), enabled: true });
-  await arcs.ensure('miyue');
-  assert.equal((await arcs.ensureDiscovery('miyue', { interests: [] })).status, 'skipped', 'nothing learned yet');
-  const result = await arcs.ensureDiscovery('miyue', { interests: ['咖啡'], fading: ['游戏'] });
-  assert.equal(result.status, 'ready');
-  assert.deepEqual(JSON.parse(model.calls.at(-1).messages[1].content).hisInterests, ['咖啡']);
-  now = new Date(`${days[1]}T03:00:00Z`);
-  assert.ok(arcs.materials('miyue').some(item => item.kind === 'discovery' && item.title === '发酵处理法'));
-  assert.equal((await arcs.ensureDiscovery('miyue', { interests: ['咖啡'] })).status, 'skipped', 'one per week');
-});

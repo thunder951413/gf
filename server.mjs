@@ -5,6 +5,7 @@ import { HybridRecall } from './lib/hybrid-recall.mjs';
 import { CharacterGrowth } from './lib/character-growth.mjs';
 import { DailyDialogueMemory } from './lib/daily-dialogue-memory.mjs';
 import { DailyInformation, INFORMATION_CATEGORIES } from './lib/daily-information.mjs';
+import { HerPicks } from './lib/her-picks.mjs';
 import { DailyHappenings, happeningInputs, newsCandidates } from './lib/daily-happenings.mjs';
 import { motifCounts } from './lib/novelty-guard.mjs';
 import { workCalendar } from './lib/work-calendar.mjs';
@@ -16,7 +17,7 @@ import { RelationshipLedger } from './lib/relationship-ledger.mjs';
 import { Affect } from './lib/affect.mjs';
 import { missingPulse } from './lib/relationship-pulse.mjs';
 import { StoryArcs } from './lib/story-arcs.mjs';
-import { CompanionIdentity } from './lib/companion-identity.mjs';
+import { CompanionIdentity, worldBible } from './lib/companion-identity.mjs';
 import { sessionHistoryRecord } from './lib/session-history.mjs';
 import { expressionHistory } from './lib/expression-history.mjs';
 import { collectConversationMemory, retrieveConversationMemory, prepareConversationMemoryCandidates, focusMemoryAnswerMessages, promptBlockStats } from './lib/conversation-memory.mjs';
@@ -218,6 +219,21 @@ function validateBackground(value) {
   return { image: validateBackgroundImage(value.image), mode: value.mode, position: value.position, veil: value.veil, blur: value.blur };
 }
 
+// Why a fast turn still goes to the reviewer. Only things the reviewer can
+// actually check count: tool results, a public source she cites, or a turn
+// where he is really telling her something (【接住他】). Empty relationship or
+// dynamics envelopes are not a reason; the reviewer cannot change those anyway.
+const filled=value=>Boolean(value&&typeof value==='object'&&Object.values(value).some(v=>Array.isArray(v)?v.length:v&&typeof v==='object'?Object.keys(v).length:v!=null&&v!==''));
+export function reviewRisk(generated,guidance,context,options={}){
+  const reasons=[],id=generated.parsed?.informationId;
+  if(generated.toolCalls?.length)reasons.push('tools');
+  if(typeof id==='string'&&context.informationCandidates?.some(item=>item.id===id||item.id===`daily-info:${id}`))reasons.push('information');
+  if(filled(generated.parsed?.companionship)||filled(generated.parsed?.dynamics))reasons.push('records');
+  if(guidance.catch===true)reasons.push('catch');
+  if(options.sessionReview==='always')reasons.push('always');
+  return reasons;
+}
+
 export async function createApp(options = {}) {
   const branchMode=fs.existsSync(path.join(path.resolve(options.dataDir||path.join(rootDir,'data')),'session-branch.json'));
   options={...options,...isolatedOptions(path.resolve(options.dataDir||path.join(rootDir,'data')))};
@@ -412,8 +428,14 @@ export async function createApp(options = {}) {
       recentHappenings:dailyHappenings.recent(roleId,{now,days:7}).flatMap(entry=>entry.items.map(item=>`${entry.day} ${item.text}`)).slice(-14),
       avoid:motifCounts(store.getMessages(roleId,300),{now}).filter(m=>m.count>=Math.ceil(m.perWeek/2)).map(m=>m.label),
       customBackground:roleMap.get(roleId)?.profile?.customBackground||null,
-      hisSkills:relationshipLedger.skills(roleId),hisInterests:relationshipLedger.learnedInterests(roleId),fadingInterests:relationshipLedger.fadingInterests(roleId),
+      
       news:newsCandidates(store.db,now,{limit:4}).map(item=>item.title)})});
+  // Once a day she goes through the fetched headlines with her own taste.
+  const herPicks=new HerPicks(store,{model,information:dailyInformation,clock:options.clock,identity:companionIdentity,enabled:options.herPicks??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true&&options.dailyInformation!==false),
+    isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
+    gather:({roleId,mode})=>{const profile=roleMap.get(roleId)?.profile||{};return {world:worldBible(mode,profile.customBackground),
+      tastes:(profile.tastes||[...(profile.likes||[]),...(profile.opinions||[]).slice(0,6)]).slice(0,12),
+      shared:[...String(proactiveRepo.getSettings().topics||'').split(/[,，、\s]+/u),...relationshipLedger.learnedInterests(roleId)].map(item=>item.trim()).filter(Boolean)};}});
   const userThreads=new UserThreads(store,{clock:options.clock,isSourceValid:(roleId,ref)=>{const at=ref.lastIndexOf(':');const chunk=dailyMemory.chunks(roleId).find(item=>item.id===ref.slice(0,at));return Boolean(chunk?.items?.[Number(ref.slice(at+1))]);}});
   // One call a day after the morning organisation: her small happenings,
   // the day's mood and what is on her mind, plus his threads to ask about.
@@ -437,8 +459,6 @@ export async function createApp(options = {}) {
     onUpdated:async({roleId})=>{
       const pending=relationshipLedger.pendingAdvice(roleId);
       if(pending.length){const result=await storyArcs.reviseWithAdvice(roleId,pending);for(const entry of result.applied||[])relationshipLedger.markAdviceApplied(entry.adviceId,entry.arcRef);}
-      // Once she knows what lights him up, the week gets its new thing.
-      await storyArcs.ensureDiscovery(roleId,{interests:relationshipLedger.learnedInterests(roleId),fading:relationshipLedger.fadingInterests(roleId),skills:relationshipLedger.skills(roleId)});
     },
     listMessages:(roleId,{since,until})=>historyEdits.project(roleId,store.db.prepare("SELECT id,role,speaker,text,kind,created_at AS createdAt FROM messages WHERE role=? AND speaker IN ('user','assistant') AND kind<>'story' AND created_at>=? AND created_at<? ORDER BY created_at,rowid").all(roleId,since,until))
       .filter(row=>!episodes.suppressedSourceIds(roleId).includes(row.id))});
@@ -624,7 +644,7 @@ export async function createApp(options = {}) {
     store, roleMap, clock: options.clock, recallRepo, companionRuntime, episodes,
     historyEdits, companionRelationship, companionDynamics, companionAgenda, dueFollowup,
     eventMaterials, proactiveMaterials, pursuits, discussionTopics, companionTuning,
-    interactionPolicy, life, sceneImages, appearance, preferences, characterGrowth, dailyMemory, dailyInformation, dailyHappenings,
+    interactionPolicy, life, sceneImages, appearance, preferences, characterGrowth, dailyMemory, dailyInformation, dailyHappenings, herPicks,
     lifeThreads: options.startLifeThreads===false?null:lifeThreads,
     // Interest directions he set, plus what he has actually been lighting up about.
     interestTopics: () => [proactiveRepo.getSettings().topics || '', ...relationshipLedger.learnedInterests('miyue')].filter(Boolean).join(','),
@@ -1209,8 +1229,7 @@ export async function createApp(options = {}) {
       try {
         refined=options.sessionGuidance===false||options.sessionReview===false?null:await refineSessionReply({model:trackedModel,messages:generated.messages,raw:generated.raw,roleId:role.id,signal:control.signal,
           reviewEffort:guidance.reviewEffort,publicEvidence:context.informationCandidates.length>0,validateFinal:value=>parseEmotionEnvelope(value,savedText),options:{maxTokens:2400},
-          // Turns where he is really telling her something get a review against 【接住他】.
-          risky:generated.toolCalls.length>0||Boolean(generated.parsed?.informationId)||Boolean(generated.parsed?.companionship||generated.parsed?.dynamics)||guidance.catch===true||options.sessionReview==='always'});
+          risky:(trace.reviewRisk=reviewRisk(generated,guidance,context,options)).length>0});
       } finally { trace.stageTimings.review=performance.now()-reviewStarted; }
       if(refined)trace.review=refined.review;
       let raw=refined?.raw??generated.raw;
@@ -1682,6 +1701,8 @@ export async function createApp(options = {}) {
     if(pathname==='/api/relationship-ledger/run'&&req.method==='POST'){await readJsonBody(req);return sendJson(res,200,await relationshipLedger.ensure('miyue',{force:true}));}
     if(pathname==='/api/story-arcs'&&req.method==='GET')return sendJson(res,200,storyArcs.snapshot('miyue'));
     if(pathname==='/api/story-arcs/run'&&req.method==='POST'){await readJsonBody(req);return sendJson(res,200,await storyArcs.ensure('miyue',{force:true}));}
+    if(pathname==='/api/her-picks'&&req.method==='GET')return sendJson(res,200,{record:herPicks.record('miyue'),pending:herPicks.materials('miyue').map(item=>item.id)});
+    if(pathname==='/api/her-picks/run'&&req.method==='POST'){await readJsonBody(req);return sendJson(res,200,await herPicks.ensure('miyue',{force:true}));}
     if(pathname==='/api/companion-identity'&&req.method==='GET')return sendJson(res,200,companionIdentity.get());
     if(pathname==='/api/companion-identity'&&req.method==='POST'){const body=await readJsonBody(req);const before=companionIdentity.get().mode;const result=companionIdentity.set(body.mode,body.revision);if(result.mode!==before)void storyArcs.ensure('miyue',{force:true}).catch(()=>{});return sendJson(res,200,result);}
     if(pathname==='/api/message-feedback'&&req.method==='POST'){const body=await readJsonBody(req);return sendJson(res,200,recordFeedback(store.db,{messageId:body.messageId,verdict:body.verdict??null}));}
@@ -2154,16 +2175,16 @@ export async function createApp(options = {}) {
   const tickLifeThreads=()=>{if(!closing&&!activeRoles.has('miyue')&&!chatQueue.busy('miyue')&&!replyDelivery.pending('miyue')){if(options.startLifeThreads!==false)lifeThreads.tick('miyue',life.get('miyue'));pursuits?.tick('miyue');companionAgenda.tick('miyue');}};
 
   return {
-    server, store, dialogueTraces, hybridRecall, characterGrowth, dailyMemory, dailyInformation, dailyHappenings, userThreads, relationshipLedger, storyArcs, companionIdentity, affect, prepareSessionContext:sessionContext, segmentedSpeech, discussionTopics, historyEdits, historyDeletion, companionDynamics, companionSocial, groundedLife, eventMaterials, model, weixin, proactive, proactiveRepo, refreshContent, zhihuClient, zhihuRepo, research, characters, recall, recallRepo, usage, life, lifeTopics, inner, scenarios, dossiers, gentle, preferences, background, roleVoices, chatQueue, replyDelivery, followups, topicTracking, moments, episodes, interactionPolicy, lifeThreads, pursuits, personalExperiences, sourceChanges, companionTuning, companionBehavior, contentInbox, sharedExperiences, companionRelationship, companionAgenda, wardrobe, appearance, sceneImages, imageLibrary, companionRuntime, runtimeScenes, roleContext,
+    server, store, dialogueTraces, hybridRecall, characterGrowth, dailyMemory, dailyInformation, dailyHappenings, userThreads, relationshipLedger, storyArcs, herPicks, companionIdentity, affect, prepareSessionContext:sessionContext, segmentedSpeech, discussionTopics, historyEdits, historyDeletion, companionDynamics, companionSocial, groundedLife, eventMaterials, model, weixin, proactive, proactiveRepo, refreshContent, zhihuClient, zhihuRepo, research, characters, recall, recallRepo, usage, life, lifeTopics, inner, scenarios, dossiers, gentle, preferences, background, roleVoices, chatQueue, replyDelivery, followups, topicTracking, moments, episodes, interactionPolicy, lifeThreads, pursuits, personalExperiences, sourceChanges, companionTuning, companionBehavior, contentInbox, sharedExperiences, companionRelationship, companionAgenda, wardrobe, appearance, sceneImages, imageLibrary, companionRuntime, runtimeScenes, roleContext,
     listen(port = options.port ?? 8765) {
       return new Promise((resolve, reject) => {
         server.once('error', reject);
-        server.listen(port, network.listenHost, () => { if(options.dynamicCompanion===true&&options.startDiscovery!==false&&options.startProactive!==false&&options.startDailyInformation!==false)dailyInformation.start(); if(options.dynamicCompanion===true&&options.startDiscovery!==false)groundedLife.start(); if(options.startWeixin!==false)weixin.start(); if(options.startRuntime!==false)companionRuntime.start(); if(options.startChatQueue!==false){chatQueue.start();replyDelivery.start();} server.off('error', reject); if (options.startLife !== false && options.startProactive !== false) life.start(); if (options.startRecall !== false && options.startProactive !== false) recall.start(); if (options.startProactive !== false && options.startDailyHappenings !== false) { tickLifeThreads(); storyArcs.start(); dailyHappenings.start(); relationshipLedger.start(); } if (options.startProactive !== false) { tickLifeThreads();lifeThreadTimer=setInterval(tickLifeThreads,options.proactiveIntervalMs||15000);lifeThreadTimer.unref();proactive.start(); scheduleDossiers(); } if (options.startResearch !== false && options.startProactive !== false) research.start(); resolve(server.address()); });
+        server.listen(port, network.listenHost, () => { if(options.dynamicCompanion===true&&options.startDiscovery!==false&&options.startProactive!==false&&options.startDailyInformation!==false)dailyInformation.start(); if(options.dynamicCompanion===true&&options.startDiscovery!==false)groundedLife.start(); if(options.startWeixin!==false)weixin.start(); if(options.startRuntime!==false)companionRuntime.start(); if(options.startChatQueue!==false){chatQueue.start();replyDelivery.start();} server.off('error', reject); if (options.startLife !== false && options.startProactive !== false) life.start(); if (options.startRecall !== false && options.startProactive !== false) recall.start(); if (options.startProactive !== false && options.startDailyHappenings !== false) { tickLifeThreads(); storyArcs.start(); dailyHappenings.start(); relationshipLedger.start(); herPicks.start(); } if (options.startProactive !== false) { tickLifeThreads();lifeThreadTimer=setInterval(tickLifeThreads,options.proactiveIntervalMs||15000);lifeThreadTimer.unref();proactive.start(); scheduleDossiers(); } if (options.startResearch !== false && options.startProactive !== false) research.start(); resolve(server.address()); });
       });
     },
     async close() {
       if (closing) return Promise.resolve(); closing = true; clearInterval(reminderTimer);clearInterval(lifeThreadTimer);
-      await dailyMemory.stop();await dailyHappenings.stop();await relationshipLedger.stop();await storyArcs.stop();await dailyInformation.stop();await characterGrowth.stop();await groundedLife.stop();await weixin.stop();desktopAttention.interrupt();companionRuntime.stop();life.stop();replyDelivery.stop();await chatQueue.stop();
+      await dailyMemory.stop();await dailyHappenings.stop();await relationshipLedger.stop();await storyArcs.stop();await herPicks.stop();await dailyInformation.stop();await characterGrowth.stop();await groundedLife.stop();await weixin.stop();desktopAttention.interrupt();companionRuntime.stop();life.stop();replyDelivery.stop();await chatQueue.stop();
       await Promise.all([proactive.stop(), research.stop(), recall.stop(), quotaPromise?.catch(() => {})]); if (refreshPromise) await refreshPromise; if (dossierJob) await dossierJob;
       await new Promise(resolve=>server.close(resolve));
       await segmentedSpeech.stop();

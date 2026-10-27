@@ -12,6 +12,7 @@
 //   node scripts/simulate-session.mjs persona --label x --json '{"background":"...","temperament":"..."}'
 //   node scripts/simulate-session.mjs affect --label x   (her current feelings and recent appraisals)
 //   node scripts/simulate-session.mjs ledger --label x   (relationship ledger snapshot, incl. learned interests)
+//   node scripts/simulate-session.mjs picks --label x    (she goes through today's fetched headlines with her own taste)
 // Each command prints one JSON object. Everything stays in .runtime/simulations/<label>/.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -134,6 +135,9 @@ try {
     const snap = app.relationshipLedger.snapshot('miyue');
     out({ open: Object.fromEntries(Object.entries(snap.open).map(([kind, items]) => [kind, items.map(({ text, topic, area, about, her, his, mood, appliedArc }) => Object.fromEntries(Object.entries({ text, topic, area, about, her, his, mood, appliedArc }).filter(([, v]) => v !== undefined)))])),
       interests: snap.interests, week: app.storyArcs.stableContext('miyue') });
+  } else if (command === 'picks') {
+    const result = await app.herPicks.ensure('miyue', { force: true });
+    out({ at: shanghai(now), candidates: app.herPicks.candidates().length, result, offered: app.herPicks.materials('miyue', { now }).map(({ title, herAngle }) => ({ title, herAngle })) });
   } else if (command === 'affect') {
     const snap = app.affect.snapshot('miyue', { now });
     out({ at: shanghai(now), state: Object.fromEntries(Object.entries(snap.state).filter(([key]) => ['warmth', 'hurt', 'desire', 'security'].includes(key)).map(([k, v]) => [k, Math.round(v)])),
