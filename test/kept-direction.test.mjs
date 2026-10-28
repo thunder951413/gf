@@ -80,3 +80,23 @@ test('a reply that only agrees is read as the topic running out, which is when s
   for (const text of ['教人认账？', '没有呢，只是时候到了就觉得应该喝两杯', '我也是，我也想你。我还想你黏我呢。', '你这个小调皮。']) assert.ok(!isLull(text), text);
   assert.match(lullNote('是呢'), /拿一件你自己的事讲/); assert.equal(lullNote('你最近看了什么'), '');
 });
+
+test('when she reaches out the morning after, she is told when they last talked and how it ended', async () => {
+  const { lastTalkFact } = await import('../lib/session-context.mjs');
+  const store = memoryStore();
+  store.db.prepare("INSERT INTO messages(id,role,speaker,text,created_at) VALUES('u1','miyue','user','晚安 小薇','2026-10-27T15:19:18Z')").run();
+  const morning = lastTalkFact(store, 'miyue', new Date('2026-10-28T00:00:00Z'));
+  assert.equal(morning.at, '昨天 23:19'); assert.equal(morning.hisLastWords, '晚安 小薇'); assert.match(morning.note, /别说他昨天一直没出现/);
+  store.db.prepare("INSERT INTO messages(id,role,speaker,text,created_at) VALUES('u2','miyue','user','早','2026-10-28T01:00:00Z')").run();
+  assert.equal(lastTalkFact(store, 'miyue', new Date('2026-10-28T02:00:00Z')), null, 'he already spoke today');
+});
+
+test('a joke he has had enough of is put away, and the record says plainly who 她 and 他 are', () => {
+  const store = memoryStore(); const now = NOW;
+  const ledger = new RelationshipLedger(store, { model: {}, clock: () => now, enabled: true });
+  ledger.apply('miyue', { jokes: [{ op: 'add', text: '存档搁你这儿', meaning: '记忆在他那', evidence: ['m1'] }] }, ids, { now });
+  assert.match(ledger.stableContext('miyue', { now }), /“她”就是你晓薇，“他”是阿闫/);
+  const id = ledger.list('miyue', { kind: 'joke' })[0].id;
+  ledger.apply('miyue', { jokes: [{ op: 'retire', id, evidence: ['m1'] }] }, ids, { now });
+  assert.doesNotMatch(ledger.stableContext('miyue', { now }), /存档搁你这儿/);
+});
