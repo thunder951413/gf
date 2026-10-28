@@ -206,7 +206,7 @@ test('a shared joke or promise is hinted once a day in chat and marked used when
   const store = memoryStore(), now = new Date('2026-10-27T02:00:00Z');
   const ledger = new RelationshipLedger(store, { model: fakeModel({}), clock: () => now, enabled: true });
   ledger.apply('miyue', { jokes: [{ op: 'add', text: '小品鉴师', meaning: '他叫她的外号', evidence: ['m1'] }], promises: [{ op: 'add', text: '下个月一起去北京看银杏', by: 'both', evidence: ['m1'] }] }, new Map([['m1', 'x']]), { now });
-  assert.match(ledger.turnHint("miyue", { now }), /今天要用上的/);
+  assert.match(ledger.turnHint("miyue", { now }), /你心里还挂着的/);
   assert.deepEqual(ledger.observe('miyue', [{ id: 'r1', speaker: 'assistant', text: '小品鉴师今天也在认真闻咖啡' }], { now }).length, 1);
   assert.equal(ledger.observe('miyue', [{ id: 'r2', speaker: 'assistant', text: '北京的银杏应该黄了吧，下个月去看' }], { now }).length, 1);
   assert.equal(ledger.turnHint('miyue', { now }), '', 'both used today');
