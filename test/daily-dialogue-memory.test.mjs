@@ -45,7 +45,7 @@ test('core context derives Shanghai sending time from original messages without 
 });
 test('daily mode migrates raw window to one day and validates settings atomically',t=>{
   const f=fixture(t);assert.equal(f.prefs.getHistoryWindow().historyWindowDays,1);
-  assert.equal(f.memory.settings().time,'02:00');assert.equal(f.memory.settings().rawMode,'calendar-day');
+  assert.equal(f.memory.settings().time,'02:00');assert.equal(f.memory.settings().rawMode,'rolling');
   assert.throws(()=>f.memory.configure({enabled:false,time:'25:00'}));assert.equal(f.memory.settings().enabled,true);
   for(const time of ['01:59','12:00','22:30'])assert.throws(()=>f.memory.configure({enabled:false,time}));
   assert.equal(f.memory.settings().enabled,true);
@@ -56,7 +56,7 @@ test('program calls configured model for extraction and quality check once per s
   const result=await f.memory.run();assert.equal(result.status,'updated');assert.equal(result.sourceCount,1);
   assert.deepEqual(f.calls.map(c=>c.options.purpose),['daily-compression','daily-compression-review']);
   assert.equal((await f.memory.run()).reason,'scheduled');assert.equal(f.calls.length,2);
-  assert.equal(f.memory.history('miyue').rows.length,1);assert.match(f.memory.context('miyue'),/15点看牙/);
+  assert.equal(f.memory.history('miyue').rows.length,2);assert.match(f.memory.context('miyue'),/15点看牙/);
   assert.equal(f.store.db.prepare('SELECT COUNT(*) n FROM messages').get().n,2);
 });
 test('context-only omission labels never replace coverage of the current batch',async t=>{
@@ -67,12 +67,26 @@ test('context-only omission labels never replace coverage of the current batch',
   assert.equal(result.items[0].subject,'shared');assert.deepEqual(result.omitted,[]);assert.equal(f.calls.length,2);
   assert.throws(()=>f.memory.validate({items:[],omitted:[{id:'s9',reason:'repeat'}]},rows,context),/省略原因或来源无效/);
 });
-test('calendar raw window excludes yesterday even when it is within the last 24 hours',async t=>{
+test('the raw window rolls across midnight, and a day record still in it is not repeated as a summary',async t=>{
   const f=fixture(t);f.add('edge','边界处原文。','user',new Date(+NOW-86400000).toISOString());f.add('fresh','这一小时原文。','user',new Date(+NOW-3600000).toISOString());
-  assert.deepEqual(f.memory.history('miyue').rows.map(r=>r.id),['fresh']);
-  assert.deepEqual(f.memory.pending('miyue').map(r=>r.id),['edge']);
-  await f.memory.run();assert.deepEqual(f.memory.history('miyue').rows.map(r=>r.id),['fresh']);
+  assert.deepEqual(f.memory.history('miyue').rows.map(r=>r.id),['edge','fresh']);
+  assert.deepEqual(f.memory.pending('miyue').map(r=>r.id),['edge'],'yesterday is still compressed');
+  await f.memory.run();assert.deepEqual(f.memory.history('miyue').rows.map(r=>r.id),['edge','fresh']);
   assert.match(f.memory.context('miyue'),/边界处原文/);
+  assert.doesNotMatch(f.memory.context('miyue',{mode:'stable'}),/边界处原文/,'its words are already there');
+  assert.doesNotMatch(f.memory.context('miyue',{mode:'query',query:'边界处原文'}),/边界处原文/);
+});
+test('the window start moves in steps, so turn after turn the history prefix stays the same',t=>{
+  let now=new Date('2026-09-30T00:00:00Z');const f=fixture(t,{clock:()=>now});
+  const say=(i)=>{now=new Date(+now+60000);f.add(`u${i}`,`第${i}句`.padEnd(40,'话'),'user',now.toISOString());now=new Date(+now+60000);f.add(`a${i}`,`回${i}`.padEnd(40,'嗯'),'assistant',now.toISOString());};
+  const first=()=>f.memory.history('miyue',{now,maxTokens:2000}).rows[0]?.id;
+  for(let i=0;i<4;i++)say(i);
+  assert.ok(f.memory.history('miyue',{now,maxTokens:2000}).tokens<=1400,'a fresh start leaves room to grow');
+  const starts=[];for(let i=4;i<30;i++){say(i);starts.push(first());}
+  const moves=starts.filter((id,i)=>i&&id!==starts[i-1]).length;
+  assert.ok(moves>=2&&moves<=starts.length/3,`start moved ${moves} times in ${starts.length} turns: ${starts.join(',')}`);
+  const window=f.memory.history('miyue',{now,maxTokens:2000});
+  assert.ok(window.tokens<=2000&&window.rows[0].speaker==='user'&&window.rows.at(-1).id==='a29');
 });
 test('compression retains multiple events, numbers, ownership and original absolute dates',async t=>{
   const f=fixture(t,{complete:(messages,options)=>options.purpose==='daily-compression-review'?{ok:true,issues:[]}:{items:[
@@ -90,7 +104,7 @@ test('missing coverage and invented quote keep stored originals; the morning int
     const f=fixture(t,{complete:(messages,options)=>{if(options.purpose==='daily-compression-review')return {ok:true,issues:[]};const v=extract(messages);if(type==='coverage')v.items=[];if(type==='quote')v.items[0].evidence[0].quote='不存在的内容';return v;}});
     f.add('old','用户自己的重要事实。');assert.equal((await f.memory.run()).status,'failed');
     assert.equal(f.memory.snapshot().sourceMessages,0);assert.equal(f.store.getMessages('miyue')[0].text,'用户自己的重要事实。');
-    assert.equal(f.memory.history('miyue').rows.length,0);assert.equal(f.calls.length,type==='coverage'?6:3);
+    assert.equal(f.memory.history('miyue').rows.length,1,'still there in words');assert.equal(f.calls.length,type==='coverage'?6:3);
     const ready=await f.memory.ensureBeforeInteraction();assert.equal(ready.status,'degraded');assert.equal(ready.pending,1);
   }
 });
@@ -218,15 +232,15 @@ test('targeted semantic repair preserves already correct details',async t=>{
   f.add('u','明天15点看牙，预算240元。');assert.equal((await f.memory.run()).status,'updated');
   const items=f.memory.chunks('miyue')[0].items;assert.equal(items.length,2);assert.match(items[0].text,/15点/);assert.match(items[1].text,/240元/);assert.equal(f.calls.length,4);
 });
-test('calendar window keeps a today answer to a yesterday question without importing the question',t=>{
+test('the rolling window keeps a question from before midnight with its answer, and nothing from the future',t=>{
   const f=fixture(t,{clock:()=>new Date('2026-09-30T18:01:00Z')});
   f.add('yesterday','我们周六去平江路？','user','2026-09-30T15:59:59Z');
   f.add('midnight','好，下雨取消。','assistant','2026-09-30T16:00:00Z');
   f.add('today','今天先休息。','user','2026-09-30T18:00:00Z');
   f.add('future','明天的原文不应出现。','user','2026-10-01T16:00:00Z');
   const history=f.memory.history('miyue');
-  assert.deepEqual(history.rows.map(r=>[r.id,r.speaker]),[['midnight','assistant'],['today','user']]);
-  assert.match(history.notice.content,/当日原文窗口/);assert.doesNotMatch(JSON.stringify(history),/我们周六去|明天的原文/);
+  assert.deepEqual(history.rows.map(r=>[r.id,r.speaker]),[['yesterday','user'],['midnight','assistant'],['today','user']]);
+  assert.match(history.notice.content,/滚动原文窗口/);assert.doesNotMatch(JSON.stringify(history),/明天的原文/);
   assert.deepEqual(f.memory.pending('miyue').map(r=>r.id),['yesterday']);
 });
 test('no automatic compression before 02:00, then first interaction compresses yesterday first',async t=>{
@@ -237,7 +251,7 @@ test('no automatic compression before 02:00, then first interaction compresses y
   now=new Date('2026-09-30T18:00:00Z');f.memory.isBusy=()=>true;let waiting=0;
   assert.equal((await f.memory.ensureBeforeInteraction('miyue',{onWaiting:()=>waiting++})).status,'ready');
   assert.equal(waiting,1);assert.equal(f.calls.length,2);assert.equal(f.memory.snapshot().lastReadyDay,'2026-10-01');
-  assert.match(f.memory.context('miyue'),/下雨取消/);assert.equal(f.memory.history('miyue').rows.length,0);
+  assert.match(f.memory.context('miyue'),/下雨取消/);assert.equal(f.memory.history('miyue').rows.length,1);
   await f.memory.ensureBeforeInteraction();assert.equal(f.calls.length,2);
 });
 test('late morning restart catches up and does not depend on an evening slot',async t=>{
@@ -320,7 +334,8 @@ test('HTTP mode uses daily core in chat and exposes scheduling controls',async t
   assert.equal((await fetch(url+'/api/preferences',post({historyWindowDays:7}))).status,400);
   assert.equal((await fetch(url+'/api/daily-memory/settings',post({time:'07:30'}))).status,200);
   assert.equal((await fetch(url+'/api/chat',post({role:'miyue',text:'还记得看牙的安排吗？'}))).status,200);
-  assert.match(JSON.stringify(calls.at(-1)),/按日压缩的历史核心记录/);
+  // Still inside the rolling window, so it reaches her in words, not again as a summary.
+  assert.match(JSON.stringify(calls.at(-1)),/我准备明天下午看牙/);assert.doesNotMatch(JSON.stringify(calls.at(-1)),/user\/event\/unknown\] 我准备明天下午看牙/);
   const snapshot=await (await fetch(url+'/api/daily-memory?brief=1')).json();assert.equal(snapshot.chunks,undefined);assert.equal(snapshot.sourceMessages,1);
 });
 
@@ -348,11 +363,11 @@ test('first HTTP reply waits for extraction and audit; a second same-day reply r
   assert.equal((await req('/api/chat',{role:'miyue',text:'好，知道了。'})).status,200);
   assert.deepEqual(stages,['compress','audit','writer','writer']);
 });
-test('proactive context also waits for morning preparation before reading calendar history',async t=>{
+test('proactive context also waits for morning preparation before reading history',async t=>{
   const {app,stages}=await morningHTTP(t);
   const context=await app.proactive.getRoleContext('miyue');
-  assert.deepEqual(stages,['compress','audit']);assert.equal(context.conversation.length,0);
-  assert.match(`${context.sessionOptions.stableContext}\n${context.sessionOptions.recallContext}`,/下雨取消/);assert.equal(app.dailyMemory.requiredPending('miyue').length,0);
+  assert.deepEqual(stages,['compress','audit']);assert.deepEqual(context.conversation.map(row=>row.id),['yesterday']);
+  assert.doesNotMatch(`${context.sessionOptions.stableContext}\n${context.sessionOptions.recallContext}`,/下雨取消/,'in words already, not repeated as a summary');assert.equal(app.dailyMemory.requiredPending('miyue').length,0);
 });
 test('legacy dialogue fallback also performs morning preparation before generating',async t=>{
   const {app,stages,req}=await morningHTTP(t,{sessionDialogue:false});
@@ -360,8 +375,8 @@ test('legacy dialogue fallback also performs morning preparation before generati
   assert.equal((await req('/api/chat',{role:'miyue',text:'昨天的安排呢？'})).status,200);
   assert.deepEqual(stages.slice(0,3),['compress','audit','writer']);
   const context=app.roleContext('miyue',{sessionMode:false,text:'昨天的安排呢？'});
-  assert.equal(context.dialogueHistory.rows.some(row=>row.id==='within24'),false);
-  assert.match(context.dialogueHistory.notice.content,/当日原文窗口/);assert.match(`${context.stableContext||''}\n${context.recallContext||''}`,/按日压缩的历史核心记录/);
+  assert.equal(context.dialogueHistory.rows.some(row=>row.id==='within24'),true);
+  assert.match(context.dialogueHistory.notice.content,/滚动原文窗口/);assert.match(`${context.stableContext||''}\n${context.recallContext||''}`,/按日压缩的历史核心记录/);
 });
 test('a failed morning preparation still answers the queued input once',async t=>{
   let approved=false;const {app,stages,req}=await morningHTTP(t,{review:()=>approved});

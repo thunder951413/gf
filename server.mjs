@@ -1723,7 +1723,7 @@ export async function createApp(options = {}) {
         return sendJson(res, 200, preferences.setReplyPace(body.replyPace));
       }
       if (keys.length && keys.every(key => ['historyWindowDays', 'historyMaxTokens'].includes(key))) {
-        if(dailyMemory.settings().enabled&&body.historyWindowDays!==undefined&&body.historyWindowDays!==1)throw fail(400,'按日整理模式只保留当日原文；如需滚动窗口请先关闭按日整理','DAILY_RAW_WINDOW');
+        if(dailyMemory.settings().enabled&&body.historyWindowDays!==undefined&&body.historyWindowDays!==1)throw fail(400,'按日整理模式的原文窗口按 token 上限滚动，不按天数；如需按天数请先关闭按日整理','DAILY_RAW_WINDOW');
         return sendJson(res, 200, preferences.setHistoryWindow({
           ...(body.historyWindowDays !== undefined ? { days: body.historyWindowDays } : {}),
           ...(body.historyMaxTokens !== undefined ? { maxTokens: body.historyMaxTokens } : {}),

@@ -21,7 +21,7 @@ function render(){
   $('#dynamics').replaceChildren(...(dynamics.length?dynamics:[node('p','没有保存中的感受或未完话题。')]));
   $('#memories').replaceChildren(...(data.memory.items.length?data.memory.items.map(i=>card(i.topic||i.kind,i.summary,`${i.subject} · ${i.status}`,i.evidence)):[node('p','还没有结构化记忆。')]));
   const daily=data.dailyMemory;
-  $('#compression-status').textContent=daily?`${daily.settings.enabled?'当日原文 · 每天 '+daily.settings.time+'（北京时间）整理，02:00后交互前补齐':'按日整理已关闭'} · 已整理 ${daily.sourceMessages} 条 · 核心文字 ${daily.coreChars} / 原文 ${daily.sourceChars} 字符 · 待整理 ${daily.pendingMessages} 条，交互前需补齐 ${daily.requiredMessages??0} 条。${daily.lastError||''}`:'';
+  $('#compression-status').textContent=daily?`${daily.settings.enabled?'滚动原文 · 每天 '+daily.settings.time+'（北京时间）整理，02:00后交互前补齐':'按日整理已关闭'} · 已整理 ${daily.sourceMessages} 条 · 核心文字 ${daily.coreChars} / 原文 ${daily.sourceChars} 字符 · 待整理 ${daily.pendingMessages} 条，交互前需补齐 ${daily.requiredMessages??0} 条。${daily.lastError||''}`:'';
   const compressed=daily?.chunks.flatMap(chunk=>chunk.items.map(item=>card(`${chunk.day} · ${item.subject} · ${item.kind}`,item.text,item.status,item.evidence)))||[];
   $('#compression').replaceChildren(...(compressed.length?compressed:[node('p','还没有通过核对的按日核心记录，原文仍保留。')]));
   $('#trace-select').replaceChildren(...data.traces.map(t=>{const o=node('option',`${date(t.createdAt)} · ${t.trigger.type} · ${t.outcome.status}`);o.value=t.id;return o;}));renderTrace();
