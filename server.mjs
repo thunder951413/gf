@@ -113,7 +113,7 @@ import { travelState } from './lib/travel-state.mjs';
 import { GroundedLife, groundedLifeChatProtocol } from './lib/grounded-life.mjs';
 import { buildDynamicChatMessages, dynamicAnnotations, cleanDynamicReply } from './lib/dynamic-dialogue.mjs';
 import { buildSessionMessages, runSessionDialogue } from './lib/session-dialogue.mjs';
-import { prepareSessionGuidance, applySessionGuidance, refineSessionReply, tightenSessionReply } from './lib/session-guidance.mjs';
+import { prepareSessionGuidance, applySessionGuidance, refineSessionReply, tightenSessionReply, shouldBypassSessionGuidance } from './lib/session-guidance.mjs';
 import { singleMessage } from './lib/companion-voice.mjs';
 import { createSessionContext } from './lib/session-context.mjs';
 import { ProactiveMaterials, validateProactiveSelection } from './lib/proactive-materials.mjs';
@@ -421,8 +421,8 @@ export async function createApp(options = {}) {
   // Things he mentioned that are worth asking about later; each refers to one
   // of his day records and disappears when that record is edited away.
   const companionIdentity=new CompanionIdentity(store);
-  // Her week as 2–3 story lines with causes, beats and endings, written once a week.
-  const storyArcs=new StoryArcs(store,{model,clock:options.clock,identity:companionIdentity,enabled:options.storyArcs??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true),
+  // Her week as 2–3 story lines with causes, beats and endings, written once a week (human mode only; AI mode lives on real readings & conversations).
+  const storyArcs=new StoryArcs(store,{model,clock:options.clock,identity:companionIdentity,enabled:options.storyArcs??(options.dailyCompression===true&&options.sessionDialogue===true&&options.dynamicCompanion===true&&companionIdentity.get().mode!=='ai'),
     isBusy:()=>activeRoles.has('miyue')||chatQueue.busy('miyue')||Boolean(proactive.thinking),
     gather:({roleId,now})=>({season:workCalendar(now),
       recentHappenings:dailyHappenings.recent(roleId,{now,days:7}).flatMap(entry=>entry.items.map(item=>`${entry.day} ${item.text}`)).slice(-14),
@@ -1010,8 +1010,8 @@ export async function createApp(options = {}) {
       })();
       return context;
     }, getContextVersion: contextVersion,
-    getWakeEvent:()=>companionAgenda.pending('miyue',{suppressedSourceIds:episodes.suppressedSourceIds('miyue')})||companionRuntime.pending(),
-    getEligibleRoles: (candidates,{manual=false}={})=>candidates.filter(r=>r.id!=='miyue'||manual||!companionRuntime.advance().availability.sleeping).filter(r=>r.id!=='miyue'||!companionAgenda.view('miyue',{suppressedSourceIds:episodes.suppressedSourceIds('miyue')}).plans.some(p=>p.kind==='quiet'&&p.status==='active')).filter(r=>r.id!=='miyue'||manual&&companionTuning.get().values.initiative>0||companionTuning.canInitiate(proactiveRepo.recent(100).find(e=>e.role==='miyue')?.createdAt,(options.clock||(()=>new Date()))())).map(r=>r.id==='miyue'?{...r,proactiveWeight:.2+companionTuning.get().values.initiative/62.5}:r),
+    getWakeEvent:()=>companionAgenda.pending('miyue',{suppressedSourceIds:episodes.suppressedSourceIds('miyue')})||(companionIdentity.get().mode==='ai'?null:companionRuntime.pending()),
+    getEligibleRoles: (candidates,{manual=false}={})=>candidates.filter(r=>r.id!=='miyue'||manual||companionIdentity.get().mode==='ai'||!companionRuntime.advance().availability.sleeping).filter(r=>r.id!=='miyue'||!companionAgenda.view('miyue',{suppressedSourceIds:episodes.suppressedSourceIds('miyue')}).plans.some(p=>p.kind==='quiet'&&p.status==='active')).filter(r=>r.id!=='miyue'||manual&&companionTuning.get().values.initiative>0||companionTuning.canInitiate(proactiveRepo.recent(100).find(e=>e.role==='miyue')?.createdAt,(options.clock||(()=>new Date()))())).map(r=>r.id==='miyue'?{...r,proactiveWeight:.2+companionTuning.get().values.initiative/62.5}:r),
     prepareDelivery: ({role,roleContext:context,result,candidates}) => {
       if(context.sessionOptions){
         const reply=cleanDynamicReply(result.message);
@@ -1187,7 +1187,8 @@ export async function createApp(options = {}) {
       // two calls overlap instead of adding up. Read tools may run in the
       // speculative draft; a reminder request means the turn has a real
       // external action and the speculative draft is discarded unused.
-      const speculate=options.sessionGuidance!==false&&options.sessionSpeculativeDraft===true;
+      const fastShortBypass=options.sessionGuidance!==false&&options.sessionSmartGuidance===true&&shouldBypassSessionGuidance({text:savedText,userTexts:body.userTexts,attention:Boolean(attention),reunion:Boolean(context.sessionOptions?.facts?.reunion)});
+      const speculate=!fastShortBypass&&options.sessionGuidance!==false&&options.sessionSpeculativeDraft===true;
       speculativeControl=speculate?new AbortController():null;
       if(speculativeControl&&control.signal){if(control.signal.aborted)speculativeControl.abort(control.signal.reason);else control.signal.addEventListener('abort',()=>speculativeControl.abort(control.signal.reason),{once:true});}
       const speculative=speculate?runSessionDialogue({model:trackedModel,messages:baseMessages,maxToolCalls:3,validateFinal:raw=>parseEmotionEnvelope(raw,savedText),options:{...draftOptions,signal:speculativeControl.signal},execute:async(request,toolOptions)=>{
@@ -1195,7 +1196,7 @@ export async function createApp(options = {}) {
         if(request.name==='reminder'){const reason=Object.assign(new Error('speculative draft cannot stage actions'),{code:'SPECULATIVE_ACTION'});speculativeControl.abort(reason);throw reason;}
         return executeTool(request,{...toolOptions,signal:speculativeControl.signal});
       }}).then(value=>({status:'ready',value}),error=>({status:'failed',error})):null;
-      const guidance=options.sessionGuidance===false?{status:'disabled'}:await prepareSessionGuidance({model:trackedModel,messages:baseMessages,roleId:role.id,signal:control.signal,informationCategories:dailyInformation.enabled?INFORMATION_CATEGORIES:null});
+      const guidance=options.sessionGuidance===false?{status:'disabled'}:fastShortBypass?{status:'skipped',code:'FAST_SHORT_TURN',reviewEffort:'fast',items:[]}:await prepareSessionGuidance({model:trackedModel,messages:baseMessages,roleId:role.id,signal:control.signal,informationCategories:dailyInformation.enabled?INFORMATION_CATEGORIES:null});
       trace.stageTimings.guidance=performance.now()-guidanceStarted;
       trace.guidance={...guidance,count:guidance.items?.length||0,items:guidance.items||[]};
       // Her feelings move after the turn is saved (recordSessionTurn), from this appraisal.
@@ -2182,7 +2183,7 @@ export async function createApp(options = {}) {
     listen(port = options.port ?? 8765) {
       return new Promise((resolve, reject) => {
         server.once('error', reject);
-        server.listen(port, network.listenHost, () => { if(options.dynamicCompanion===true&&options.startDiscovery!==false&&options.startProactive!==false&&options.startDailyInformation!==false)dailyInformation.start(); if(options.dynamicCompanion===true&&options.startDiscovery!==false)groundedLife.start(); if(options.startWeixin!==false)weixin.start(); if(options.startRuntime!==false)companionRuntime.start(); if(options.startChatQueue!==false){chatQueue.start();replyDelivery.start();} server.off('error', reject); if (options.startLife !== false && options.startProactive !== false) life.start(); if (options.startRecall !== false && options.startProactive !== false) recall.start(); if (options.startProactive !== false && options.startDailyHappenings !== false) { tickLifeThreads(); storyArcs.start(); dailyHappenings.start(); relationshipLedger.start(); herPicks.start(); } if (options.startProactive !== false) { tickLifeThreads();lifeThreadTimer=setInterval(tickLifeThreads,options.proactiveIntervalMs||15000);lifeThreadTimer.unref();proactive.start(); scheduleDossiers(); } if (options.startResearch !== false && options.startProactive !== false) research.start(); resolve(server.address()); });
+        server.listen(port, network.listenHost, () => { if(options.dynamicCompanion===true&&options.startDiscovery!==false&&options.startProactive!==false&&options.startDailyInformation!==false)dailyInformation.start(); if(options.dynamicCompanion===true&&options.startDiscovery!==false&&options.startGroundedLife!==false)groundedLife.start(); if(options.startWeixin!==false)weixin.start(); if(options.startRuntime!==false)companionRuntime.start(); if(options.startChatQueue!==false){chatQueue.start();replyDelivery.start();} server.off('error', reject); if (options.startLife !== false && options.startProactive !== false) life.start(); if (options.startRecall !== false && options.startProactive !== false) { recall.start(); if (options.dailyCompression === true) dailyMemory.start(); } if (options.startProactive !== false && options.startDailyHappenings !== false) { tickLifeThreads(); storyArcs.start(); dailyHappenings.start(); relationshipLedger.start(); herPicks.start(); } if (options.startProactive !== false) { tickLifeThreads();lifeThreadTimer=setInterval(tickLifeThreads,options.proactiveIntervalMs||15000);lifeThreadTimer.unref();proactive.start(); scheduleDossiers(); } if (options.startResearch !== false && options.startProactive !== false) research.start(); resolve(server.address()); });
       });
     },
     async close() {

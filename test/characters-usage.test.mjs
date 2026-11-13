@@ -117,6 +117,17 @@ test('official DeepSeek structured replies use documented JSON mode and a non-th
 
 test('official OpenAI small model receives JSON mode without DeepSeek-specific fields',async t=>{const{dataDir}=fixture(t);let body;const client=new ModelClient({dataDir,env:{LIFE_MODEL_BASE_URL:'https://api.openai.com/v1',LIFE_MODEL_NAME:'gpt-4.1-mini'},fetchImpl:async(_u,o)=>{body=JSON.parse(o.body);return Response.json({choices:[{message:{content:'{"reply":"你好","extra":""}'}}]});}});await client.complete([{role:'user',content:'请输出JSON'}],{jsonObject:true,maxTokens:700});assert.deepEqual(body.response_format,{type:'json_object'});assert.equal(body.thinking,undefined);assert.equal(body.max_tokens,700);});
 
+test('OpenCode Go requests carry stable opaque session IDs scoped to a role and disable thinking on bounded DeepSeek v4.1 calls',async t=>{
+ const {dataDir}=fixture(t),calls=[];const client=new ModelClient({dataDir,env:{LIFE_MODEL_BASE_URL:'https://opencode.ai/inference/go/openai/v1',LIFE_MODEL_NAME:'deepseek-v4.1-flash',LIFE_MODEL_API_KEY:'private-test-key'},fetchImpl:async(url,options)=>{calls.push({url,headers:options.headers,body:JSON.parse(options.body)});return Response.json({choices:[{message:{content:'{"ok":true}'}}]});}});
+ for(const roleId of ['miyue','miyue','other'])await client.complete([{role:'user',content:'hello'}],{roleId});
+ assert.equal(calls[0].url,'https://opencode.ai/inference/go/openai/v1/chat/completions');assert.equal(calls[0].headers['x-opencode-session'],calls[1].headers['x-opencode-session']);assert.notEqual(calls[0].headers['x-opencode-session'],calls[2].headers['x-opencode-session']);assert.doesNotMatch(calls[0].headers['x-opencode-session'],/miyue|private-test-key/);assert.equal(calls[0].headers['user-agent'],'youjian-companion/1.0');
+ await client.complete([{role:'user',content:'json'}],{roleId:'miyue',purpose:'her-picks',jsonObject:true,nonThinking:true,maxTokens:900});
+ assert.deepEqual(calls[3].body.thinking,{type:'disabled'});assert.deepEqual(calls[3].body.response_format,{type:'json_object'});assert.equal(calls[3].body.max_tokens,900);
+ await client.complete([{role:'user',content:'review'}],{roleId:'miyue',purpose:'session-review',jsonObject:true,thinking:true,maxTokens:2000});
+ assert.deepEqual(calls[4].body.thinking,{type:'enabled'});assert.equal(calls[4].body.reasoning_effort,'low');
+ let otherHeaders;const other=new ModelClient({dataDir,env:{LIFE_MODEL_BASE_URL:'https://other.example/v1',LIFE_MODEL_NAME:'example'},fetchImpl:async(_url,o)=>{otherHeaders=o.headers;return Response.json({choices:[{message:{content:'OK'}}]});}});await other.complete([{role:'user',content:'hi'}],{roleId:'miyue'});assert.equal(otherHeaders['x-opencode-session'],undefined);
+});
+
 test('explicit semantic reasoning overrides the short JSON default only on supported official DeepSeek models',async t=>{
  const {dataDir}=fixture(t);const calls=[];
  const model=new ModelClient({dataDir,env:{LIFE_MODEL_BASE_URL:'https://api.deepseek.com/v1',LIFE_MODEL_NAME:'deepseek-v4-flash'},fetchImpl:async(_u,o)=>{calls.push(JSON.parse(o.body));return Response.json({choices:[{message:{reasoning_content:'private internal reasoning',content:'{"guidance":[]}'}}]});}});

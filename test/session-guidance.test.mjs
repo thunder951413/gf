@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { prepareSessionGuidance, applySessionGuidance, refineSessionReply } from '../lib/session-guidance.mjs';
+import { prepareSessionGuidance, applySessionGuidance, refineSessionReply, shouldBypassSessionGuidance } from '../lib/session-guidance.mjs';
 import { buildSessionMessages } from '../lib/session-dialogue.mjs';
 import { sessionEvidenceSources } from '../lib/session-history.mjs';
 
@@ -305,4 +305,30 @@ test('exhausted review output retries original evidence once and still blocks an
   assert.equal(calls,2);assert.equal(result.status,'ready');assert.equal(result.fallbackFrom,'MODEL_OUTPUT_LIMIT');assert.deepEqual(result.items,[finding]);
   calls=0;const unavailable=await prepareSessionGuidance({messages,draft:'{}',model:{complete:async()=>{calls++;throw Object.assign(new Error('budget'),{code:'MODEL_OUTPUT_LIMIT'});}}});
   assert.equal(calls,2);assert.equal(unavailable.status,'unavailable');
+});
+
+test('guidance and review share a byte-identical prefix through history and per-turn evidence',async()=>{
+  const history=Array.from({length:6},(_,i)=>({id:`m${i}`,speaker:i%2?'assistant':'user',text:`第${i}句历史对话内容`,createdAt:'2026-10-13T10:00:00Z'}));
+  const input=buildSessionMessages({role:{id:'miyue',name:'林晓薇'},backgroundContext:'长期背景固定不变',facts:{at:'2026-10-13T12:00:00Z'},history:{rows:history},userText:'我刚才去给薄荷浇了点水',trigger:{type:'user_message',at:'2026-10-13T12:00:00Z'}});
+  const captured=[];
+  await prepareSessionGuidance({messages:input,informationCategories:{tech:'科技'},model:{complete:async msgs=>{captured.push(msgs);return '{"reviewEffort":"reasoning","guidance":[]}';}}});
+  await refineSessionReply({messages:input,raw:'{"reply":"薄荷叶子精神点没？"}',reviewEffort:'reasoning',model:{complete:async msgs=>{captured.push(msgs);return '{"ready":true,"revision":null,"guidance":[],"needsReasoning":false}';}},validateFinal:()=>{}});
+  const [prepMsgs,reviewMsgs]=captured;
+  const prepInstIdx=prepMsgs.findIndex(m=>m.content.startsWith('【以上是正文角色'));
+  const reviewInstIdx=reviewMsgs.findIndex(m=>m.content.startsWith('【以上是正文角色'));
+  assert.ok(prepInstIdx>=8, `expected shared prefix >= 8 messages, got ${prepInstIdx}`);
+  assert.equal(prepInstIdx,reviewInstIdx);
+  assert.deepEqual(prepMsgs.slice(0,prepInstIdx),reviewMsgs.slice(0,reviewInstIdx));
+});
+
+test('smart guidance gate bypasses only short neutral banter and preserves affect, memory, date, and info turns',()=>{
+  for(const fast of ['早','早呀','你在干嘛','吃了没','刚吃完牛肉面','哈哈哈哈','嗯嗯','去洗澡啦','晚安']){
+    assert.equal(shouldBypassSessionGuidance({text:fast}),true,`expected bypass for "${fast}"`);
+  }
+  for(const full of ['我想你了','抱抱我','今天工作好累','哦 随便吧','昨天那篇讲啥','明天八点提醒我开会','最近有什么好看的电影','你觉得AI写东西有灵魂吗','今天下午开会老板一直改需求，真的把大家折腾得够呛']){
+    assert.equal(shouldBypassSessionGuidance({text:full}),false,`expected full guidance for "${full}"`);
+  }
+  assert.equal(shouldBypassSessionGuidance({text:'早',reunion:true}),false);
+  assert.equal(shouldBypassSessionGuidance({text:'早',attention:true}),false);
+  assert.equal(shouldBypassSessionGuidance({text:'早',userTexts:['早','在干嘛']}),false);
 });

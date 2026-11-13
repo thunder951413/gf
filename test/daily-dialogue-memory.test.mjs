@@ -345,9 +345,9 @@ async function morningHTTP(t,{review=()=>true,holdCompression,sessionDialogue=tr
     startWeixin:false,startRecall:false,startProactive:false,startResearch:false,startRuntime:false,startChatQueue:false,startLife:false,startDiscovery:false,startCharacterGrowth:false,startReminders:false,
     env:{LIFE_MODEL_BASE_URL:'https://model.example/v1',LIFE_MODEL_NAME:'fixture',LIFE_MODEL_API_KEY:'fixture'},fetchImpl:async(_url,init)=>{
       const body=JSON.parse(init.body),content=body.messages[0].content;
-      const stage=content.startsWith('你核对原文')?'audit':content.startsWith('你将一天')||content.startsWith('你只修复')?'compress':'writer';stages.push(stage);
+      const stage=content.startsWith('你核对原文')?'audit':content.startsWith('你将一天')||content.startsWith('你只修复')?'compress':content.startsWith('你只判断一段对话')?'continuity':'writer';stages.push(stage);
       if(stage==='compress'&&holdCompression)await holdCompression(init.signal);
-      const value=stage==='audit'?{ok:review(),issues:review()?[]:['s1遗漏核心']}:stage==='compress'?content.startsWith('你只修复')?{replace:[],append:[],omitted:[]}:extract(body.messages):{reply:stages.filter(s=>s==='writer').length>1?'嗯，那就看明天天气。':'下雨就取消散步，这个约定记得。'};
+      const value=stage==='audit'?{ok:review(),issues:review()?[]:['s1遗漏核心']}:stage==='compress'?content.startsWith('你只修复')?{replace:[],append:[],omitted:[]}:extract(body.messages):stage==='continuity'?{state:'open',reason:'已说完',evidence:[{messageId:'yesterday',quote:'我们约定周六散步'}]}:{reply:stages.filter(s=>s==='writer').length>1?'嗯，那就看明天天气。':'下雨就取消散步，这个约定记得。'};
       return Response.json({choices:[{message:{content:JSON.stringify(value)}}],usage:{prompt_tokens:10,completion_tokens:10}});
     }});
   app.preferences.setReplyPace('instant');const address=await app.listen(0),url=`http://127.0.0.1:${address.port}`;
@@ -366,7 +366,7 @@ test('first HTTP reply waits for extraction and audit; a second same-day reply r
 test('proactive context also waits for morning preparation before reading history',async t=>{
   const {app,stages}=await morningHTTP(t);
   const context=await app.proactive.getRoleContext('miyue');
-  assert.deepEqual(stages,['compress','audit']);assert.deepEqual(context.conversation.map(row=>row.id),['yesterday']);
+  assert.deepEqual(stages,['compress','audit','continuity']);assert.deepEqual(context.conversation.map(row=>row.id),['yesterday']);
   assert.doesNotMatch(`${context.sessionOptions.stableContext}\n${context.sessionOptions.recallContext}`,/下雨取消/,'in words already, not repeated as a summary');assert.equal(app.dailyMemory.requiredPending('miyue').length,0);
 });
 test('legacy dialogue fallback also performs morning preparation before generating',async t=>{

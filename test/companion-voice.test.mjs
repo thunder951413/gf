@@ -4,10 +4,12 @@ import { lengthBudget, pushesAway, repeatsRecent, recurringHabits, voiceProfile,
 import { tightenSessionReply } from '../lib/session-guidance.mjs';
 import { tuningPreview, tuningBand } from '../lib/companion-tuning.mjs';
 
-test('short teasing questions stay on the chat budget; a real question of some length opens the detail budget', () => {
+test('short teasing questions stay on the chat budget; a real question or explicit follow-up opens generous room', () => {
   assert.equal(lengthBudget({ verbosity: 50 }, { userText: '为啥会这样啊' }).detail, false);
   assert.equal(lengthBudget({ verbosity: 50 }, { userText: '那你会怎样呀' }).detail, false);
   assert.equal(lengthBudget({ verbosity: 50 }, { userText: '你给我讲讲为什么会这样' }).detail, true);
+  assert.equal(lengthBudget({ verbosity: 50 }, { userText: '展开说说' }).detail, true);
+  assert.ok(lengthBudget({ verbosity: 50 }, { userText: '哪句诗呀' }).target >= 55);
   assert.ok(lengthBudget({ verbosity: 50 }, { userText: '为啥' }).hard < 70);
 });
 

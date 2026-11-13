@@ -139,7 +139,7 @@ test('the AI identity changes her opening, hides body facts, and keeps her perso
   assert.deepEqual(identityProfile('ai', profile), { temperament: '温婉', opinions: ['慢一点好'] });
   const role = { id: 'miyue', name: '林晓薇', profile };
   const ai = buildSessionMessages({ role, history: { rows: [] }, userText: '你在干嘛', trigger: { type: 'user_message', at: NOW.toISOString() }, identity: 'ai' })[0].content;
-  assert.match(ai, /住在他 Mac 里的 AI/); assert.doesNotMatch(ai, /B\+|27岁，住在苏州/); assert.match(ai, /隔着屏幕/); assert.match(ai, /慢一点好/);
+  assert.match(ai, /住在他 Mac 里的数字伴侣/); assert.doesNotMatch(ai, /B\+|27岁，住在苏州/); assert.match(ai, /隔着屏幕/); assert.match(ai, /慢一点好/);
   const human = buildSessionMessages({ role, history: { rows: [] }, userText: '你在干嘛', trigger: { type: 'user_message', at: NOW.toISOString() } })[0].content;
   assert.match(human, /27岁，住在苏州/); assert.match(human, /如实说你是模型根据设定生成的虚构角色/);
 });
@@ -256,7 +256,7 @@ test('the AI identity reminds every turn where the switch happened, and her pre-
   const { identityTurnNote } = await import('../lib/companion-identity.mjs');
   assert.equal(identityTurnNote({ mode: 'human' }), '');
   const note = identityTurnNote({ mode: 'ai', changedAt: '2026-10-26T00:00:00Z' });
-  assert.match(note, /2026-10-26 08:00 起/); assert.match(note, /感觉不到，但你在想象/);
+  assert.match(note, /2026-10-26 08:00 起/); assert.match(note, /具身感与恋人默契/); assert.doesNotMatch(note, /不用吃不用睡/);
   const chunks = [{ id: 'c1', day: '2026-10-25', items: [{ subject: 'character', kind: 'event', status: 'past', text: '她出门买了桂花糖藕' }] },
     { id: 'c2', day: '2026-10-26', items: [{ subject: 'character', kind: 'event', status: 'past', text: '她读到一篇骂AI的帖子' }] }];
   const input = happeningInputs({ now: new Date('2026-10-27T01:00:00Z'), chunks, identity: 'ai', identitySince: '2026-10-26T00:00:00Z' }).input;

@@ -9,6 +9,18 @@ final class PetPanel: NSPanel {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 }
 
+final class WindowDragStripView: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            window?.zoom(nil)
+        } else {
+            window?.performDrag(with: event)
+        }
+    }
+}
+
 final class PetView: SCNView {
     var clicked: (() -> Void)?
     var attention: (() -> Void)?
@@ -43,40 +55,99 @@ final class BubbleView: NSView {
     var clicked: (() -> Void)?
     var shouldSuppress: (() -> Bool)?
     var isMessage = false
-    var tailAnchor: CGFloat = 135
+    var tailAnchor: CGFloat = 120
     override init(frame: NSRect) {
         super.init(frame: frame)
         heading.font = .systemFont(ofSize: 11, weight: .semibold)
-        heading.textColor = NSColor(calibratedRed: 0.52, green: 0.37, blue: 0.40, alpha: 1)
-        body.font = .systemFont(ofSize: 13)
-        body.textColor = NSColor(calibratedRed: 0.25, green: 0.23, blue: 0.27, alpha: 1)
+        heading.textColor = NSColor(calibratedRed: 0.50, green: 0.33, blue: 0.39, alpha: 1)
+        body.font = .systemFont(ofSize: 12.5, weight: .regular)
+        body.textColor = NSColor(calibratedRed: 0.20, green: 0.16, blue: 0.18, alpha: 1)
         body.maximumNumberOfLines = 4; body.lineBreakMode = .byTruncatingTail
         for label in [heading, body] { label.isSelectable = false; addSubview(label) }
         setAccessibilityElement(true); setAccessibilityRole(.button)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    func preferredSize(maxWidth: CGFloat = 258) -> NSSize {
+        let clampedMax = max(168, maxWidth)
+        let maxTextWidth = clampedMax - 36
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 2.5
+        paragraph.lineBreakMode = .byWordWrapping
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: body.font ?? NSFont.systemFont(ofSize: 12.5),
+            .paragraphStyle: paragraph
+        ]
+        let measured = (body.stringValue as NSString).boundingRect(
+            with: NSSize(width: maxTextWidth, height: 92),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attrs
+        )
+        let titleWidth = ceil(heading.intrinsicContentSize.width) + (isMessage ? 14 : 0)
+        let contentWidth = max(titleWidth, ceil(measured.width))
+        let width = min(clampedMax, max(156, contentWidth + 38))
+        let bodyHeight = min(78, max(19, ceil(measured.height) + 2))
+        let height = min(134, max(70, bodyHeight + 49))
+        return NSSize(width: width, height: height)
+    }
     override func layout() {
         super.layout()
-        heading.frame = NSRect(x: 18, y: bounds.height - 31, width: bounds.width - 36, height: 17)
-        body.frame = NSRect(x: 18, y: 24, width: bounds.width - 36, height: bounds.height - 60)
+        let titleX: CGFloat = isMessage ? 28 : 18
+        heading.frame = NSRect(x: titleX, y: bounds.height - 29, width: max(40, bounds.width - titleX - 18), height: 16)
+        body.frame = NSRect(x: 18, y: 20, width: max(40, bounds.width - 36), height: max(18, bounds.height - 53))
     }
     override func draw(_ dirtyRect: NSRect) {
-        let box = NSBezierPath(roundedRect: NSRect(x: 3, y: 13, width: bounds.width - 6, height: bounds.height - 17), xRadius: 19, yRadius: 19)
-        NSColor(calibratedRed: 1, green: 0.98, blue: 0.95, alpha: 0.97).setFill(); box.fill()
-        NSColor(calibratedRed: 0.83, green: 0.73, blue: 0.72, alpha: 0.85).setStroke(); box.lineWidth = 1; box.stroke()
-        let tail = NSBezierPath(); tail.move(to: NSPoint(x: tailAnchor - 9, y: 14)); tail.line(to: NSPoint(x: tailAnchor + 1, y: 2)); tail.line(to: NSPoint(x: tailAnchor + 12, y: 14)); tail.close()
-        NSColor(calibratedRed: 1, green: 0.98, blue: 0.95, alpha: 0.97).setFill(); tail.fill()
+        let cardFill = NSColor(calibratedRed: 0.996, green: 0.989, blue: 0.980, alpha: 0.97)
+        let cardRect = NSRect(x: 4, y: 13, width: bounds.width - 8, height: bounds.height - 17)
+        let box = NSBezierPath(roundedRect: cardRect, xRadius: 16, yRadius: 16)
+        let clampedTail = max(24, min(bounds.width - 24, tailAnchor))
+        let tail = NSBezierPath()
+        tail.move(to: NSPoint(x: clampedTail - 8, y: 14))
+        tail.line(to: NSPoint(x: clampedTail, y: 4))
+        tail.line(to: NSPoint(x: clampedTail + 8, y: 14))
+        tail.close()
+
+        NSGraphicsContext.current?.saveGraphicsState()
+        let shadow = NSShadow()
+        shadow.shadowOffset = NSSize(width: 0, height: -2.5)
+        shadow.shadowBlurRadius = 7
+        shadow.shadowColor = NSColor(calibratedRed: 0.22, green: 0.14, blue: 0.18, alpha: 0.14)
+        shadow.set()
+        cardFill.setFill()
+        box.fill()
+        tail.fill()
+        NSGraphicsContext.current?.restoreGraphicsState()
+
+        NSColor(calibratedRed: 0.76, green: 0.63, blue: 0.67, alpha: 0.42).setStroke()
+        box.lineWidth = 1
+        box.stroke()
+        cardFill.setFill()
+        NSBezierPath(rect: NSRect(x: clampedTail - 7, y: 12.5, width: 14, height: 3)).fill()
+
+        if isMessage {
+            let dot = NSBezierPath(ovalIn: NSRect(x: 18, y: bounds.height - 24, width: 6, height: 6))
+            NSColor(calibratedRed: 0.62, green: 0.35, blue: 0.43, alpha: 1).setFill()
+            dot.fill()
+        }
     }
     override func hitTest(_ point: NSPoint) -> NSView? { bounds.contains(convert(point, from: superview)) ? self : nil }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func mouseDown(with event: NSEvent) { clicked?() }
     override func accessibilityPerformPress() -> Bool { clicked?(); return true }
     func show(_ text: String, title: String, message: Bool) {
-        heading.stringValue = title; body.stringValue = text; isMessage = message
+        heading.stringValue = title; isMessage = message
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 2.5
+        paragraph.lineBreakMode = .byTruncatingTail
+        body.attributedStringValue = NSAttributedString(string: text, attributes: [
+            .font: body.font ?? NSFont.systemFont(ofSize: 12.5),
+            .foregroundColor: body.textColor ?? NSColor.labelColor,
+            .paragraphStyle: paragraph
+        ])
         setAccessibilityLabel("\(title)，\(text)，点击打开聊天")
         // A chat window is the full conversation surface. Keep its desktop
         // counterpart quiet even when the chat is not the focused window.
-        isHidden = shouldSuppress?() ?? false; needsDisplay = true
+        isHidden = shouldSuppress?() ?? false
+        needsLayout = true; needsDisplay = true
     }
 }
 
@@ -98,8 +169,9 @@ private struct DesktopRuntimeSnapshot: Decodable {
     let settings: Settings
 }
 
-final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, NSWindowDelegate {
+final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler, NSWindowDelegate {
     var chatCheckFinished = false
+    private var headerDragMonitor: Any?
     let baseURL: URL
     let demo: Bool
     let testProfile: Bool
@@ -206,8 +278,8 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         bubble.clicked = { [weak self] in self?.openChat() }
         content.addSubview(pet); content.addSubview(sceneCanvas); content.addSubview(bubble)
         bubble.shouldSuppress = { [weak self] in self?.isChatWindowVisible ?? false }
-        bubble.show("点击我就能聊天。拖动换个位置，右键可以试试不同姿态。", title: "林晓薇 · 桌面陪伴", message: false)
-        previewUntil = Date().addingTimeInterval(12)
+        bubble.show("我在呢，点我就好。", title: "林晓薇", message: false)
+        previewUntil = Date().addingTimeInterval(5)
         resize(scale)
         if defaults.object(forKey: "x") != nil {
             panel.setFrameOrigin(NSPoint(x: defaults.double(forKey: "x"), y: defaults.double(forKey: "y")))
@@ -464,24 +536,79 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     private func synchronizeBubbleWithChatWindow() {
         if isChatWindowVisible { bubble.isHidden = true }
     }
+    private func stopHeaderDrag() {
+        if let monitor = headerDragMonitor {
+            NSEvent.removeMonitor(monitor)
+            headerDragMonitor = nil
+        }
+    }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "windowDrag", let window = chatWindow else { return }
+        let clicks = (message.body as? Int) ?? 1
+        if clicks == 2 {
+            window.zoom(nil)
+            return
+        }
+        guard NSEvent.pressedMouseButtons & 1 != 0 else { return }
+        stopHeaderDrag()
+        let startMouse = NSEvent.mouseLocation
+        let startOrigin = window.frame.origin
+        headerDragMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self, weak window] event in
+            guard let self, let window else { return event }
+            if event.type == .leftMouseUp || (NSEvent.pressedMouseButtons & 1 == 0) {
+                self.stopHeaderDrag()
+                return event
+            }
+            let p = NSEvent.mouseLocation
+            window.setFrameOrigin(NSPoint(x: startOrigin.x + p.x - startMouse.x, y: startOrigin.y + p.y - startMouse.y))
+            return nil
+        }
+    }
     @objc func openChat() {
         if chatWindow == nil {
             let config = WKWebViewConfiguration()
             config.websiteDataStore = demo || testProfile ? .nonPersistent() : .default()
-            let contentSize = NSSize(width: 1000, height: 740)
+            let desktopMarker = WKUserScript(
+                source: """
+                document.documentElement.dataset.desktopWindow='1';
+                document.addEventListener('mousedown',function(e){
+                  if(e.button!==0)return;
+                  if(!e.target.closest('.topbar'))return;
+                  if(e.target.closest('button,a,input,select,textarea,label'))return;
+                  e.preventDefault();
+                  window.webkit?.messageHandlers?.windowDrag?.postMessage(e.detail||1);
+                },true);
+                """,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: true
+            )
+            config.userContentController.addUserScript(desktopMarker)
+            config.userContentController.add(self, name: "windowDrag")
+            let contentSize = NSSize(width: 520, height: 700)
             let container = NSView(frame: NSRect(origin: .zero, size: contentSize))
             container.autoresizingMask = [.width, .height]
             let browser = WKWebView(frame: container.bounds, configuration: config)
             browser.autoresizingMask = [.width, .height]
             browser.navigationDelegate = self; browser.uiDelegate = self
             browser.allowsBackForwardNavigationGestures = false
+            let dragStrip = WindowDragStripView(frame: NSRect(x: 76, y: contentSize.height - 28, width: contentSize.width - 76, height: 28))
+            dragStrip.autoresizingMask = [.width, .minYMargin]
             container.addSubview(browser)
-            let window = NSWindow(contentRect: NSRect(origin: .zero, size: contentSize), styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            window.title = demo ? "有间 · 桌面预览（演示）" : "有间 · 和林晓薇聊聊"
-            window.minSize = NSSize(width: 600, height: 500); window.isReleasedWhenClosed = false
+            container.addSubview(dragStrip)
+            let window = NSWindow(
+                contentRect: NSRect(origin: .zero, size: contentSize),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = demo ? "有间 · 桌面预览（演示）" : "林晓薇"
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.backgroundColor = NSColor(calibratedRed: 0.965, green: 0.953, blue: 0.933, alpha: 1)
+            window.minSize = NSSize(width: 380, height: 500); window.isReleasedWhenClosed = false
             window.contentView = container; window.setContentSize(contentSize); window.delegate = self; window.center()
             web = browser; chatWindow = window
-            if demo { browser.loadHTMLString("<meta charset='utf-8'><body style='background:#f6f0e9;font:20px -apple-system;padding:60px;color:#54434b'><h2>聊天窗口已打开</h2><p>这是独立演示，不会发送消息或更改正式聊天记录。</p><p>正常启动时，这里连接你现有的有间聊天、记忆和声音设置。</p></body>", baseURL: nil) }
+            if demo { browser.loadHTMLString("<meta charset='utf-8'><body style='background:#f6f3ee;font:16px -apple-system;padding:64px 36px;color:#3d3035'><h2>聊天窗口已打开</h2><p>这是独立演示，不会发送消息或更改正式聊天记录。</p></body>", baseURL: nil) }
             else { browser.load(URLRequest(url: baseURL)) }
         }
         if chatWindow?.isMiniaturized == true { chatWindow?.deminiaturize(nil) }
@@ -888,75 +1015,62 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     }
     func makeMenu() -> NSMenu {
         let menu = NSMenu()
-        func item(_ title: String, _ selector: Selector?, value: Any? = nil) -> NSMenuItem {
-            let i = NSMenuItem(title: title, action: selector, keyEquivalent: ""); i.target = self; i.representedObject = value; menu.addItem(i); return i
+        func item(_ title: String, _ selector: Selector?, value: Any? = nil, into targetMenu: NSMenu = menu) -> NSMenuItem {
+            let i = NSMenuItem(title: title, action: selector, keyEquivalent: ""); i.target = self; i.representedObject = value; targetMenu.addItem(i); return i
         }
         let richMode = appearance != nil && prefersPhotoRenderer
-        _ = item("林晓薇 · \(demo ? "演示模式" : connected ? "已连接有间" : "正在重连")", nil)
-        if sceneCanvas.uploadedSceneEnabled {
-            _ = item("场景图片 · \(sceneImageStudio.snapshot?.active?.name ?? "已上传")",nil)
-        } else if richMode, let appearance {
-            for line in richAppearanceLines(appearance) { _ = item(line, nil) }
-        } else { _ = item(poseStatus, nil) }
-        if let world { _ = item(world.world.location, nil) }
+        let statusLine = item("林晓薇 · \(demo ? "演示模式" : connected ? "在线" : "正在重连…")", nil)
+        statusLine.isEnabled = false
         menu.addItem(.separator())
-        _ = item(tracker.pendingCount > 0 ? "打开聊天（\(tracker.pendingCount) 条新消息）" : "打开聊天", #selector(openChat))
-        let switchFigure = item(switchingFigure ? "正在切换形象…" : "切换角色形象", #selector(switchCharacterFigure))
+
+        let openChatItem = item(tracker.pendingCount > 0 ? "打开聊天（\(tracker.pendingCount) 条新消息）" : "打开聊天", #selector(openChat))
+        openChatItem.keyEquivalent = ""
+        let switchFigure = item(switchingFigure ? "正在换形象…" : "换一身形象", #selector(switchCharacterFigure))
         switchFigure.isEnabled = connected && !demo && !switchingFigure
-        _ = item("选择角色图…", #selector(chooseCharacterImage))
-        let pin = item(pinningFigure ? "正在更新固定状态…" : "固定角色图", #selector(toggleCharacterImagePin))
+
+        menu.addItem(.separator())
+
+        let lookMenu = NSMenu(title: "形象与显示")
+        let lookParent = item("形象与显示", nil); lookParent.submenu = lookMenu
+        _ = item("选择角色图…", #selector(chooseCharacterImage), into: lookMenu)
+        _ = item("场景图片切换…", #selector(openVisualStudio), into: lookMenu)
+        _ = item("管理图片素材库…", #selector(openImageLibrary), into: lookMenu)
+        let pin = item(pinningFigure ? "正在更新固定状态…" : "固定当前形象", #selector(toggleCharacterImagePin), into: lookMenu)
         pin.state = runtimeAppearance?.settings.automaticScenes == false ? .on : .off
         pin.isEnabled = connected && !demo && !pinningFigure && runtimeAppearance != nil
-        _ = item("场景图片 · 上传与切换…", #selector(openVisualStudio))
-        _ = item("图片素材库 · 批量上传与分类…", #selector(openImageLibrary))
-        _ = item("持续生活 · 状态与安排…", #selector(openRuntimeSettings))
-        _ = item("原有形象（备用）…", #selector(openLegacyVisualStudio))
-        if !richMode {
-            let wardrobeItem = item("衣柜", nil); wardrobeItem.submenu = makeWardrobeMenu()
+        lookMenu.addItem(.separator())
+        for (name, factor) in [("大小：小", 0.8), ("大小：标准", 1.0), ("大小：大", 1.2)] {
+            let sizeItem = item(name, #selector(chooseSize(_:)), value: factor, into: lookMenu)
+            sizeItem.state = abs(scale - factor) < 0.01 ? .on : .off
         }
-        let rendererMenu = NSMenu(); let renderer = item("角色外观", nil); renderer.submenu = rendererMenu
-        let photo = NSMenuItem(title: "照片角色", action: #selector(chooseRenderer(_:)), keyEquivalent: "")
-        photo.target = self; photo.representedObject = "photo"; photo.state = prefersPhotoRenderer ? .on : .off
-        photo.isEnabled = photoLibrary.hasAssets; rendererMenu.addItem(photo)
-        let old3D = NSMenuItem(title: "原 3D 角色（备用）", action: #selector(chooseRenderer(_:)), keyEquivalent: "")
-        old3D.target = self; old3D.representedObject = "old3d"; old3D.state = prefersPhotoRenderer ? .off : .on
-        rendererMenu.addItem(old3D)
-        if appearance == nil && !photoLibrary.hasCompleteLegacySet {
-            let resourceStatus = NSMenuItem(title: "照片资源不完整", action: nil, keyEquivalent: "")
-            resourceStatus.isEnabled = false; rendererMenu.addItem(resourceStatus)
-        }
-        if let error = photoLibrary.manifestLoadError {
-            let resourceError = NSMenuItem(title: error, action: nil, keyEquivalent: "")
-            resourceError.isEnabled = false; rendererMenu.addItem(resourceError)
-        }
-        if !richMode {
-            let auto = item("跟随生活状态", #selector(choosePose(_:)), value: "auto"); auto.state = manualPose == nil ? .on : .off
-            let poses = NSMenu(); let parent = item("预览姿态", nil); parent.submenu = poses
-            for pose in CompanionPose.allCases {
-                let missingPhotoPose = prefersPhotoRenderer && ![CompanionPose.idle, .reading].contains(pose)
-                let title = missingPhotoPose ? "\(pose.title)（暂无照片，显示站立）" : pose.title
-                let i = NSMenuItem(title: title, action: #selector(choosePose(_:)), keyEquivalent: ""); i.target = self; i.representedObject = pose.rawValue; i.state = manualPose == pose ? .on : .off; poses.addItem(i)
-            }
-        }
-        let sizes = NSMenu(); item("角色大小", nil).submenu = sizes
-        for (name, factor) in [("小",0.8),("标准",1.0),("大",1.2)] {
-            let i = NSMenuItem(title: name, action: #selector(chooseSize(_:)), keyEquivalent: ""); i.target = self; i.representedObject = factor; i.state = abs(scale - factor) < 0.01 ? .on : .off; sizes.addItem(i)
-        }
-        let privacy = item("隐藏气泡里的消息正文", #selector(togglePrivacy)); privacy.state = privatePreview ? .on : .off
+        lookMenu.addItem(.separator())
+        let privacy = item("气泡隐藏消息正文", #selector(togglePrivacy), into: lookMenu)
+        privacy.state = privatePreview ? .on : .off
         if richMode && !sceneCanvas.uploadedSceneEnabled, let appearance {
-            let automatic = item("自动搭配与跟随生活状态", #selector(toggleAppearanceAutomatic)); automatic.state = appearance.settings.automatic ? .on : .off
-            let locked = item("锁定当前形象", #selector(toggleAppearanceLock)); locked.state = appearance.settings.locked ? .on : .off
-            let card = item("桌面显示场景卡片", #selector(toggleSceneCard)); card.state = appearance.settings.sceneCardEnabled ? .on : .off
-            let reduce = item("减少环境动态", #selector(toggleSceneMotion)); reduce.state = appearance.settings.reduceMotion ? .on : .off
+            let automatic = item("自动搭配与跟随状态", #selector(toggleAppearanceAutomatic), into: lookMenu)
+            automatic.state = appearance.settings.automatic ? .on : .off
+            let card = item("显示场景背景卡片", #selector(toggleSceneCard), into: lookMenu)
+            card.state = appearance.settings.sceneCardEnabled ? .on : .off
         }
-        _ = item("收起当前气泡", #selector(dismissBubble))
-        _ = item(panel.isVisible ? "暂时隐藏角色" : "显示角色", #selector(togglePet))
-        _ = item("把角色移回屏幕右下角", #selector(resetPosition))
-        _ = item("重新连接", #selector(reconnect))
-        _ = item(CompanionServer.isRemote ? "连接服务器…（\(baseURL.host ?? "")）" : "连接服务器…", #selector(configureServer))
+        _ = item("备用角色与旧衣柜…", #selector(openLegacyVisualStudio), into: lookMenu)
+
+        let serviceMenu = NSMenu(title: "微信与服务")
+        let serviceParent = item("微信与服务", nil); serviceParent.submenu = serviceMenu
+        _ = item("微信扫码连接…", #selector(openWeixinPage), into: serviceMenu)
+        _ = item(CompanionServer.isRemote ? "连接远程服务器…（\(baseURL.host ?? "")）" : "连接远程服务器…", #selector(configureServer), into: serviceMenu)
+        _ = item("重新连接服务", #selector(reconnect), into: serviceMenu)
+
+        if !bubble.isHidden {
+            _ = item("收起当前气泡", #selector(dismissBubble))
+        }
+        _ = item(panel.isVisible ? "暂时隐藏角色" : "在桌面显示角色", #selector(togglePet))
+        _ = item("移回屏幕右下角", #selector(resetPosition))
         menu.addItem(.separator())
-        _ = item("退出桌面陪伴", #selector(quit)).keyEquivalent = "q"
+        _ = item("退出有间桌面", #selector(quit)).keyEquivalent = "q"
         return menu
+    }
+    @objc func openWeixinPage() {
+        NSWorkspace.shared.open(baseURL.appendingPathComponent("weixin.html"))
     }
     func updateMenu() {
         status.menu = makeMenu()
@@ -1152,28 +1266,45 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     }
     func positionBubbleAboveHead() {
         guard !bubble.isHidden else { return }
+        var desired = bubble.preferredSize(maxWidth: 258)
+        func placeBubble(headX: CGFloat, headY: CGFloat) {
+            let x = max(8, min(300 - desired.width - 8, round(headX - desired.width / 2)))
+            let y = max(75, min(474 - desired.height, round(headY)))
+            let tail = max(24, min(desired.width - 24, round(headX - x)))
+            if abs(bubble.frame.width - desired.width) > 1 || abs(bubble.frame.height - desired.height) > 1 {
+                bubble.setFrameSize(desired)
+            }
+            if abs(bubble.frame.minX - x) > 1.5 || abs(bubble.frame.minY - y) > 1.5 {
+                bubble.setFrameOrigin(NSPoint(x: x, y: y))
+            }
+            if abs(bubble.tailAnchor - tail) > 1.5 {
+                bubble.tailAnchor = tail; bubble.needsDisplay = true
+            }
+        }
         defer {
             if let screen = panel.screen, let content = panel.contentView {
                 let visible = content.convert(panel.convertFromScreen(screen.visibleFrame), from: nil).intersection(content.bounds)
                 if !visible.isNull && visible.width > 8 && visible.height > 0 {
-                    let width = min(270, visible.width - 8)
-                    bubble.setFrameSize(NSSize(width: width, height: 130))
-                    bubble.setFrameOrigin(NSPoint(x: max(visible.minX + 4, min(bubble.frame.minX, visible.maxX - width - 4)), y: max(visible.minY, min(bubble.frame.minY, visible.maxY - 130))))
-                    bubble.tailAnchor = max(26, min(width - 26, bubble.tailAnchor))
+                    desired = bubble.preferredSize(maxWidth: min(258, visible.width - 8))
+                    let h = desired.height, w = desired.width
+                    bubble.setFrameSize(desired)
+                    bubble.setFrameOrigin(NSPoint(
+                        x: max(visible.minX + 4, min(bubble.frame.minX, visible.maxX - w - 4)),
+                        y: max(visible.minY, min(bubble.frame.minY, max(visible.minY, visible.maxY - h)))
+                    ))
+                    bubble.tailAnchor = max(24, min(w - 24, bubble.tailAnchor))
                 }
             }
         }
         if sceneCanvas.uploadedSceneEnabled {
-            let rect=sceneCanvas.uploadedView.displayedRect
-            let anchor=panel.contentView?.convert(NSPoint(x:rect.midX,y:rect.maxY),from:sceneCanvas.uploadedView) ?? .zero
-            bubble.setFrameOrigin(NSPoint(x:15,y:max(75,min(344,anchor.y+8))));bubble.tailAnchor=135;return
+            let rect = sceneCanvas.uploadedView.displayedRect
+            let anchor = panel.contentView?.convert(NSPoint(x: rect.midX, y: rect.maxY), from: sceneCanvas.uploadedView) ?? NSPoint(x: 150, y: 310)
+            placeBubble(headX: anchor.x, headY: anchor.y + 8)
+            return
         }
         if usingPhotoRenderer, let head = photoPet.opaqueHeadAnchor() {
             let contentHead = panel.contentView?.convert(head, from: photoPet) ?? head
-            let y = max(75, min(344, contentHead.y + 14))
-            let tail = max(26, min(244, contentHead.x - bubble.frame.minX))
-            if abs(bubble.frame.minY - y) > 1.5 { bubble.setFrameOrigin(NSPoint(x: 15, y: y)) }
-            if abs(bubble.tailAnchor - tail) > 1.5 { bubble.tailAnchor = tail; bubble.needsDisplay = true }
+            placeBubble(headX: contentHead.x, headY: contentHead.y + 12)
             return
         }
         guard let head = character.scene.rootNode.childNode(withName: "character.head", recursively: true)?.presentation else { return }
@@ -1182,10 +1313,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
         }}
         let center = pet.projectPoint(head.convertPosition(SCNVector3Zero, to: nil))
         let top = corners.map { CGFloat($0.y) }.max() ?? 320
-        let y = max(75, min(344, top + 14))
-        let tail = max(26, min(244, CGFloat(center.x) - bubble.frame.minX))
-        if abs(bubble.frame.minY - y) > 1.5 { bubble.setFrameOrigin(NSPoint(x: 15, y: y)) }
-        if abs(bubble.tailAnchor - tail) > 1.5 { bubble.tailAnchor = tail; bubble.needsDisplay = true }
+        placeBubble(headX: CGFloat(center.x), headY: top + 12)
     }
     @objc func quit() { savePosition(); NSApp.terminate(nil) }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

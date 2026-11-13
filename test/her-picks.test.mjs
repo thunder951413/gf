@@ -43,6 +43,15 @@ test('she goes through today\'s headlines with her own taste; a flood of one cat
   const materials = picks.materials('miyue');
   assert.equal(materials[0].id, `daily-info:${book.id}`); assert.equal(materials[0].kind, 'daily_info');
   assert.deepEqual(materials[0].herAngle, { why: '大学在旧书摊买的第一本就是他的', take: '未刊稿会不会反而更像他本人', shared: '读书' });
+  // When fetchArticle is configured, HerPicks pre-reads the picked article body so excerpt is immediately available.
+  const richStore = memoryStore();
+  const richSources = [{ id: 'books', category: 'books', url: 'https://example.com/books' }, { id: 'tech', category: 'products', url: 'https://example.com/tech' }, { id: 'food', category: 'food', url: 'https://example.com/food' }];
+  const richInfo = new DailyInformation(richStore, { sources: richSources, clock: () => NOW, enabled: false, fetchArticle: async url => ({ text: `来自 ${url} 的真实正文段落：汪曾祺在信里写到草木皆有情味。` }) });
+  for (const s of richSources) richInfo.ingest(s, [{ title: `${s.id} 标题`, url: `${s.url}/1`, summary: '导语', publishedAt: '2026-10-26T10:00:00Z' }]);
+  const richBook = richInfo.list({ category: 'books' })[0];
+  const richPicks = new HerPicks(richStore, { model: fakeModel({ picks: [{ id: richBook.id, why: '想读他的信', take: '信比散文更松弛' }] }), information: richInfo, clock: () => NOW });
+  await richPicks.ensure('miyue');
+  assert.match(richPicks.materials('miyue')[0].excerpt, /草木皆有情味/);
   // Once she has told him, it is no longer on offer.
   store.getMessage = id => ({ id, role: 'miyue', text: '汪曾祺那本新编出了', createdAt: NOW.toISOString() });
   info.record({ id: 'r1', role: 'miyue', text: '汪曾祺那本新编出了', createdAt: NOW.toISOString() }, book.id);
